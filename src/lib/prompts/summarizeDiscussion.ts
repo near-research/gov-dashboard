@@ -58,19 +58,19 @@ Provide a comprehensive discussion summary covering:
 [<80 chars; supportive/opposed/mixed/neutral]
 
 **Themes**
-[<500 chars; main agreements + main concerns based on like patterns and repeated points; format as bullets starting with **Theme:**]
+[<500 chars; main agreements + main concerns based on like patterns and repeated points]
 
 **Controversy**
-[<400 chars; core disagreements or unresolved blockers; format as bullets starting with **Theme:**]
+[<400 chars; core disagreements or unresolved blockers]
 
 **Hot Takes**
-[<200 chars; one or two replies that reframed the thread, shifted the conversation, or triggered engagement; format as bullets starting with **Theme:**; skip if no reply materially changed the discussion]
+[<200 chars; one or two replies that reframed the thread, shifted the conversation, or triggered engagement; skip if no reply materially changed the discussion]
 
 **Consensus**
 [<200 chars; gauge how consensus is progressing through discussion, where views are converging vs stuck]
 
 **Loose Ends**
-[<200 chars; critical missing info, unanswered questions, unaddressed suggestions; format as bullets starting with **Theme:**]
+[<200 chars; critical missing info, unanswered questions, unaddressed suggestions]
 
 Focus on substance over noise. Weight your analysis based on timing (when said), validation (likes received), AND conversation structure (what sparked replies).`;
 }

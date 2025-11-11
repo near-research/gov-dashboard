@@ -13,7 +13,7 @@ export default async function handler(
 
     // Fetch latest topics with optional query parameters
     const order = req.query.order || "default";
-    const perPage = req.query.per_page || 30;
+    const perPage = req.query.per_page || 100;
 
     // Use category-specific endpoint
     const url = `${DISCOURSE_URL}/latest.json?order=${order}&per_page=${perPage}`;

@@ -63,7 +63,6 @@ Evaluate the proposal against ALL six quality criteria and two attention criteri
    - Situation section with problem statement
    - Mission section with clear objectives and measurable outcomes
    - Approach section with strategy
-   - Link to forum discussion (discussions-to in header)
 
    **Funding proposals MUST also include:**
    - Budget & Resources section with:
