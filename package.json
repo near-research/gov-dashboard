@@ -1,7 +1,9 @@
 {
   "name": "neargov",
   "version": "0.0.1",
+  "description": "AI-powered governance dashboard for NEAR community",
   "private": true,
+  "license": "MIT",
   "engines": {
     "node": ">=18"
   },
