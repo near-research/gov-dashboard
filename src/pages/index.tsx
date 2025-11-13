@@ -4,20 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
+import type { LatestPostsResponse } from "@/types/discourse";
 
-interface Post {
-  id: number;
-  title: string;
-  excerpt: string;
-  created_at: string;
-  username: string;
-  topic_id: number;
-  topic_slug: string;
-  reply_count?: number;
-  views?: number;
-  last_posted_at?: string;
+type Post = LatestPostsResponse["latest_posts"][number] & {
   near_wallet?: string;
-}
+};
 
 export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -36,10 +27,12 @@ export default function Home() {
         throw new Error("Failed to fetch proposals");
       }
 
-      const data = await response.json();
+      const data: LatestPostsResponse = await response.json();
       setPosts(data.latest_posts || []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to fetch proposals";
+      setError(message);
     } finally {
       setLoading(false);
     }

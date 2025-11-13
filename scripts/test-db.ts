@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-import { db } from "../db";
-import { screeningResults } from "../db/schema";
+import { db } from "../src/lib/db";
+import { screeningResults } from "../src/lib/db/schema";
 import { eq, sql, and } from "drizzle-orm";
-import type { Evaluation } from "../../types/evaluation";
+import type { Evaluation } from "../src/types/evaluation";
 
 const colors = {
   green: "\x1b[32m",
@@ -231,10 +231,15 @@ async function testDuplicatePrevention() {
       "Duplicate prevention failed: Insert succeeded when it should have failed"
     );
     return false;
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Check if it's the expected error (PostgreSQL unique violation)
-    const errorMessage = error.message || String(error);
-    const errorCode = error.code || error.cause?.code;
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    const errorCode =
+      typeof error === "object" && error !== null
+        ? (error as { code?: string; cause?: { code?: string } }).code ??
+          (error as { cause?: { code?: string } }).cause?.code
+        : undefined;
 
     if (
       errorCode === "23505" ||

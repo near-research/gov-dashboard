@@ -1,15 +1,45 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { servicesConfig } from "@/config/services";
+import type {
+  DiscourseTopicListResponse,
+  DiscourseTopicListTopic,
+  DiscourseUserRef,
+} from "@/types/discourse";
+
+type LatestPostsResponse = {
+  latest_posts: Array<{
+    id: number;
+    title: string;
+    excerpt: string;
+    created_at: string;
+    username: string;
+    topic_id: number;
+    topic_slug: string;
+    reply_count: number;
+    views: number;
+    last_posted_at: string;
+    like_count: number;
+    posts_count: number;
+    pinned: boolean;
+    closed: boolean;
+    archived: boolean;
+    visible: boolean;
+    category_id?: number;
+  }>;
+  can_create_topic: boolean;
+  per_page: number;
+};
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<LatestPostsResponse | { error: string }>
 ) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
+    const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
     // Use category-specific endpoint for proposals (category 168)
     const perPage = req.query.per_page || 30;
@@ -25,7 +55,7 @@ export default async function handler(
       throw new Error(`Discourse API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data: DiscourseTopicListResponse = await response.json();
 
     // Helper function to clean HTML from excerpt
     const cleanExcerpt = (html: string): string => {
@@ -76,11 +106,11 @@ export default async function handler(
     // Filter out the "About the Proposals category" topic
     const transformedPosts =
       data.topic_list?.topics
-        ?.filter((topic: any) => topic.id !== 41681) // Exclude the "About" topic
-        ?.map((topic: any) => {
+        ?.filter((topic: DiscourseTopicListTopic) => topic.id !== 41681) // Exclude the "About" topic
+        ?.map((topic: DiscourseTopicListTopic) => {
           const creatorPosterId = topic.posters?.[0]?.user_id;
           const creatorUser = data.users?.find(
-            (u: any) => u.id === creatorPosterId
+            (u: DiscourseUserRef) => u.id === creatorPosterId
           );
 
           return {
@@ -111,10 +141,12 @@ export default async function handler(
       can_create_topic: data.topic_list?.can_create_topic || false,
       per_page: data.topic_list?.per_page || 30,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching Discourse posts:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch posts from Discourse";
     res.status(500).json({
-      error: error.message || "Failed to fetch posts from Discourse",
+      error: message,
     });
   }
 }

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/tailwind";
 
 interface MarkdownProps {
   content: string;

@@ -5,12 +5,9 @@ import {
   verifyNearAuth,
   requestEvaluation,
   respondWithScreeningError,
-} from "@/lib/server/screening";
-import {
-  createRateLimiter,
-  getClientIdentifier,
-} from "@/lib/server/rateLimiter";
-import { rateLimitConfig } from "@/lib/config/rateLimit";
+} from "@/server/screening";
+import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
 
 /**
  * POST /api/evaluateDraft
@@ -21,9 +18,7 @@ import { rateLimitConfig } from "@/lib/config/rateLimit";
  * when signed in, or IP address when anonymous.
  */
 
-const evaluateDraftLimiter = createRateLimiter(
-  rateLimitConfig.evaluateDraft
-);
+const evaluateDraftLimiter = createRateLimiter(rateLimitConfig.evaluateDraft);
 
 export default async function handler(
   req: NextApiRequest,
@@ -53,9 +48,8 @@ export default async function handler(
   }
 
   const clientId = getClientIdentifier(req);
-  const rateLimitKey = isAuthenticated && accountId
-    ? `account:${accountId}`
-    : `ip:${clientId}`;
+  const rateLimitKey =
+    isAuthenticated && accountId ? `account:${accountId}` : `ip:${clientId}`;
   const { allowed, remaining, resetTime } =
     evaluateDraftLimiter.check(rateLimitKey);
   const secondsUntilReset = Math.max(
@@ -63,14 +57,8 @@ export default async function handler(
     Math.ceil((resetTime - Date.now()) / 1000)
   );
 
-  res.setHeader(
-    "X-RateLimit-Remaining",
-    Math.max(remaining, 0).toString()
-  );
-  res.setHeader(
-    "X-RateLimit-Limit",
-    evaluateDraftLimiter.limit.toString()
-  );
+  res.setHeader("X-RateLimit-Remaining", Math.max(remaining, 0).toString());
+  res.setHeader("X-RateLimit-Limit", evaluateDraftLimiter.limit.toString());
   res.setHeader("X-RateLimit-Reset", secondsUntilReset.toString());
 
   if (!allowed) {
@@ -83,7 +71,9 @@ export default async function handler(
         rateLimitConfig.evaluateDraft.maxRequests
       } evaluations in ${Math.round(
         rateLimitConfig.evaluateDraft.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+      )} minutes. Please wait ${Math.ceil(
+        retryAfter / 60
+      )} minutes and try again.`,
       retryAfter,
       scope: isAuthenticated ? "account" : "ip",
     });

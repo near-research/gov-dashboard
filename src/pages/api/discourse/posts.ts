@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { servicesConfig } from "@/config/services";
 
 export default async function handler(
   req: NextApiRequest,
@@ -9,7 +10,9 @@ export default async function handler(
   }
 
   try {
-    const response = await fetch("https://gov.near.org/posts.json");
+    const response = await fetch(
+      `${servicesConfig.discourseBaseUrl}/posts.json`
+    );
 
     if (!response.ok) {
       throw new Error(`Discourse API error: ${response.status}`);
@@ -17,10 +20,12 @@ export default async function handler(
 
     const data = await response.json();
     res.status(200).json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching Discourse posts:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch posts from Discourse";
     res.status(500).json({
-      error: error.message || "Failed to fetch posts from Discourse",
+      error: message,
     });
   }
 }

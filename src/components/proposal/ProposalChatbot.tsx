@@ -4,6 +4,12 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Send, Wrench } from "lucide-react";
+import type {
+  DiscussionSummaryResponse,
+  ProposalRevisionSummaryResponse,
+  TextSummaryResponse,
+} from "@/types/summaries";
+import type { ProposalReply } from "@/types/proposals";
 
 interface Message {
   id: string;
@@ -23,17 +29,27 @@ interface ToolCall {
   };
 }
 
+type ConversationEntry = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+};
+
+type RawToolCall = {
+  id?: string;
+  type?: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+};
+
 interface ProposalChatbotProps {
   proposalTitle: string;
   proposalContent: string;
   proposalId: string;
-  replies: Array<{
-    id: number;
-    username: string;
-    created_at: string;
-    cooked: string;
-    post_number: number;
-  }>;
+  replies: ProposalReply[];
   proposalAuthor: string;
   model?: string;
 }
@@ -42,7 +58,7 @@ export const ProposalChatbot = ({
   proposalTitle,
   proposalContent,
   proposalId,
-  replies,
+  replies = [],
   proposalAuthor,
   model = "deepseek-ai/DeepSeek-V3.1",
 }: ProposalChatbotProps) => {
@@ -55,14 +71,7 @@ export const ProposalChatbot = ({
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const conversationHistoryRef = useRef<
-    Array<{
-      role: string;
-      content: string | null;
-      tool_calls?: any;
-      tool_call_id?: string;
-    }>
-  >([]);
+  const conversationHistoryRef = useRef<ConversationEntry[]>([]);
 
   // Define available tools
   const tools = [
@@ -110,7 +119,7 @@ export const ProposalChatbot = ({
   // Execute tool calls
   const executeToolCall = async (
     toolName: string,
-    args: any
+    _args?: Record<string, unknown>
   ): Promise<string> => {
     try {
       switch (toolName) {
@@ -121,7 +130,8 @@ export const ProposalChatbot = ({
           );
           if (!revResponse.ok)
             throw new Error("Failed to fetch revision summary");
-          const revData = await revResponse.json();
+          const revData: ProposalRevisionSummaryResponse =
+            await revResponse.json();
           return `Revision Analysis:\n\n${
             revData.summary
           }\n\nTotal Revisions: ${revData.totalRevisions || 0}`;
@@ -133,7 +143,7 @@ export const ProposalChatbot = ({
           );
           if (!propResponse.ok)
             throw new Error("Failed to fetch proposal summary");
-          const propData = await propResponse.json();
+          const propData: TextSummaryResponse = await propResponse.json();
           return `Proposal Summary:\n\n${propData.summary}`;
 
         case "summarize_discussion":
@@ -143,14 +153,17 @@ export const ProposalChatbot = ({
           );
           if (!discResponse.ok)
             throw new Error("Failed to fetch discussion summary");
-          const discData = await discResponse.json();
+          const discData: DiscussionSummaryResponse =
+            await discResponse.json();
           return `Discussion Summary:\n\n${discData.summary}`;
 
         default:
           return `Unknown tool: ${toolName}`;
       }
-    } catch (error: any) {
-      return `Error executing ${toolName}: ${error.message}`;
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error occurred";
+      return `Error executing ${toolName}: ${message}`;
     }
   };
 
@@ -272,7 +285,9 @@ Respond in plain text only. No markdown formatting.`,
     });
   };
 
-  const safeParseToolArguments = (rawArgs: string) => {
+  const safeParseToolArguments = (
+    rawArgs: string
+  ): Record<string, unknown> => {
     if (!rawArgs?.trim()) return {};
     try {
       return JSON.parse(rawArgs);
@@ -417,15 +432,15 @@ Respond in plain text only. No markdown formatting.`,
         const data = await response.json();
         const choice = data.choices?.[0];
         const message = choice?.message ?? {};
-        const formattedToolCalls: ToolCall[] =
-          message.tool_calls?.map((call: any) => ({
-            id: call.id,
-            type: call.type || "function",
-            function: {
-              name: call.function?.name || "",
-              arguments: call.function?.arguments || "",
-            },
-          })) || [];
+        const rawToolCalls = (message.tool_calls as RawToolCall[] | undefined) ?? [];
+        const formattedToolCalls: ToolCall[] = rawToolCalls.map((call, index) => ({
+          id: call.id ?? `tool-${index}`,
+          type: call.type || "function",
+          function: {
+            name: call.function?.name || "",
+            arguments: call.function?.arguments || "",
+          },
+        }));
 
         return {
           content: message.content || "",
@@ -485,7 +500,7 @@ Respond in plain text only. No markdown formatting.`,
           // Continue loop with non-streaming completion for follow-up response
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMessages((prev) => prev.slice(0, -1));
       throw error;
     }
@@ -508,8 +523,10 @@ Respond in plain text only. No markdown formatting.`,
 
     try {
       await sendStreamingMessage();
-    } catch (error: any) {
-      setError(error.message || "Failed to get response");
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to get response";
+      setError(message);
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();

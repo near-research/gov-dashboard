@@ -55,16 +55,24 @@ export const ProposalScreener = () => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorMessage: string | undefined;
+        try {
+          const errorData: { error?: string } = await response.json();
+          errorMessage = errorData.error;
+        } catch {
+          // ignore JSON errors
+        }
         throw new Error(
-          errorData.error || `API request failed: ${response.status}`
+          errorMessage || `API request failed: ${response.status}`
         );
       }
 
-      const data = await response.json();
+      const data: { evaluation: Evaluation } = await response.json();
       setResult(data.evaluation);
-    } catch (err: any) {
-      setError(err.message || "Failed to evaluate proposal");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to evaluate proposal";
+      setError(message);
     } finally {
       setLoading(false);
     }

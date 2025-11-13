@@ -1,18 +1,21 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { applyPatch } from "fast-json-patch";
+import { applyPatch, type Operation } from "fast-json-patch";
 import MarkdownIt from "markdown-it";
 import {
   EventType,
   type AGUIEvent,
   type MessageRole,
+  type MessagesSnapshotEvent,
+  type StateDeltaEvent,
+  type StateSnapshotEvent,
 } from "@/types/agui-events";
 import type { Evaluation } from "@/types/evaluation";
 import { SidebarChat } from "@/components/editor/SidebarChat";
 import { EditorPane } from "@/components/editor/EditorPane";
 import { EvaluationSummary } from "@/components/editor/EvaluationSummary";
-import { diffPartialText } from "@/lib/utils/diff";
+import { diffPartialText } from "@/utils/diff";
 
 interface Message {
   id: string;
@@ -380,9 +383,14 @@ export default function ProposalEditor() {
         try {
           // Apply the delta to get the new state
           setProposalState((prev) => {
-            const result = applyPatch(prev, event.delta as any, false, false);
+            const result = applyPatch(
+              prev,
+              (event as StateDeltaEvent<ProposalState>).delta as Operation[],
+              false,
+              false
+            );
 
-            const newState = result.newDocument;
+            const newState = result.newDocument as ProposalState;
 
             // Check if content or title changed compared to LOCAL state (not prev state)
             const contentChanged = newState.content !== localContent;
@@ -419,14 +427,16 @@ export default function ProposalEditor() {
         }
         return;
 
-      case EventType.STATE_SNAPSHOT:
-        setProposalState(event.snapshot);
-        setLocalTitle(event.snapshot.title);
-        setLocalContent(event.snapshot.content);
+      case EventType.STATE_SNAPSHOT: {
+        const snapshot = (event as StateSnapshotEvent<ProposalState>).snapshot;
+        setProposalState(snapshot);
+        setLocalTitle(snapshot.title);
+        setLocalContent(snapshot.content);
         return;
+      }
 
       case EventType.MESSAGES_SNAPSHOT:
-        setMessages(event.messages);
+        setMessages((event as MessagesSnapshotEvent).messages);
         return;
     }
   };

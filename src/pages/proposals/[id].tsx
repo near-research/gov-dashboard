@@ -7,7 +7,7 @@ import { Markdown } from "@/components/proposal/Markdown";
 import { ProposalChatbot } from "@/components/proposal/ProposalChatbot";
 import { useNear } from "@/hooks/useNear";
 import type { Evaluation } from "@/types/evaluation";
-import { reconstructRevisionContent } from "@/lib/utils/revisionContentUtils";
+import { reconstructRevisionContent } from "@/utils/revisionContentUtils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,57 +27,20 @@ import {
   AlertCircle,
   MessagesSquare,
 } from "lucide-react";
-import { ProposalFrontmatter } from "@/lib/utils/metadata";
-import { buildRateLimitMessage } from "@/lib/utils/rateLimit";
-
-interface ProposalDetail {
-  id: number;
-  title: string;
-  content: string;
-  contentWithoutFrontmatter: string;
-  metadata: ProposalFrontmatter;
-  version: number;
-  created_at: string;
-  username: string;
-  topic_id: number;
-  topic_slug: string;
-  reply_count: number;
-  views: number;
-  last_posted_at: string;
-  like_count?: number;
-  near_wallet?: string;
-  category_id?: number;
-  replies?: Reply[];
-}
-
-interface Reply {
-  id: number;
-  username: string;
-  created_at: string;
-  cooked: string;
-  post_number: number;
-  avatar_template?: string;
-  like_count?: number;
-  reply_to_post_number?: number | null;
-  reply_to_user?: {
-    username: string;
-  } | null;
-}
-
-interface Revision {
-  version: number;
-  created_at: string;
-  username: string;
-  edit_reason: string;
-  body_changes?: {
-    inline?: string;
-    side_by_side?: string;
-  };
-  title_changes?: {
-    inline?: string;
-    side_by_side?: string;
-  };
-}
+import { buildRateLimitMessage } from "@/utils/rateLimitHelpers";
+import { servicesConfig } from "@/config/services";
+import type {
+  ProposalDetailResponse,
+  ProposalReply,
+  ProposalRevision,
+} from "@/types/proposals";
+import type { DiscourseRevisionResponse } from "@/types/discourse";
+import type {
+  DiscussionSummaryResponse,
+  ProposalRevisionSummaryResponse,
+  ReplySummaryResponse,
+  TextSummaryResponse,
+} from "@/types/summaries";
 
 interface ScreeningData {
   evaluation: Evaluation;
@@ -89,17 +52,11 @@ interface ScreeningData {
   attentionScore: number;
 }
 
-interface SummaryResponse {
-  success: boolean;
-  summary: string;
-  cached?: boolean;
-  cacheAge?: number;
-}
-
 export default function ProposalDetail() {
+  const DISCOURSE_BASE_URL = servicesConfig.discourseBaseUrl;
   const router = useRouter();
   const { id } = router.query;
-  const [proposal, setProposal] = useState<ProposalDetail | null>(null);
+  const [proposal, setProposal] = useState<ProposalDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [screening, setScreening] = useState<ScreeningData | null>(null);
@@ -108,7 +65,7 @@ export default function ProposalDetail() {
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [showRevisions, setShowRevisions] = useState(false);
   const [showReplies, setShowReplies] = useState(false);
-  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [revisions, setRevisions] = useState<ProposalRevision[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number>(1);
   const [showDiffHighlights, setShowDiffHighlights] = useState(false);
   const [versionContent, setVersionContent] = useState<string>("");
@@ -153,7 +110,7 @@ export default function ProposalDetail() {
       if (!response.ok) {
         throw new Error("Failed to fetch proposal");
       }
-      const data = await response.json();
+      const data: ProposalDetailResponse = await response.json();
       setProposal(data);
       setVersionContent(data.contentWithoutFrontmatter);
 
@@ -161,8 +118,10 @@ export default function ProposalDetail() {
       setCurrentRevision(initialRevision);
       setSelectedVersion(initialRevision);
       fetchScreening(proposalId, initialRevision);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to fetch proposal";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -173,7 +132,7 @@ export default function ProposalDetail() {
     try {
       const res = await fetch(`/api/proposals/${proposalId}/revisions`);
       if (!res.ok) throw new Error("Failed to fetch revisions");
-      const data = await res.json();
+      const data: DiscourseRevisionResponse = await res.json();
       const latestRevision = data.current_version || 1;
       setCurrentRevision(latestRevision);
       setSelectedVersion(latestRevision);
@@ -181,7 +140,7 @@ export default function ProposalDetail() {
       if (Array.isArray(data.revisions) && data.revisions.length > 0) {
         setRevisions(data.revisions);
         const currentRevisionData = data.revisions.find(
-          (r: Revision) => r.version === latestRevision
+          (r: ProposalRevision) => r.version === latestRevision
         );
 
         console.log("Latest revision:", latestRevision);
@@ -222,8 +181,11 @@ export default function ProposalDetail() {
         setVersionDiffHtml("");
       }
       await fetchScreening(proposalId, latestRevision);
-    } catch (e) {
-      console.error(e);
+    } catch (err: unknown) {
+      console.error("Error fetching revisions:", err);
+      const message =
+        err instanceof Error ? err.message : "Failed to fetch revisions";
+      setError(message);
     } finally {
       setRevisionsLoading(false);
     }
@@ -323,7 +285,7 @@ export default function ProposalDetail() {
         method: "POST",
       });
       if (response.ok) {
-        const data: SummaryResponse = await response.json();
+        const data: TextSummaryResponse = await response.json();
         setProposalSummary(data.summary);
         setProposalSummaryError("");
       } else {
@@ -355,7 +317,7 @@ export default function ProposalDetail() {
         method: "POST",
       });
       if (response.ok) {
-        const data: SummaryResponse = await response.json();
+        const data: ProposalRevisionSummaryResponse = await response.json();
         setRevisionSummary(data.summary);
         setRevisionSummaryError("");
       } else {
@@ -389,7 +351,7 @@ export default function ProposalDetail() {
         }
       );
       if (response.ok) {
-        const data: SummaryResponse = await response.json();
+        const data: ReplySummaryResponse = await response.json();
         setReplySummaries((prev) => ({ ...prev, [replyId]: data.summary }));
         setReplySummaryErrors((prev) => ({ ...prev, [replyId]: "" }));
       } else {
@@ -450,10 +412,10 @@ export default function ProposalDetail() {
         );
         throw new Error(message);
       }
-      const data: SummaryResponse = await response.json();
+      const data: DiscussionSummaryResponse = await response.json();
       setDiscussionSummary(data.summary);
       setDiscussionSummaryVisible(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setDiscussionSummaryError(
         err instanceof Error ? err.message : "Failed to generate summary"
       );
@@ -532,7 +494,7 @@ export default function ProposalDetail() {
                 </span>
                 <Separator orientation="vertical" className="h-4" />
                 <a
-                  href={`https://gov.near.org/t/${proposal.topic_slug}/${proposal.topic_id}`}
+                  href={`${DISCOURSE_BASE_URL}/t/${proposal.topic_slug}/${proposal.topic_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1 text-primary hover:underline"
@@ -709,7 +671,7 @@ export default function ProposalDetail() {
                                   {reply.avatar_template ? (
                                     /* eslint-disable-next-line @next/next/no-img-element */
                                     <img
-                                      src={`https://gov.near.org${reply.avatar_template.replace(
+                                      src={`${DISCOURSE_BASE_URL}${reply.avatar_template.replace(
                                         "{size}",
                                         "48"
                                       )}`}
@@ -772,19 +734,19 @@ export default function ProposalDetail() {
                                   __html: reply.cooked
                                     .replace(
                                       /href="\/u\//g,
-                                      'href="https://gov.near.org/u/'
+                                      `href="${DISCOURSE_BASE_URL}/u/"`
                                     )
                                     .replace(
                                       /href="\/t\//g,
-                                      'href="https://gov.near.org/t/'
+                                      `href="${DISCOURSE_BASE_URL}/t/"`
                                     )
                                     .replace(
                                       /href="\/c\//g,
-                                      'href="https://gov.near.org/c/'
+                                      `href="${DISCOURSE_BASE_URL}/c/"`
                                     )
                                     .replace(
                                       /src="\/user_avatar\//g,
-                                      'src="https://gov.near.org/user_avatar/'
+                                      `src="${DISCOURSE_BASE_URL}/user_avatar/"`
                                     ),
                                 }}
                               />
@@ -870,8 +832,6 @@ export default function ProposalDetail() {
                     topicId={id as string}
                     title={proposal.title}
                     content={proposal.content}
-                    nearAccount={signedAccountId}
-                    wallet={wallet}
                     revisionNumber={selectedVersion}
                     onScreeningComplete={() =>
                       fetchScreening(id as string, selectedVersion)
@@ -895,7 +855,7 @@ export default function ProposalDetail() {
                 proposalTitle={proposal.title}
                 proposalContent={proposal.content}
                 proposalId={id as string}
-                replies={proposal.replies || []}
+                replies={proposal.replies ?? []}
                 proposalAuthor={proposal.username}
               />
             </div>

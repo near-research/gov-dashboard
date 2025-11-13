@@ -1,40 +1,19 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import {
-  discussionCache,
-  CacheKeys,
-} from "../../../../../lib/utils/cache-utils";
+import { discussionCache, CacheKeys } from "@/utils/cache-utils";
 import { buildDiscussionSummaryPrompt } from "@/lib/prompts/summarizeDiscussion";
-import {
-  createRateLimiter,
-  getClientIdentifier,
-} from "@/lib/server/rateLimiter";
-import { rateLimitConfig } from "@/lib/config/rateLimit";
+import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
+import { servicesConfig } from "@/config/services";
+import type {
+  DiscourseActionSummary,
+  DiscoursePost,
+  DiscourseTopic,
+} from "@/types/discourse";
+import type { ApiErrorResponse } from "@/types/api";
+import type { DiscussionSummaryResponse } from "@/types/summaries";
 
-const discussionLimiter = createRateLimiter(
-  rateLimitConfig.discussionSummary
-);
-
-// TypeScript type definitions for Discourse API
-interface ActionSummary {
-  id: number;
-  count: number;
-}
-
-interface DiscoursePost {
-  id: number;
-  post_number: number;
-  username: string;
-  cooked: string;
-  created_at: string;
-  like_count?: number;
-  actions_summary?: ActionSummary[];
-  reply_count?: number;
-  reply_to_post_number?: number | null;
-  reply_to_user?: {
-    username: string;
-    id: number;
-  } | null;
-}
+const discussionLimiter = createRateLimiter(rateLimitConfig.discussionSummary);
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 interface ReplyWithEngagement extends DiscoursePost {
   likeCount: number;
@@ -54,7 +33,7 @@ interface ReplyWithEngagement extends DiscoursePost {
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<DiscussionSummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -87,7 +66,9 @@ export default async function handler(
         rateLimitConfig.discussionSummary.maxRequests
       } discussion summaries in ${Math.round(
         rateLimitConfig.discussionSummary.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+      )} minutes. Please wait ${Math.ceil(
+        retryAfter / 60
+      )} minutes and try again.`,
       retryAfter,
     });
   }
@@ -111,8 +92,6 @@ export default async function handler(
     // ===================================================================
     // FETCH FROM DISCOURSE (NO AUTH)
     // ===================================================================
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
-
     const headers: HeadersInit = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -126,7 +105,7 @@ export default async function handler(
       return res.status(404).json({ error: "Discussion not found" });
     }
 
-    const topicData = await topicResponse.json();
+    const topicData: DiscourseTopic = await topicResponse.json();
 
     // Get all posts - KEEP THE FIRST ONE (original proposal)
     const posts = topicData.post_stream?.posts || [];
@@ -138,15 +117,26 @@ export default async function handler(
     }
 
     if (replies.length === 0) {
-      return res.status(200).json({
+      const emptyResponse: DiscussionSummaryResponse = {
         success: true,
         summary:
           "No replies yet. The community hasn't responded to this proposal.",
         topicId: id,
         title: topicData.title,
         replyCount: 0,
+        truncated: false,
+        engagement: {
+          totalLikes: 0,
+          totalReplies: 0,
+          participantCount: topicData.participant_count,
+          avgLikesPerReply: 0,
+          highlyEngagedReplies: 0,
+          maxLikes: 0,
+        },
+        generatedAt: Date.now(),
         cached: false,
-      });
+      };
+      return res.status(200).json(emptyResponse);
     }
 
     // Strip HTML
@@ -162,7 +152,9 @@ export default async function handler(
       (post: DiscoursePost) => ({
         ...post,
         likeCount:
-          post.actions_summary?.find((a: ActionSummary) => a.id === 2)?.count ||
+          post.actions_summary?.find(
+            (a: DiscourseActionSummary) => a.id === 2
+          )?.count ||
           0,
       })
     );
@@ -173,7 +165,9 @@ export default async function handler(
       0
     );
     const avgLikes =
-      replies.length > 0 ? (totalLikes / replies.length).toFixed(1) : "0";
+      replies.length > 0
+        ? parseFloat((totalLikes / replies.length).toFixed(1))
+        : 0;
     const maxLikes = Math.max(
       ...repliesWithEngagement.map((r) => r.likeCount),
       0
@@ -253,7 +247,7 @@ ${truncatedOriginal}
       { title: topicData.title },
       replies,
       totalLikes,
-      parseFloat(avgLikes),
+      avgLikes,
       maxLikes,
       highlyEngagedReplies,
       truncatedDiscussion
@@ -290,7 +284,7 @@ ${truncatedOriginal}
     // ===================================================================
     // BUILD RESPONSE
     // ===================================================================
-    const response = {
+    const response: DiscussionSummaryResponse = {
       success: true,
       summary,
       topicId: id,
@@ -302,6 +296,8 @@ ${truncatedOriginal}
         totalReplies: replies.length,
         participantCount: topicData.participant_count,
         avgLikesPerReply: avgLikes,
+        highlyEngagedReplies,
+        maxLikes,
       },
       generatedAt: Date.now(), // For cache age tracking
       cached: false,
@@ -313,12 +309,15 @@ ${truncatedOriginal}
     discussionCache.set(cacheKey, response);
 
     return res.status(200).json(response);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Discussion Summary] Error:", error);
+    const details =
+      error instanceof Error && process.env.NODE_ENV === "development"
+        ? error.message
+        : undefined;
     return res.status(500).json({
       error: "Failed to generate discussion summary",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+      details,
     });
   }
 }

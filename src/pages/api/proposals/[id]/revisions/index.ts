@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { servicesConfig } from "@/config/services";
 
 /**
  * GET /api/proposals/[id]/revisions
@@ -27,7 +28,7 @@ export default async function handler(
   }
 
   try {
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
+    const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
     const headers: HeadersInit = {
       "Content-Type": "application/json",
@@ -109,11 +110,13 @@ export default async function handler(
       total_revisions: revisions.length,
       current_version: version,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Proposal Revisions] Error:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch revisions";
     return res.status(500).json({
       error: "Failed to fetch revisions",
-      message: error.message,
+      message,
     });
   }
 }

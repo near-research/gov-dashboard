@@ -1,16 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { proposalCache, CacheKeys } from "../../../../lib/utils/cache-utils";
+import { proposalCache, CacheKeys } from "@/utils/cache-utils";
 import { buildProposalSummaryPrompt } from "@/lib/prompts/summarizeProposal";
-import { stripFrontmatter } from "@/lib/utils/metadata";
-import {
-  createRateLimiter,
-  getClientIdentifier,
-} from "@/lib/server/rateLimiter";
-import { rateLimitConfig } from "@/lib/config/rateLimit";
+import { stripFrontmatter } from "@/utils/metadata";
+import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
+import { servicesConfig } from "@/config/services";
+import type { ApiErrorResponse } from "@/types/api";
+import type { ProposalSummaryResponse } from "@/types/summaries";
 
 const proposalSummarizeLimiter = createRateLimiter(
   rateLimitConfig.proposalSummary
 );
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 /**
  * POST /api/proposals/[id]/summarize
@@ -26,7 +27,7 @@ const proposalSummarizeLimiter = createRateLimiter(
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<ProposalSummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -47,10 +48,7 @@ export default async function handler(
   );
 
   res.setHeader("X-RateLimit-Remaining", Math.max(remaining, 0).toString());
-  res.setHeader(
-    "X-RateLimit-Limit",
-    proposalSummarizeLimiter.limit.toString()
-  );
+  res.setHeader("X-RateLimit-Limit", proposalSummarizeLimiter.limit.toString());
   res.setHeader("X-RateLimit-Reset", secondsUntilReset.toString());
 
   if (!allowed) {
@@ -63,7 +61,9 @@ export default async function handler(
         rateLimitConfig.proposalSummary.maxRequests
       } proposal summaries in ${Math.round(
         rateLimitConfig.proposalSummary.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+      )} minutes. Please wait ${Math.ceil(
+        retryAfter / 60
+      )} minutes and try again.`,
       retryAfter,
     });
   }
@@ -87,8 +87,6 @@ export default async function handler(
     // ===================================================================
     // FETCH FROM DISCOURSE (NO AUTH)
     // ===================================================================
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
-
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
@@ -123,9 +121,9 @@ export default async function handler(
           ""
         );
       }
-    } catch (err) {
-      console.warn(`[Proposal Summary] Could not fetch raw content:`, err);
-    }
+  } catch (err) {
+    console.warn(`[Proposal Summary] Could not fetch raw content:`, err);
+  }
 
     // Use raw if available, fallback to cooked
     const content = rawContent || proposalPost.cooked;
@@ -187,7 +185,7 @@ export default async function handler(
     // ===================================================================
     // BUILD RESPONSE
     // ===================================================================
-    const response = {
+    const response: ProposalSummaryResponse = {
       success: true,
       summary,
       proposalId: id,
@@ -196,7 +194,7 @@ export default async function handler(
       createdAt: proposalPost.created_at,
       truncated: contentWithoutFrontmatter.length > MAX_LENGTH,
       viewCount: topicData.views,
-      replyCount: topicData.posts_count - 1, // Subtract the proposal itself
+      replyCount: topicData.posts_count ? topicData.posts_count - 1 : 0, // Subtract the proposal itself
       likeCount: proposalPost.like_count || 0,
       generatedAt: Date.now(), // For cache age tracking
       cached: false,
@@ -208,12 +206,15 @@ export default async function handler(
     proposalCache.set(cacheKey, response);
 
     return res.status(200).json(response);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Proposal Summary] Error:", error);
+    const details =
+      error instanceof Error && process.env.NODE_ENV === "development"
+        ? error.message
+        : undefined;
     return res.status(500).json({
       error: "Failed to generate proposal summary",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+      details,
     });
   }
 }

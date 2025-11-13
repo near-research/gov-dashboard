@@ -3,8 +3,23 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requestEvaluation } from "@/lib/server/screening";
-import { EventType, type AGUIEvent } from "@/types/agui-events";
+import { requestEvaluation } from "@/server/screening";
+import {
+  EventType,
+  type AGUIEvent,
+  type CompletionMessage,
+  type MessageRole,
+  type ProposalAgentState,
+  type ToolChoice,
+} from "@/types/agui-events";
+import type { Evaluation } from "@/types/evaluation";
+
+interface AgentRequestBody {
+  messages: Array<{ role: MessageRole; content: string }>;
+  threadId?: string;
+  runId?: string;
+  state?: Partial<ProposalAgentState>;
+}
 
 // Tool definitions
 const TOOLS = [
@@ -58,8 +73,16 @@ const TOOLS = [
   },
 ];
 
+const normalizeState = (
+  state: Partial<ProposalAgentState> | undefined
+): ProposalAgentState => ({
+  title: state?.title ?? "",
+  content: state?.content ?? "",
+  evaluation: state?.evaluation ?? null,
+});
+
 // System prompt builder
-function getSystemPrompt(currentState: any) {
+function getSystemPrompt(currentState: ProposalAgentState) {
   return `You are a NEAR governance proposal assistant. You help users write high-quality proposals that meet NEAR's criteria.
 
 **Current Proposal State:**
@@ -167,7 +190,15 @@ export default async function handler(
   }
 
   try {
-    const { messages, threadId, runId: clientRunId, state } = req.body;
+    const body = req.body as AgentRequestBody;
+    const { messages, threadId, runId: clientRunId, state } = body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({
+        error: "Invalid request body",
+        message: "messages array is required",
+      });
+    }
 
     console.log("[Agent] API called with:", {
       messagesCount: messages?.length,
@@ -187,7 +218,7 @@ export default async function handler(
     const run = clientRunId || generateId("run");
 
     // Current state from frontend
-    const currentState = state || { title: "", content: "", evaluation: null };
+    const currentState = normalizeState(state);
 
     // Build conversation
     const conversationMessages = [
@@ -216,7 +247,7 @@ export default async function handler(
       lastUserMessage.includes("review");
 
     // Smart tool choice
-    let toolChoice: any = "auto";
+    let toolChoice: ToolChoice = "auto";
 
     if (isWriteIntent && !isScreenIntent) {
       toolChoice = {
@@ -286,7 +317,9 @@ export default async function handler(
     });
 
     // Parse non-streaming response
-    const data = await nearAIResponse.json();
+    const data = (await nearAIResponse.json()) as {
+      choices?: Array<{ message?: CompletionMessage }>;
+    };
     const message = data.choices?.[0]?.message;
 
     if (!message) {
@@ -339,7 +372,7 @@ export default async function handler(
     }
 
     // Handle tool calls
-    if (message.tool_calls && message.tool_calls.length > 0) {
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
       writeEvent({
         type: EventType.STEP_STARTED,
         stepName: "execute_tools",
@@ -349,7 +382,10 @@ export default async function handler(
       for (const toolCall of message.tool_calls) {
         const toolCallId = toolCall.id;
         const toolName = toolCall.function.name;
-        const args = JSON.parse(toolCall.function.arguments);
+        const args = JSON.parse(toolCall.function.arguments) as {
+          title: string;
+          content: string;
+        };
 
         // Emit tool call start
         writeEvent({
@@ -380,7 +416,7 @@ export default async function handler(
         });
 
         // Execute tool
-        let result: any;
+        let result: Evaluation | { title: string; content: string; status: string } | null = null;
 
         if (toolName === "screen_proposal") {
           result = await screenProposal(args.title, args.content);
@@ -457,11 +493,13 @@ export default async function handler(
     });
 
     res.end();
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Agent] Error:", error);
+    const message =
+      error instanceof Error ? error.message : "Unknown error";
     const errorEvent: AGUIEvent = {
       type: EventType.RUN_ERROR,
-      message: error.message || "Unknown error",
+      message,
       code: "AGENT_ERROR",
       timestamp: Date.now(),
     };

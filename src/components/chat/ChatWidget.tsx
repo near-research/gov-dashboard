@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, X, Send } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/tailwind";
 
 interface CompactMessage {
   id: string;
@@ -127,11 +127,13 @@ export const NEARChatWidget = ({
         role: "assistant",
         content: fullContent,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error:", error);
       setMessages((prev) => prev.slice(0, -1));
       addMessage(
-        "Sorry, I encountered an error. Please try again.",
+        error instanceof Error
+          ? `Sorry, I encountered an error: ${error.message}`
+          : "Sorry, I encountered an error. Please try again.",
         "assistant"
       );
     }

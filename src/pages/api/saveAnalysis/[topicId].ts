@@ -9,7 +9,7 @@ import {
   verifyNearAuth,
   requestEvaluation,
   respondWithScreeningError,
-} from "@/lib/server/screening";
+} from "@/server/screening";
 
 /**
  * POST /api/saveAnalysis/[topicId]
@@ -161,13 +161,18 @@ export default async function handler(
       console.log(
         `[Save Analysis] ✓ Saved screening for topic ${topicId} revision ${versionToScreen} by ${signerAccountId} (Q: ${qualityScore}, A: ${attentionScore})`
       );
-    } catch (dbError: any) {
+    } catch (dbError: unknown) {
       // Handle duplicate key error (composite primary key violation)
       // Error code 23505 = PostgreSQL unique_violation
-      if (
-        dbError.code === "23505" ||
-        dbError.constraint === "screening_results_pkey"
-      ) {
+      const duplicateViolation =
+        typeof dbError === "object" && dbError !== null
+          ? ((dbError as { code?: string; constraint?: string }).code ===
+              "23505" ||
+              (dbError as { code?: string; constraint?: string }).constraint ===
+                "screening_results_pkey")
+          : false;
+
+      if (duplicateViolation) {
         return res.status(409).json({
           error: "Already evaluated",
           message: `Revision ${versionToScreen} of this proposal has already been evaluated`,

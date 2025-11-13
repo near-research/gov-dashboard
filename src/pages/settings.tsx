@@ -15,6 +15,12 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import prompts from "@/lib/prompts";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import type {
+  ProposalDetailResponse,
+  ProposalReply,
+  ProposalRevision,
+} from "@/types/proposals";
+import type { DiscourseRevisionResponse } from "@/types/discourse";
 
 const stripHtml = (html: string) => {
   if (!html) return "";
@@ -28,21 +34,22 @@ const stripHtml = (html: string) => {
     .trim();
 };
 
-const buildDiscussionTranscript = (proposal: any, replies: any[]): string => {
+const buildDiscussionTranscript = (
+  proposal: ProposalDetailResponse,
+  replies: ProposalReply[]
+): string => {
   const original =
-    proposal?.contentWithoutFrontmatter || proposal?.content || "";
+    proposal.contentWithoutFrontmatter || proposal.content || "";
   const originalSection = original
-    ? `ORIGINAL PROPOSAL (by @${
-        proposal?.username || "author"
-      }):\n\n${original.trim()}`
+    ? `ORIGINAL PROPOSAL (by @${proposal.username || "author"}):\n\n${original.trim()}`
     : "";
 
   const repliesSection =
     replies.length > 0
       ? replies
           .slice(0, 100)
-          .map((reply: any, index: number) => {
-            const likeCount = reply.like_count || 0;
+          .map((reply, index) => {
+            const likeCount = reply.like_count ?? 0;
             const likeNote = likeCount > 0 ? ` (${likeCount} likes)` : "";
             const replyToNote = reply.reply_to_post_number
               ? ` [replying to #${reply.reply_to_post_number}]`
@@ -62,7 +69,10 @@ const buildDiscussionTranscript = (proposal: any, replies: any[]): string => {
   return sections.trim();
 };
 
-const formatRevisionTimeline = (proposal: any, revisions: any[]): string => {
+const formatRevisionTimeline = (
+  proposal: ProposalDetailResponse,
+  revisions: ProposalRevision[]
+): string => {
   const lines: string[] = [];
   const formatDate = (value?: string) => {
     if (!value) return "Unknown date";
@@ -75,7 +85,7 @@ const formatRevisionTimeline = (proposal: any, revisions: any[]): string => {
     });
   };
 
-  if (proposal?.created_at) {
+  if (proposal.created_at) {
     lines.push(
       `v1 • ${formatDate(proposal.created_at)} • @${
         proposal.username || "author"
@@ -85,10 +95,10 @@ const formatRevisionTimeline = (proposal: any, revisions: any[]): string => {
 
   if (Array.isArray(revisions) && revisions.length > 0) {
     const sorted = [...revisions].sort(
-      (a, b) => Number(a.version || 0) - Number(b.version || 0)
+      (a, b) => Number(a.version ?? 0) - Number(b.version ?? 0)
     );
-    sorted.forEach((revision: any) => {
-      const version = revision.version || "?";
+    sorted.forEach((revision) => {
+      const version = revision.version ?? "?";
       const author = revision.username || "unknown";
       const timestamp = formatDate(revision.created_at);
       const reason = revision.edit_reason ? ` — ${revision.edit_reason}` : "";
@@ -176,10 +186,12 @@ export default function SettingsPage() {
       if (!response.ok) {
         throw new Error("Failed to load proposal");
       }
-      const data = await response.json();
+      const data: ProposalDetailResponse = await response.json();
       if (!data) throw new Error("Proposal not found");
 
-      const replies: any[] = Array.isArray(data.replies) ? data.replies : [];
+      const replies: ProposalReply[] = Array.isArray(data.replies)
+        ? data.replies
+        : [];
       const desiredReplyNumber =
         selectedPrompt === "summarizeReply" && replyPostNumberToLoad.trim()
           ? (() => {
@@ -187,7 +199,7 @@ export default function SettingsPage() {
               return Number.isNaN(parsed) ? null : parsed;
             })()
           : null;
-      const targetReply =
+      const targetReply: ProposalReply | null =
         selectedPrompt === "summarizeReply"
           ? replies.find((reply) => reply.post_number === desiredReplyNumber) ||
             replies[0] ||
@@ -222,7 +234,8 @@ export default function SettingsPage() {
             `/api/proposals/${proposalIdToLoad.trim()}/revisions`
           );
           if (revisionsResponse.ok) {
-            const revisionsData = await revisionsResponse.json();
+            const revisionsData: DiscourseRevisionResponse =
+              await revisionsResponse.json();
             revisionTimelineText = formatRevisionTimeline(
               data,
               revisionsData.revisions || []
@@ -322,8 +335,10 @@ export default function SettingsPage() {
       } else {
         setLoadError("No matching fields to load from proposal");
       }
-    } catch (err: any) {
-      setLoadError(err.message || "Unable to fetch proposal");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Unable to fetch proposal";
+      setLoadError(message);
     } finally {
       setLoadingProposal(false);
     }
@@ -450,8 +465,10 @@ export default function SettingsPage() {
 
       const data = await response.json();
       setResult(data.choices?.[0]?.message?.content || "No response");
-    } catch (err: any) {
-      setError(err.message || "Unexpected error");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Unexpected error";
+      setError(message);
     } finally {
       setLoading(false);
     }

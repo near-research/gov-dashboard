@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   buildRateLimitMessage,
   extractRateLimitInfo,
-} from "@/lib/utils/rateLimit";
+} from "@/utils/rateLimitHelpers";
 
 export default function NewProposalPage() {
   const { signedAccountId } = useNear();
@@ -52,7 +52,7 @@ export default function NewProposalPage() {
       setRateLimitResetSeconds(rateLimit.resetSeconds);
 
       if (!response.ok) {
-        let errorData: any = {};
+        let errorData: { error?: string; retryAfter?: number } | null = null;
         try {
           errorData = await response.json();
         } catch {
@@ -67,15 +67,17 @@ export default function NewProposalPage() {
         }
 
         throw new Error(
-          errorData.error || `API request failed: ${response.status}`
+          errorData?.error || `API request failed: ${response.status}`
         );
       }
 
-      const data = await response.json();
+      const data: { evaluation: Evaluation } = await response.json();
       setResult(data.evaluation);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Evaluation error:", err);
-      setError(err.message || "Failed to evaluate proposal");
+      const message =
+        err instanceof Error ? err.message : "Failed to evaluate proposal";
+      setError(message);
     } finally {
       setLoading(false);
     }

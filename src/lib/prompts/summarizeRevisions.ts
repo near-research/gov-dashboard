@@ -1,3 +1,5 @@
+import type { ProposalRevision } from "@/types/proposals";
+
 /**
  * Generates the AI prompt for analyzing NEAR governance post revision history
  * @param id - Post ID
@@ -10,7 +12,7 @@
 export function buildRevisionAnalysisPrompt(
   id: string,
   postData: { username: string },
-  revisions: any[],
+  revisions: ProposalRevision[],
   version: number,
   truncatedTimeline: string
 ): string {

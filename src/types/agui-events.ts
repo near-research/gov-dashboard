@@ -29,6 +29,8 @@ export enum EventType {
   STATE_SNAPSHOT = "STATE_SNAPSHOT",
   STATE_DELTA = "STATE_DELTA",
   MESSAGES_SNAPSHOT = "MESSAGES_SNAPSHOT",
+  ACTIVITY_SNAPSHOT = "ACTIVITY_SNAPSHOT",
+  ACTIVITY_DELTA = "ACTIVITY_DELTA",
 
   // Special Events
   RAW = "RAW",
@@ -47,7 +49,7 @@ export type MessageRole =
 export interface BaseEvent {
   type: EventType;
   timestamp?: number;
-  rawEvent?: any;
+  rawEvent?: unknown;
 }
 
 // ============================================================================
@@ -62,7 +64,7 @@ export interface RunStartedEvent extends BaseEvent {
   threadId: string;
   runId: string;
   parentRunId?: string; // For branching/time travel
-  input?: any; // The exact agent input for this run
+  input?: unknown; // The exact agent input for this run
 }
 
 /**
@@ -72,9 +74,9 @@ export interface RunFinishedEvent extends BaseEvent {
   type: EventType.RUN_FINISHED;
   threadId: string;
   runId: string;
-  result?: any;
+  result?: unknown;
   outcome?: "success" | "interrupt"; // For interrupt-aware workflows
-  interrupt?: any; // Contains interrupt details when paused
+  interrupt?: unknown; // Contains interrupt details when paused
 }
 
 /**
@@ -112,7 +114,7 @@ export interface StepFinishedEvent extends BaseEvent {
 export interface TextMessageStartEvent extends BaseEvent {
   type: EventType.TEXT_MESSAGE_START;
   messageId: string;
-  role: MessageRole;
+  role: "assistant";
 }
 
 /**
@@ -181,7 +183,18 @@ export interface ToolCallResultEvent extends BaseEvent {
   messageId: string;
   toolCallId: string;
   content: string; // The actual result/output content
-  role: "tool";
+  role?: "tool";
+}
+
+/**
+ * Streams tool call data without explicit start/end events
+ */
+export interface ToolCallChunkEvent extends BaseEvent {
+  type: EventType.TOOL_CALL_ARGS;
+  toolCallId?: string;
+  toolCallName?: string;
+  parentMessageId?: string;
+  delta?: string;
 }
 
 // ============================================================================
@@ -191,27 +204,27 @@ export interface ToolCallResultEvent extends BaseEvent {
 /**
  * JSON Patch Operation (RFC 6902)
  */
-export interface JSONPatchOperation {
+export interface JSONPatchOperation<TDocument = unknown> {
   op: "add" | "remove" | "replace" | "move" | "copy" | "test";
   path: string;
-  value?: any;
+  value?: unknown;
   from?: string; // For move/copy operations
 }
 
 /**
  * Provides a complete snapshot of an agent's state
  */
-export interface StateSnapshotEvent extends BaseEvent {
+export interface StateSnapshotEvent<TSnapshot = unknown> extends BaseEvent {
   type: EventType.STATE_SNAPSHOT;
-  snapshot: any; // Complete state snapshot
+  snapshot: TSnapshot; // Complete state snapshot
 }
 
 /**
  * Provides a partial update to an agent's state using JSON Patch (RFC 6902)
  */
-export interface StateDeltaEvent extends BaseEvent {
+export interface StateDeltaEvent<TDocument = unknown> extends BaseEvent {
   type: EventType.STATE_DELTA;
-  delta: JSONPatchOperation[]; // Array of JSON Patch operations
+  delta: JSONPatchOperation<TDocument>[]; // Array of JSON Patch operations
 }
 
 /**
@@ -223,8 +236,29 @@ export interface MessagesSnapshotEvent extends BaseEvent {
     id: string;
     role: MessageRole;
     content: string;
-    [key: string]: any;
+    [key: string]: unknown;
   }>;
+}
+
+/**
+ * Delivers a complete snapshot of an activity message
+ */
+export interface ActivitySnapshotEvent extends BaseEvent {
+  type: EventType.ACTIVITY_SNAPSHOT;
+  messageId: string;
+  activityType: string;
+  content: Record<string, unknown>;
+  replace?: boolean;
+}
+
+/**
+ * Provides incremental updates to an activity snapshot using JSON Patch
+ */
+export interface ActivityDeltaEvent extends BaseEvent {
+  type: EventType.ACTIVITY_DELTA;
+  messageId: string;
+  activityType: string;
+  patch: JSONPatchOperation[];
 }
 
 // ============================================================================
@@ -236,7 +270,7 @@ export interface MessagesSnapshotEvent extends BaseEvent {
  */
 export interface RawEvent extends BaseEvent {
   type: EventType.RAW;
-  event: any; // Original event data
+  event: unknown; // Original event data
   source?: string; // Optional source identifier
 }
 
@@ -246,7 +280,7 @@ export interface RawEvent extends BaseEvent {
 export interface CustomEvent extends BaseEvent {
   type: EventType.CUSTOM;
   name: string; // Name of the custom event
-  value: any; // Value associated with the event
+  value: unknown; // Value associated with the event
 }
 
 // ============================================================================
@@ -326,13 +360,24 @@ export function isStateDeltaEvent(event: AGUIEvent): event is StateDeltaEvent {
 export interface RunAgentInput {
   threadId?: string;
   runId?: string;
+  parentRunId?: string;
   messages: Array<{
-    role: MessageRole;
+    id?: string;
+    role: MessageRole | "activity";
     content: string;
+    name?: string;
   }>;
-  state?: any;
-  tools?: any[];
-  context?: any[];
+  state?: Record<string, unknown>;
+  tools?: Array<{
+    name: string;
+    description: string;
+    parameters: unknown;
+  }>;
+  context?: Array<{
+    description: string;
+    value: string;
+  }>;
+  forwardedProps?: Record<string, unknown>;
 }
 
 /**
@@ -340,4 +385,31 @@ export interface RunAgentInput {
  */
 export interface AgentResponse {
   stream: ReadableStream<Uint8Array>;
+}
+
+export interface ProposalAgentState {
+  title: string;
+  content: string;
+  evaluation: import("@/types/evaluation").Evaluation | null;
+}
+
+export type ToolChoice =
+  | "auto"
+  | {
+      type: "function";
+      function: { name: "write_proposal" | "screen_proposal" };
+    };
+
+export interface CompletionToolCall {
+  id: string;
+  type?: string;
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface CompletionMessage {
+  content?: string;
+  tool_calls?: CompletionToolCall[];
 }

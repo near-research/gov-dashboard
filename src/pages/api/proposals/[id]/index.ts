@@ -1,5 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { extractMetadata, stripFrontmatter } from "@/lib/utils/metadata";
+import { extractMetadata, stripFrontmatter } from "@/utils/metadata";
+import { servicesConfig } from "@/config/services";
+import type {
+  DiscourseActionSummary,
+  DiscoursePost,
+  DiscoursePostDetail,
+  DiscourseTopic,
+} from "@/types/discourse";
+import type { ProposalDetailResponse } from "@/types/proposals";
 
 /**
  * GET /api/proposals/[id]
@@ -18,7 +26,7 @@ import { extractMetadata, stripFrontmatter } from "@/lib/utils/metadata";
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<ProposalDetailResponse | { error: string; status?: number; message?: string }>
 ) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -31,7 +39,7 @@ export default async function handler(
   }
 
   try {
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
+    const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
     const headers: HeadersInit = {
       "Content-Type": "application/json",
@@ -46,12 +54,13 @@ export default async function handler(
       return res.status(topicResponse.status).json({
         error: "Failed to fetch proposal",
         status: topicResponse.status,
-      });
+      } as const);
     }
 
-    const topicData = await topicResponse.json();
+    const topicData: DiscourseTopic = await topicResponse.json();
 
-    const firstPost = topicData.post_stream?.posts?.[0];
+    const firstPost: DiscoursePost | undefined =
+      topicData.post_stream?.posts?.[0];
 
     if (!firstPost) {
       return res.status(404).json({ error: "Proposal post not found" });
@@ -68,7 +77,7 @@ export default async function handler(
       );
 
       if (postResponse.ok) {
-        const postData = await postResponse.json();
+        const postData: DiscoursePostDetail = await postResponse.json();
         rawContent = postData.raw || "";
       }
     } catch (err) {
@@ -84,9 +93,11 @@ export default async function handler(
 
     const contentWithoutFrontmatter = stripFrontmatter(content);
 
-    const replies = topicData.post_stream.posts.slice(1).map((post: any) => {
+    const replies = topicData.post_stream.posts.slice(1).map((post) => {
       const likeCount =
-        post.actions_summary?.find((action: any) => action.id === 2)?.count ??
+        post.actions_summary?.find(
+          (action: DiscourseActionSummary) => action.id === 2
+        )?.count ??
         post.like_count ??
         0;
 
@@ -107,7 +118,7 @@ export default async function handler(
       /(?:NEAR Account|Wallet|Account)[\s:]*([a-z0-9\-_]+\.near)/i
     );
 
-    const proposalDetail = {
+    const proposalDetail: ProposalDetailResponse = {
       id: firstPost.id,
       title: topicData.title,
       content: content,
@@ -120,11 +131,12 @@ export default async function handler(
       topic_slug: topicData.slug,
       reply_count: topicData.posts_count - 1,
       views: topicData.views,
-      last_posted_at: topicData.last_posted_at,
+      last_posted_at: topicData.last_posted_at ?? firstPost.created_at,
       like_count:
         topicData.like_count ??
-        topicData.actions_summary?.find((action: any) => action.id === 2)
-          ?.count ??
+        topicData.actions_summary?.find(
+          (action: DiscourseActionSummary) => action.id === 2
+        )?.count ??
         0,
       near_wallet: nearWalletMatch ? nearWalletMatch[1] : null,
       category_id: topicData.category_id,
@@ -140,11 +152,12 @@ export default async function handler(
     );
 
     return res.status(200).json(proposalDetail);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Proposal] Error fetching proposal details:", error);
+    const message = error instanceof Error ? error.message : undefined;
     return res.status(500).json({
       error: "Failed to fetch proposal details",
-      message: error.message,
+      message,
     });
   }
 }

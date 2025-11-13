@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import type MarkdownIt from "markdown-it";
 import type { Evaluation } from "@/types/evaluation";
-import { diffPartialText } from "@/lib/utils/diff";
+import { diffPartialText } from "@/utils/diff";
 import {
   Dialog,
   DialogContent,

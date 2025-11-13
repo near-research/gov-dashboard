@@ -168,7 +168,7 @@ export const Chatbot = ({
         role: "assistant",
         content: fullContent,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMessages((prev) => prev.slice(0, -1));
       throw error;
     }
@@ -191,8 +191,10 @@ export const Chatbot = ({
 
     try {
       await sendStreamingMessage(message);
-    } catch (error: any) {
-      setError(error.message || "Failed to get response");
+    } catch (error: unknown) {
+      const messageText =
+        error instanceof Error ? error.message : "Failed to get response";
+      setError(messageText);
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();

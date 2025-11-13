@@ -105,7 +105,7 @@ bun run db:push
 3. Test connection:
 
 ```bash
-bun run src/lib/scripts/test-db.ts
+bun run scripts/test-db.ts
 ```
 
 ## Development
@@ -297,50 +297,6 @@ Provides three AI models, all hosted in GPU TEEs (Trusted Execution Environments
 - Ultra-long 262K context window
 - Non-thinking mode only
 - Strong multilingual and coding capabilities
-
-## Project Structure
-
-```
-gov/
-├── src/
-│   ├── components/          # React components
-│   │   ├── chat/           # Chatbot UI
-│   │   ├── nav/            # Navigation
-│   │   ├── proposal/       # Proposal components
-│   │   └── ui/             # Radix UI components
-│   ├── hooks/              # React hooks
-│   │   └── useNear.ts      # NEAR wallet hook
-│   ├── lib/
-│   │   ├── db/             # Database layer
-│   │   │   ├── schema.ts   # Drizzle schema
-│   │   │   ├── queries.ts  # Query helpers
-│   │   │   └── index.ts    # DB connection
-│   │   ├── prompts/        # AI prompt templates
-│   │   ├── server/         # Server utilities
-│   │   │   └── screening.ts # Auth & screening logic
-│   │   ├── scripts/        # CLI scripts
-│   │   └── utils/          # Utility functions
-│   ├── pages/
-│   │   ├── api/            # API routes
-│   │   │   ├── proposals/  # Proposal endpoints
-│   │   │   ├── discourse/  # Discourse integration
-│   │   │   ├── saveAnalysis/ # Screening endpoints
-│   │   │   ├── getAnalysis/  # Query endpoints
-│   │   │   ├── screen.ts   # Screen without saving
-│   │   │   ├── agent.ts    # AI agent with tools
-│   │   │   └── chat/       # Chat completions
-│   │   ├── proposals/      # Proposal pages
-│   │   │   ├── [id].tsx    # Proposal detail
-│   │   │   └── new.tsx     # Create proposal
-│   │   ├── chat.tsx        # Chat interface
-│   │   ├── index.tsx       # Homepage
-│   │   └── _app.tsx        # App wrapper
-│   ├── styles/             # Global CSS
-│   └── types/              # TypeScript types
-├── public/                 # Static assets
-├── migration.sql           # Database migration
-└── package.json
-```
 
 ## License
 

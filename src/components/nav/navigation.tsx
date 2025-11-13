@@ -34,7 +34,6 @@ export const Navigation = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
-      router.push("/");
     } catch (error) {
       console.error("Failed to sign out:", error);
     }

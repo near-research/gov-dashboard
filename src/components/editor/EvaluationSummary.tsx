@@ -2,7 +2,7 @@ import React from "react";
 import type { Evaluation } from "@/types/evaluation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/tailwind";
 
 export function EvaluationSummary({ evaluation }: { evaluation: Evaluation }) {
   const isPassing = evaluation.overallPass;

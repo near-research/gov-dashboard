@@ -5,9 +5,9 @@ import {
   verifyNearAuth,
   requestEvaluation,
   respondWithScreeningError,
-} from "@/lib/server/screening";
-import { createRateLimiter } from "@/lib/server/rateLimiter";
-import { rateLimitConfig } from "@/lib/config/rateLimit";
+} from "@/server/screening";
+import { createRateLimiter } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
 
 const screenLimiter = createRateLimiter(rateLimitConfig.screen);
 

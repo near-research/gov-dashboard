@@ -10,6 +10,11 @@ import {
   getScreeningsByTopic,
 } from "./queries";
 import type { NewScreeningResult } from "./schema";
+import type {
+  DiscourseRevisionResponse,
+  DiscourseRevision,
+} from "@/types/discourse";
+import type { Evaluation } from "@/types/evaluation";
 
 const INTERNAL_API_BASE_URL =
   process.env.INTERNAL_BASE_URL ||
@@ -21,33 +26,6 @@ const buildApiUrl = (path: string) =>
   path.startsWith("http")
     ? path
     : `${INTERNAL_API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
-
-/**
- * Response type from /api/proposals/[id]/revisions
- */
-export interface DiscourseRevisionResponse {
-  post_id: number;
-  revisions: DiscourseRevision[];
-  total_revisions: number;
-  current_version: number;
-}
-
-export interface DiscourseRevision {
-  version: number;
-  created_at: string;
-  username: string;
-  edit_reason: string;
-  body_changes?: {
-    inline?: string;
-    side_by_side?: string;
-    side_by_side_markdown?: string;
-  };
-  title_changes?: {
-    inline?: string;
-    previous?: string;
-    current?: string;
-  };
-}
 
 /**
  * Get the current version number for a topic from Discourse
@@ -110,7 +88,7 @@ export async function checkScreeningStatus(topicId: string): Promise<{
  */
 export async function saveScreeningWithVersion(
   topicId: string,
-  evaluation: any,
+  evaluation: Evaluation,
   title: string,
   nearAccount: string,
   forceVersion?: number

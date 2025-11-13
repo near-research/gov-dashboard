@@ -13,21 +13,12 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, User, Calendar, X } from "lucide-react";
-
-export interface Revision {
-  version: number;
-  created_at: string;
-  username: string;
-  edit_reason?: string;
-  body_changes?: {
-    inline?: string;
-  };
-}
+import type { ProposalRevision } from "@/types/proposals";
 
 interface VersionSelectorProps {
   currentRevision: number;
   selectedVersion: number;
-  revisions: Revision[];
+  revisions: ProposalRevision[];
   onVersionChange: (version: number) => void;
   showDiffHighlights: boolean;
   onToggleDiff: (show: boolean) => void;

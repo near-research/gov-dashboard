@@ -1,13 +1,6 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  transpilePackages: ["every-plugin"],
-  outputFileTracingRoot: process.cwd(),
-
-  experimental: {
-    serverActions: {
-      bodySizeLimit: "2mb",
-    },
-  },
+const config = {
+  reactStrictMode: true,
 };
 
-module.exports = nextConfig;
+module.exports = config;

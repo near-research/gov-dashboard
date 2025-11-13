@@ -1,39 +1,19 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { replyCache, CacheKeys } from "../../../../../lib/utils/cache-utils";
+import { replyCache, CacheKeys } from "@/utils/cache-utils";
 import { buildReplySummaryPrompt } from "@/lib/prompts/summarizeReply";
-import {
-  createRateLimiter,
-  getClientIdentifier,
-} from "@/lib/server/rateLimiter";
-import { rateLimitConfig } from "@/lib/config/rateLimit";
+import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
+import { servicesConfig } from "@/config/services";
+import type {
+  DiscourseActionSummary,
+  DiscoursePost,
+  DiscourseTopic,
+} from "@/types/discourse";
+import type { ApiErrorResponse } from "@/types/api";
+import type { ReplySummaryResponse } from "@/types/summaries";
 
 const replyLimiter = createRateLimiter(rateLimitConfig.replySummary);
-
-// TypeScript type definitions for Discourse API
-interface ReplyToUser {
-  username: string;
-  id: number;
-  avatar_template?: string;
-}
-
-interface ActionSummary {
-  id: number;
-  count: number;
-}
-
-interface DiscoursePost {
-  id: number;
-  post_number: number;
-  username: string;
-  cooked: string;
-  created_at: string;
-  like_count?: number;
-  actions_summary?: ActionSummary[];
-  reply_count?: number;
-  reply_to_post_number?: number | null;
-  reply_to_user?: ReplyToUser | null;
-  topic_id: number;
-}
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 /**
  * POST /api/discourse/replies/[id]/summarize
@@ -47,7 +27,7 @@ interface DiscoursePost {
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<ReplySummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -80,7 +60,9 @@ export default async function handler(
         rateLimitConfig.replySummary.maxRequests
       } reply summaries in ${Math.round(
         rateLimitConfig.replySummary.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+      )} minutes. Please wait ${Math.ceil(
+        retryAfter / 60
+      )} minutes and try again.`,
       retryAfter,
     });
   }
@@ -104,8 +86,6 @@ export default async function handler(
     // ===================================================================
     // FETCH FROM DISCOURSE (NO AUTH)
     // ===================================================================
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
-
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
@@ -147,7 +127,7 @@ export default async function handler(
         );
 
         if (topicResponse.ok) {
-          const topicData = await topicResponse.json();
+          const topicData: DiscourseTopic = await topicResponse.json();
           const posts = topicData.post_stream?.posts || [];
 
           // Find the parent post by post_number
@@ -211,8 +191,9 @@ ${truncatedContent}`;
 
     // Get like count for engagement context
     const likeCount =
-      replyPost.actions_summary?.find((a: ActionSummary) => a.id === 2)
-        ?.count || 0;
+      replyPost.actions_summary?.find(
+        (a: DiscourseActionSummary) => a.id === 2
+      )?.count || 0;
 
     // Use the prompt builder function
     const prompt = buildReplySummaryPrompt(
@@ -257,7 +238,17 @@ ${truncatedContent}`;
     // ===================================================================
     // BUILD RESPONSE
     // ===================================================================
-    const response = {
+    const replyTo =
+      replyPost.reply_to_user && replyPost.reply_to_post_number
+        ? {
+            username: replyPost.reply_to_user.username,
+            postNumber: replyPost.reply_to_post_number,
+          }
+        : replyPost.reply_to_post_number
+        ? { postNumber: replyPost.reply_to_post_number }
+        : null;
+
+    const response: ReplySummaryResponse = {
       success: true,
       summary,
       replyId,
@@ -265,16 +256,7 @@ ${truncatedContent}`;
       postNumber: replyPost.post_number,
       createdAt: replyPost.created_at,
       likeCount: likeCount,
-      replyTo: replyPost.reply_to_user
-        ? {
-            username: replyPost.reply_to_user.username,
-            postNumber: replyPost.reply_to_post_number,
-          }
-        : replyPost.reply_to_post_number
-        ? {
-            postNumber: replyPost.reply_to_post_number,
-          }
-        : null,
+      replyTo,
       parentPostIncluded: !!parentPostContent,
       truncated: replyContent.length > MAX_LENGTH,
       generatedAt: Date.now(), // For cache age tracking
@@ -287,12 +269,15 @@ ${truncatedContent}`;
     replyCache.set(cacheKey, response);
 
     return res.status(200).json(response);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Reply Summary] Error:", error);
+    const details =
+      error instanceof Error && process.env.NODE_ENV === "development"
+        ? error.message
+        : undefined;
     return res.status(500).json({
       error: "Failed to generate reply summary",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+      details,
     });
   }
 }

@@ -2,16 +2,15 @@ import { useMemo } from "react";
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
 import { Markdown } from "@/components/proposal/Markdown";
-import VersionSelector, {
-  type Revision,
-} from "@/components/proposal/revisions/VersionSelector";
+import VersionSelector from "@/components/proposal/revisions/VersionSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp, FileText, History } from "lucide-react";
-import type { ProposalFrontmatter } from "@/lib/utils/metadata";
+import type { ProposalFrontmatter } from "@/utils/metadata";
+import type { ProposalRevision } from "@/types/proposals";
 
 const FRONTMATTER_FIELDS: Array<{
   label: string;
@@ -45,7 +44,7 @@ interface ProposalContentProps {
   revisionCount: number;
   showDiffHighlights: boolean;
   versionDiffHtml: string;
-  revisions?: Revision[];
+  revisions?: ProposalRevision[];
   selectedVersion?: number;
   onVersionChange?: (version: number) => void;
   onToggleDiff?: (show: boolean) => void;

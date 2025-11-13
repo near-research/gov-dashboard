@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type { Evaluation } from "@/types/evaluation";
+import type { ProposalRevision } from "@/types/proposals";
+import type { DiscourseRevisionResponse } from "@/types/discourse";
 import { ScreeningBadge } from "@/components/proposal/screening/ScreeningBadge";
-import { reconstructRevisionContent } from "@/lib/utils/revisionContentUtils";
-import { sanitizeHtml, stripHtml } from "@/lib/utils/html-utils";
+import { reconstructRevisionContent } from "@/utils/revisionContentUtils";
+import { sanitizeHtml, stripHtml } from "@/utils/html-utils";
 import {
   Card,
   CardContent,
@@ -30,22 +32,6 @@ import {
   FileEdit,
 } from "lucide-react";
 
-interface Revision {
-  version: number;
-  created_at: string;
-  username: string;
-  edit_reason: string;
-  body_changes?: {
-    inline?: string;
-    side_by_side?: string;
-    side_by_side_markdown?: string;
-  };
-  title_changes?: {
-    inline?: string;
-    side_by_side?: string;
-  };
-}
-
 interface VersionHistoryProps {
   proposalId: string;
   title: string;
@@ -61,7 +47,7 @@ export default function VersionHistory({
   nearAccount,
   wallet,
 }: VersionHistoryProps) {
-  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [revisions, setRevisions] = useState<ProposalRevision[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showHistory, setShowHistory] = useState(false);
@@ -95,18 +81,20 @@ export default function VersionHistory({
         throw new Error("Failed to fetch version history");
       }
 
-      const data = await response.json();
-      const fetchedRevisions = data.revisions.reverse() || [];
+      const data: DiscourseRevisionResponse = await response.json();
+      const fetchedRevisions = [...(data.revisions || [])].reverse();
       setRevisions(fetchedRevisions);
 
       await fetchExistingScreenings([
         1,
-        ...fetchedRevisions.map((r: Revision) => r.version),
+        ...fetchedRevisions.map((r) => r.version),
       ]);
 
       setShowHistory(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to fetch version history";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -225,10 +213,14 @@ export default function VersionHistory({
           timestamp: new Date().toISOString(),
         },
       }));
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to screen revision. Please try again.";
       setScreeningErrors((prev) => ({
         ...prev,
-        [revisionNumber]: err.message || "Failed to screen revision",
+        [revisionNumber]: message,
       }));
       console.error("Screening error:", err);
     } finally {
@@ -292,7 +284,7 @@ export default function VersionHistory({
     );
   };
 
-  const renderDiff = (revision: Revision) => {
+  const renderDiff = (revision: ProposalRevision) => {
     if (!revision.body_changes && !revision.title_changes) {
       return (
         <p className="text-sm text-muted-foreground">No changes available</p>

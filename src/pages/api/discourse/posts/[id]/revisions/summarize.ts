@@ -1,48 +1,20 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import {
-  revisionCache,
-  CacheKeys,
-} from "../../../../../../lib/utils/cache-utils";
+import { revisionCache, CacheKeys } from "@/utils/cache-utils";
 import { buildRevisionAnalysisPrompt } from "@/lib/prompts/summarizeRevisions";
-import {
-  createRateLimiter,
-  getClientIdentifier,
-} from "@/lib/server/rateLimiter";
-import { rateLimitConfig } from "@/lib/config/rateLimit";
+import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
+import { servicesConfig } from "@/config/services";
+import type {
+  DiscoursePost,
+  DiscourseRevision,
+  RevisionBodyChange,
+  RevisionTitleChange,
+} from "@/types/discourse";
+import type { ApiErrorResponse } from "@/types/api";
+import type { PostRevisionSummaryResponse } from "@/types/summaries";
 
-const postRevisionLimiter = createRateLimiter(
-  rateLimitConfig.postRevisions
-);
-
-// TypeScript type definitions for Discourse API
-interface RevisionBodyChange {
-  inline?: string;
-  side_by_side?: string;
-  side_by_side_markdown?: string;
-}
-
-interface RevisionTitleChange {
-  inline?: string;
-  previous?: string;
-  current?: string;
-}
-
-interface DiscourseRevision {
-  version: number;
-  created_at: string;
-  username: string;
-  edit_reason?: string;
-  body_changes?: RevisionBodyChange;
-  title_changes?: RevisionTitleChange;
-}
-
-interface DiscoursePost {
-  id: number;
-  version: number;
-  username: string;
-  cooked: string;
-  created_at: string;
-}
+const postRevisionLimiter = createRateLimiter(rateLimitConfig.postRevisions);
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 /**
  * POST /api/discourse/posts/[id]/revisions/summarize
@@ -58,7 +30,7 @@ interface DiscoursePost {
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<PostRevisionSummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -91,7 +63,9 @@ export default async function handler(
         rateLimitConfig.postRevisions.maxRequests
       } post revision summaries in ${Math.round(
         rateLimitConfig.postRevisions.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+      )} minutes. Please wait ${Math.ceil(
+        retryAfter / 60
+      )} minutes and try again.`,
       retryAfter,
     });
   }
@@ -115,8 +89,6 @@ export default async function handler(
     // ===================================================================
     // FETCH FROM DISCOURSE (NO AUTH)
     // ===================================================================
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
-
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
@@ -138,7 +110,7 @@ export default async function handler(
 
     // If version is 1, no edits have been made
     if (version <= 1) {
-      return res.status(200).json({
+      const emptySummary: PostRevisionSummaryResponse = {
         success: true,
         summary: "This post has not been edited. No revisions to analyze.",
         postId: id,
@@ -146,8 +118,11 @@ export default async function handler(
         currentVersion: version,
         totalRevisions: 0,
         revisions: [],
+        truncated: false,
+        generatedAt: Date.now(),
         cached: false,
-      });
+      };
+      return res.status(200).json(emptySummary);
     }
 
     // Fetch all revisions (they start at version 2)
@@ -282,7 +257,7 @@ export default async function handler(
     // ===================================================================
     // BUILD RESPONSE
     // ===================================================================
-    const response = {
+    const response: PostRevisionSummaryResponse = {
       success: true,
       summary,
       postId: id,
@@ -310,12 +285,15 @@ export default async function handler(
     revisionCache.set(cacheKey, response);
 
     return res.status(200).json(response);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Revision summary error:", error);
+    const details =
+      error instanceof Error && process.env.NODE_ENV === "development"
+        ? error.message
+        : undefined;
     return res.status(500).json({
       error: "Failed to generate revision summary",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+      details,
     });
   }
 }

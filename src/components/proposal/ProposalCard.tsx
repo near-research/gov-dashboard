@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, ExternalLink, Calendar, User } from "lucide-react";
 import { useRouter } from "next/router";
+import { servicesConfig } from "@/config/services";
 
 interface ProposalCardProps {
   id: number;
@@ -58,7 +59,7 @@ export default function ProposalCard({
   const handleDiscourseClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(
-      `https://gov.near.org/t/${topic_slug}/${topic_id}`,
+      `${servicesConfig.discourseBaseUrl}/t/${topic_slug}/${topic_id}`,
       "_blank",
       "noopener,noreferrer"
     );

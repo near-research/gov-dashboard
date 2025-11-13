@@ -1,5 +1,25 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
+type ChatMessage = {
+  role: string;
+  content?: string | null;
+  tool_calls?: unknown;
+  [key: string]: unknown;
+};
+
+type ChatCompletionRequestPayload = {
+  model: string;
+  messages: ChatMessage[];
+  stream: boolean;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  tools?: unknown;
+  tool_choice?: unknown;
+};
+
 /**
  * POST /api/chat/completions
  *
@@ -89,10 +109,10 @@ export default async function handler(
 
   try {
     // Build request body with optional parameters
-    const requestBody: any = {
+    const requestBody: ChatCompletionRequestPayload = {
       model,
       messages,
-      stream: stream || false,
+      stream: Boolean(stream),
     };
 
     // Add optional OpenAI-compatible parameters
@@ -164,8 +184,8 @@ export default async function handler(
           res.write(chunk);
 
           // Flush immediately for better streaming
-          if (typeof (res as any).flush === "function") {
-            (res as any).flush();
+          if (typeof (res as NodeJS.WritableStream & { flush?: () => void }).flush === "function") {
+            (res as NodeJS.WritableStream & { flush?: () => void }).flush?.();
           }
         }
       } catch (streamError) {
@@ -186,7 +206,7 @@ export default async function handler(
       const data = await response.json();
       res.status(200).json(data);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Proxy error:", error);
 
     // Check if headers already sent
@@ -196,16 +216,18 @@ export default async function handler(
     }
 
     // Handle timeout
-    if (error.name === "AbortError") {
+    if (error instanceof Error && error.name === "AbortError") {
       return res.status(504).json({
         error: "Request timeout",
         message: "The AI model took too long to respond",
       });
     }
 
+    const message =
+      error instanceof Error ? error.message : "Unknown error occurred";
     res.status(500).json({
       error: "Failed to proxy request",
-      message: error.message || "Unknown error occurred",
+      message,
     });
   }
 }

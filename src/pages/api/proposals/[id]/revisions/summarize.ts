@@ -1,38 +1,22 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { revisionCache, CacheKeys } from "../../../../../lib/utils/cache-utils";
+import { revisionCache, CacheKeys } from "@/utils/cache-utils";
 import { buildRevisionAnalysisPrompt } from "@/lib/prompts/summarizeRevisions";
-import { stripHtml } from "@/lib/utils/html-utils";
-import {
-  createRateLimiter,
-  getClientIdentifier,
-} from "@/lib/server/rateLimiter";
-import { rateLimitConfig } from "@/lib/config/rateLimit";
+import { stripHtml } from "@/utils/html-utils";
+import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
+import { servicesConfig } from "@/config/services";
+import type {
+  DiscourseRevision,
+  RevisionBodyChange,
+  RevisionTitleChange,
+} from "@/types/discourse";
+import type { ApiErrorResponse } from "@/types/api";
+import type { ProposalRevisionSummaryResponse } from "@/types/summaries";
 
 const proposalRevisionLimiter = createRateLimiter(
   rateLimitConfig.proposalRevisions
 );
-
-// TypeScript type definitions for Discourse API
-interface RevisionBodyChange {
-  inline?: string;
-  side_by_side?: string;
-  side_by_side_markdown?: string;
-}
-
-interface RevisionTitleChange {
-  inline?: string;
-  previous?: string;
-  current?: string;
-}
-
-interface DiscourseRevision {
-  version: number;
-  created_at: string;
-  username: string;
-  edit_reason?: string;
-  body_changes?: RevisionBodyChange;
-  title_changes?: RevisionTitleChange;
-}
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 /**
  * POST /api/proposals/[id]/revisions/summarize
@@ -48,7 +32,9 @@ interface DiscourseRevision {
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<
+    ProposalRevisionSummaryResponse | ApiErrorResponse
+  >
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -107,8 +93,6 @@ export default async function handler(
     // ===================================================================
     // FETCH FROM DISCOURSE (NO AUTH)
     // ===================================================================
-    const DISCOURSE_URL = process.env.DISCOURSE_URL || "https://gov.near.org";
-
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
@@ -141,7 +125,7 @@ export default async function handler(
 
     // If version is 1, no edits have been made
     if (version <= 1) {
-      return res.status(200).json({
+      const emptySummary: ProposalRevisionSummaryResponse = {
         success: true,
         summary: "This post has not been edited. No revisions to analyze.",
         topicId: id,
@@ -150,8 +134,11 @@ export default async function handler(
         currentVersion: version,
         totalRevisions: 0,
         revisions: [],
+        truncated: false,
+        generatedAt: Date.now(),
         cached: false,
-      });
+      };
+      return res.status(200).json(emptySummary);
     }
 
     // Fetch all revisions (they start at version 2)
@@ -309,7 +296,7 @@ export default async function handler(
     // ===================================================================
     // BUILD RESPONSE
     // ===================================================================
-    const response = {
+    const response: ProposalRevisionSummaryResponse = {
       success: true,
       summary,
       topicId: id,
@@ -338,12 +325,15 @@ export default async function handler(
     revisionCache.set(cacheKey, response);
 
     return res.status(200).json(response);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Proposal Revisions] Error:", error);
+    const details =
+      error instanceof Error && process.env.NODE_ENV === "development"
+        ? error.message
+        : undefined;
     return res.status(500).json({
       error: "Failed to generate revision summary",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+      details,
     });
   }
 }

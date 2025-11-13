@@ -7,11 +7,25 @@ import {
   type VerifyOptions,
 } from "near-sign-verify";
 
+type ScreeningErrorDetails = {
+  code?: string;
+  message?: string;
+  details?: string;
+  body?: string;
+  status?: number;
+  statusText?: string;
+  [key: string]: unknown;
+};
+
 export class ScreeningError extends Error {
   statusCode: number;
-  details?: any;
+  details?: ScreeningErrorDetails;
 
-  constructor(statusCode: number, message: string, details?: any) {
+  constructor(
+    statusCode: number,
+    message: string,
+    details?: ScreeningErrorDetails
+  ) {
     super(message);
     this.statusCode = statusCode;
     this.details = details;
@@ -99,10 +113,12 @@ export async function verifyNearAuth(
 
     const result = await verify(token, verifyOptions);
     return { token, result };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const details =
+      error instanceof Error ? error.message : "Unknown verification error";
     throw new ScreeningError(401, "Invalid authentication", {
       code: "invalid_token",
-      details: error?.message,
+      details,
     });
   }
 }
@@ -191,10 +207,10 @@ export function respondWithScreeningError(
 ) {
   if (error instanceof ScreeningError) {
     const detailMessage =
-      fallbackMessage ||
-      error.details?.details ||
-      error.details?.message ||
-      error.details?.body ||
+      fallbackMessage ??
+      [error.details?.details, error.details?.message, error.details?.body]
+        .filter((value): value is string => typeof value === "string")
+        .find((value) => value.length > 0) ??
       error.message;
     return res.status(error.statusCode).json({
       error: error.message,

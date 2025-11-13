@@ -1,3 +1,5 @@
+import type { DiscoursePost } from "@/types/discourse";
+
 /**
  * Generates the AI prompt for summarizing NEAR governance proposal discussions
  * @param topicData - Topic information including title
@@ -11,7 +13,7 @@
  */
 export function buildDiscussionSummaryPrompt(
   topicData: { title: string },
-  replies: any[],
+  replies: DiscoursePost[],
   totalLikes: number,
   avgLikes: number,
   maxLikes: number,

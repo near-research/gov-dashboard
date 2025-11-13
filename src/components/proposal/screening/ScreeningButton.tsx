@@ -2,13 +2,12 @@ import { useState } from "react";
 import type { Evaluation } from "@/types/evaluation";
 import { sign } from "near-sign-verify";
 import { Button } from "@/components/ui/button";
+import { useNear } from "@/hooks/useNear";
 
 interface ScreeningButtonProps {
   topicId: string;
   title: string;
   content: string;
-  nearAccount: string;
-  wallet: any;
   revisionNumber: number;
   onScreeningComplete?: () => void;
 }
@@ -17,11 +16,11 @@ export function ScreeningButton({
   topicId,
   title,
   content,
-  nearAccount,
-  wallet,
   revisionNumber,
   onScreeningComplete,
 }: ScreeningButtonProps) {
+  const { signedAccountId, wallet, loading } = useNear();
+
   const [screening, setScreening] = useState(false);
   const [result, setResult] = useState<Evaluation | null>(null);
   const [error, setError] = useState("");
@@ -51,7 +50,7 @@ export function ScreeningButton({
         throw new Error(
           "Wallet not connected. Please connect your NEAR wallet."
         );
-      if (!nearAccount)
+      if (!signedAccountId)
         throw new Error("NEAR account not found. Please connect your wallet.");
 
       const authToken = await sign(`Screen proposal ${topicId}`, {
@@ -72,31 +71,51 @@ export function ScreeningButton({
         }),
       });
 
-      const saveData = await saveResponse.json();
+      const saveData: unknown = await saveResponse.json();
       if (!saveResponse.ok) {
+        const message =
+          typeof saveData === "object" && saveData !== null
+            ? (saveData as { message?: string }).message
+            : undefined;
+
         if (saveResponse.status === 401)
           setError("Authentication failed. Please try signing again.");
         else if (saveResponse.status === 409)
           setError(
-            saveData.message ||
+            message ||
               "This proposal revision has already been evaluated."
           );
         else if (saveResponse.status === 429)
           setError(
-            saveData.message || "Rate limit exceeded. Please try again later."
+            message || "Rate limit exceeded. Please try again later."
           );
         else
           throw new Error(
-            saveData.error || `Failed to save screening: ${saveResponse.status}`
+            (typeof saveData === "object" && saveData !== null
+              ? (saveData as { error?: string }).error
+              : undefined) ||
+              `Failed to save screening: ${saveResponse.status}`
           );
         return;
       }
 
-      setResult(saveData.evaluation);
-      if (onScreeningComplete) onScreeningComplete();
-      setTimeout(() => window.location.reload(), 2000);
-    } catch (err: any) {
-      setError(err.message || "Failed to screen proposal");
+      const evaluation =
+        typeof saveData === "object" &&
+        saveData !== null &&
+        "evaluation" in saveData
+          ? (saveData as { evaluation: Evaluation }).evaluation
+          : null;
+
+      if (!evaluation) {
+        throw new Error("Missing evaluation data in response");
+      }
+
+      setResult(evaluation);
+      onScreeningComplete?.();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to screen proposal";
+      setError(message);
     } finally {
       setScreening(false);
     }
@@ -139,8 +158,17 @@ export function ScreeningButton({
           <strong>Summary:</strong> {result.summary}
         </p>
         <p className="text-sm text-muted-foreground">
-          ✓ Results saved! Page will refresh shortly.
+          ✓ Results saved! Screening status has been updated.
         </p>
+      </div>
+    );
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="card mb-8 p-4">
+        <p className="text-sm text-muted-foreground">Loading wallet...</p>
       </div>
     );
   }
@@ -164,12 +192,12 @@ export function ScreeningButton({
       )}
       <Button
         onClick={handleScreen}
-        disabled={screening || !wallet || !nearAccount}
+        disabled={screening || !wallet || !signedAccountId}
         className="w-full"
       >
         {screening
           ? "Screening..."
-          : wallet && nearAccount
+          : wallet && signedAccountId
           ? "Screen This Proposal"
           : "Connect Wallet to Screen"}
       </Button>
