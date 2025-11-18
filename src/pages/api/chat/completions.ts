@@ -1,4 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { getNearAIClient } from "@/lib/near-ai/client";
+import type { ChatCompletionRequest } from "@/lib/near-ai/types";
 
 type ChatMessage = {
   role: string;
@@ -65,9 +67,11 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = process.env.NEAR_AI_CLOUD_API_KEY;
-
-  if (!apiKey) {
+  // Initialize client (will throw if API key not configured)
+  let client;
+  try {
+    client = getNearAIClient();
+  } catch (error) {
     console.error("NEAR_AI_CLOUD_API_KEY not configured");
     return res.status(500).json({
       error: "API key not configured on server",
@@ -109,7 +113,7 @@ export default async function handler(
 
   try {
     // Build request body with optional parameters
-    const requestBody: ChatCompletionRequestPayload = {
+    const requestBody: ChatCompletionRequest = {
       model,
       messages,
       stream: Boolean(stream),
@@ -126,51 +130,22 @@ export default async function handler(
     if (tools !== undefined) requestBody.tools = tools;
     if (tool_choice !== undefined) requestBody.tool_choice = tool_choice;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+    // If streaming, use streaming method
+    if (stream) {
+      const response = await client.chatCompletionsStream(requestBody);
 
-    const response = await fetch(
-      "https://cloud-api.near.ai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      }
-    );
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("NEAR AI Cloud API error:", response.status, errorText);
-
-      // Try to parse error as JSON for better error messages
-      let errorDetails = errorText;
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorDetails = errorJson.error || errorJson.message || errorText;
-      } catch {
-        // Keep original text if not JSON
-      }
-
-      return res.status(response.status).json({
-        error: `NEAR AI Cloud API Error: ${response.status}`,
-        details: errorDetails,
-      });
-    }
-
-    // If streaming, pipe the response
-    if (stream && response.body) {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Accel-Buffering", "no"); // Disable buffering for nginx
 
-      const reader = response.body.getReader();
+      const reader = response.body?.getReader();
+      if (!reader) {
+        return res.status(500).json({
+          error: "Failed to get response stream",
+        });
+      }
+
       const decoder = new TextDecoder();
 
       try {
@@ -203,7 +178,7 @@ export default async function handler(
       }
     } else {
       // Non-streaming response
-      const data = await response.json();
+      const data = await client.chatCompletions(requestBody);
       res.status(200).json(data);
     }
   } catch (error: unknown) {
@@ -216,10 +191,20 @@ export default async function handler(
     }
 
     // Handle timeout
-    if (error instanceof Error && error.name === "AbortError") {
+    if (error instanceof Error && (error.name === "AbortError" || error.message.includes("timeout"))) {
       return res.status(504).json({
         error: "Request timeout",
         message: "The AI model took too long to respond",
+      });
+    }
+
+    // Handle NEAR AI client errors
+    if (error instanceof Error && "statusCode" in error) {
+      const statusCode = (error as { statusCode?: number }).statusCode || 500;
+      const details = (error as { details?: unknown }).details;
+      return res.status(statusCode).json({
+        error: error.message,
+        details,
       });
     }
 

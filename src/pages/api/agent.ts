@@ -13,6 +13,8 @@ import {
   type ToolChoice,
 } from "@/types/agui-events";
 import type { Evaluation } from "@/types/evaluation";
+import { getNearAIClient } from "@/lib/near-ai/client";
+import { NEAR_AI_MODELS } from "@/utils/model-utils";
 
 interface AgentRequestBody {
   messages: Array<{ role: MessageRole; content: string }>;
@@ -263,39 +265,31 @@ export default async function handler(
 
     console.log("[Agent] Tool choice:", toolChoice);
 
-    // Direct fetch to NEAR AI Cloud (NON-STREAMING)
-    const nearAIResponse = await fetch(
-      "https://cloud-api.near.ai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.NEAR_AI_CLOUD_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-oss-120b",
-          messages: conversationMessages,
-          tools: TOOLS,
-          tool_choice: toolChoice,
-          stream: false,
-        }),
-      }
-    );
-
-    console.log("[Agent] NEAR AI Response status:", nearAIResponse.status);
-
-    if (!nearAIResponse.ok) {
-      const errorText = await nearAIResponse.text();
-      console.error(
-        "[Agent] NEAR AI API error:",
-        nearAIResponse.status,
-        errorText
-      );
-      return res.status(500).json({
-        error: `NEAR AI API error: ${nearAIResponse.status}`,
-        details: errorText,
+    // Use NEAR AI client (NON-STREAMING)
+    const client = getNearAIClient();
+    
+    let data;
+    try {
+      data = await client.chatCompletions({
+        model: NEAR_AI_MODELS.GPT_OSS_120B,
+        messages: conversationMessages,
+        tools: TOOLS,
+        tool_choice: toolChoice,
+        stream: false,
+      });
+    } catch (error) {
+      console.error("[Agent] NEAR AI API error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const statusCode = error instanceof Error && "statusCode" in error 
+        ? (error as { statusCode?: number }).statusCode || 500
+        : 500;
+      return res.status(statusCode).json({
+        error: `NEAR AI API error: ${statusCode}`,
+        details: errorMessage,
       });
     }
+
+    console.log("[Agent] NEAR AI Response received");
 
     // Set SSE headers
     res.setHeader("Content-Type", "text/event-stream");
@@ -316,10 +310,7 @@ export default async function handler(
       timestamp: Date.now(),
     });
 
-    // Parse non-streaming response
-    const data = (await nearAIResponse.json()) as {
-      choices?: Array<{ message?: CompletionMessage }>;
-    };
+    // Parse response
     const message = data.choices?.[0]?.message;
 
     if (!message) {
