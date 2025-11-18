@@ -11,6 +11,8 @@ import type {
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
 import type { ReplySummaryResponse } from "@/types/summaries";
+import { getNearAIClient } from "@/lib/near-ai/client";
+import { NEAR_AI_MODELS } from "@/utils/model-utils";
 
 const replyLimiter = createRateLimiter(rateLimitConfig.replySummary);
 const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
@@ -184,10 +186,7 @@ ${truncatedContent}`;
     // ===================================================================
     // GENERATE AI SUMMARY USING PROMPT BUILDER
     // ===================================================================
-    const apiKey = process.env.NEAR_AI_CLOUD_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "AI API not configured" });
-    }
+    const client = getNearAIClient();
 
     // Get like count for engagement context
     const likeCount =
@@ -207,29 +206,14 @@ ${truncatedContent}`;
       contentWithContext
     );
 
-    const summaryResponse = await fetch(
-      "https://cloud-api.near.ai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "deepseek-ai/DeepSeek-V3.1",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.3, // Very low for focused, brief output
-          max_tokens: 250, // Short summaries only
-        }),
-      }
-    );
+    const aiResponse = await client.chatCompletions({
+      model: NEAR_AI_MODELS.DEEPSEEK_V3_1,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3, // Very low for focused, brief output
+      max_tokens: 250, // Short summaries only
+    });
 
-    if (!summaryResponse.ok) {
-      throw new Error(`AI summary failed: ${summaryResponse.status}`);
-    }
-
-    const data = await summaryResponse.json();
-    const summary: string = data.choices[0]?.message?.content ?? "";
+    const summary: string = aiResponse.choices[0]?.message?.content ?? "";
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
