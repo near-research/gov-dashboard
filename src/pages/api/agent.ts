@@ -2,6 +2,7 @@
  * NEAR AI Cloud Agent API Route using AG-UI Protocol
  */
 
+import { createHash } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import {
   requestEvaluation,
@@ -13,163 +14,26 @@ import {
   type CompletionMessage,
   type MessageRole,
   type ProposalAgentState,
-  type ToolChoice,
 } from "@/types/agui-events";
 import type { VerificationMetadata } from "@/types/agui-events";
 import { extractVerificationMetadata } from "@/utils/verification";
 import type { Evaluation } from "@/types/evaluation";
+import {
+  buildProposalAgentRequest,
+  PROPOSAL_AGENT_MODEL,
+} from "@/utils/proposal-agent";
+import {
+  registerVerificationSession,
+  updateVerificationHashes,
+} from "@/server/verificationSessions";
 
 interface AgentRequestBody {
   messages: Array<{ role: MessageRole; content: string }>;
   threadId?: string;
   runId?: string;
   state?: Partial<ProposalAgentState>;
-}
-
-// Tool definitions
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "write_proposal",
-      description: [
-        "Write or edit a NEAR governance proposal.",
-        "Use markdown formatting. Include sections: Objectives, Budget, Timeline, KPIs.",
-        "Write the FULL proposal, even when changing only a few words.",
-        "Make edits minimal and targeted to address specific screening criteria.",
-      ].join(" "),
-      parameters: {
-        type: "object",
-        properties: {
-          title: {
-            type: "string",
-            description: "The proposal title",
-          },
-          content: {
-            type: "string",
-            description: "The full proposal content in markdown",
-          },
-        },
-        required: ["title", "content"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "screen_proposal",
-      description:
-        "Screen a proposal against NEAR governance criteria. Returns evaluation with pass/fail for quality criteria and attention scores.",
-      parameters: {
-        type: "object",
-        properties: {
-          title: {
-            type: "string",
-            description: "The proposal title",
-          },
-          content: {
-            type: "string",
-            description: "The proposal content",
-          },
-        },
-        required: ["title", "content"],
-      },
-    },
-  },
-];
-
-const normalizeState = (
-  state: Partial<ProposalAgentState> | undefined
-): ProposalAgentState => ({
-  title: state?.title ?? "",
-  content: state?.content ?? "",
-  evaluation: state?.evaluation ?? null,
-});
-
-// System prompt builder
-function getSystemPrompt(currentState: ProposalAgentState) {
-  return `You are a NEAR governance proposal assistant. You help users write high-quality proposals that meet NEAR's criteria.
-
-**Current Proposal State:**
-Title: ${currentState.title || "(empty)"}
-Content: ${currentState.content || "(empty)"}
-${
-  currentState.evaluation
-    ? `Quality Score: ${(currentState.evaluation.qualityScore * 100).toFixed(
-        0
-      )}%
-Attention Score: ${(currentState.evaluation.attentionScore * 100).toFixed(0)}%`
-    : ""
-}
-
-**CRITICAL INSTRUCTIONS:**
-- When the user asks you to write, generate, create, or add ANY content to the proposal, you MUST use the write_proposal tool
-- When asked to "generate title", "add title", "write content" → use write_proposal tool immediately
-- DO NOT just chat about what you would write - actually write it using the tool
-- If title is empty and user asks for content, generate a title too
-- If content is empty, generate full proposal content
-
-**NEAR Proposal Criteria:**
-
-**Quality Criteria (must all pass):**
-1. **Complete**: Objectives, budget breakdown, timeline, measurable KPIs
-2. **Legible**: Clear, well-structured, error-free, professionally formatted
-3. **Consistent**: No contradictions in budget, timeline, or scope
-4. **Compliant**: Follows NEAR governance rules and community standards
-5. **Justified**: Strong rationale for funding amount and approach
-6. **Measurable**: Clear success metrics and evaluation criteria
-
-**Attention Scores (informational):**
-- **Relevant**: How aligned is this with NEAR ecosystem priorities? (high/medium/low)
-- **Material**: What's the potential impact and significance? (high/medium/low)
-
-**Quality Score**: Percentage of quality criteria passed (need 100% to pass)
-**Attention Score**: Combined relevance and materiality score (0.0 to 1.0)
-
-**Your Tasks:**
-- To screen: use screen_proposal tool
-- To write/generate/create/add content: use write_proposal tool IMMEDIATELY
-- Base edits on screening results - fix specific failing criteria
-- Keep changes minimal and targeted
-- After calling write_proposal, just briefly explain what you did (1-2 sentences)
-
-${
-  currentState.evaluation
-    ? `
-**Last Screening Results:**
-Overall Pass: ${currentState.evaluation.overallPass ? "YES" : "NO"}
-Quality Score: ${(currentState.evaluation.qualityScore * 100).toFixed(0)}% (${
-        currentState.evaluation.qualityScore === 1.0
-          ? "Perfect!"
-          : "Needs improvement"
-      })
-Attention Score: ${(currentState.evaluation.attentionScore * 100).toFixed(
-        0
-      )}% (Relevant: ${
-        currentState.evaluation.relevant?.score || "unknown"
-      }, Material: ${currentState.evaluation.material?.score || "unknown"})
-
-Failed Quality Criteria: ${
-        Object.entries(currentState.evaluation)
-          .filter(
-            ([key, val]: [string, any]) =>
-              [
-                "complete",
-                "legible",
-                "consistent",
-                "compliant",
-                "justified",
-                "measurable",
-              ].includes(key) &&
-              typeof val === "object" &&
-              val.pass === false
-          )
-          .map(([key, val]: [string, any]) => `${key} (${val.reason})`)
-          .join("; ") || "None - all quality criteria passed!"
-      }
-`
-    : ""
-}`;
+  verificationId?: string;
+  verificationNonce?: string;
 }
 
 // Screen proposal using shared evaluation helper
@@ -200,7 +64,7 @@ export default async function handler(
   const run = body.runId || generateId("run");
 
   try {
-    const { messages, state } = body;
+    const { messages, state, verificationId, verificationNonce } = body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -222,51 +86,33 @@ export default async function handler(
         .json({ error: "Missing NEAR_AI_CLOUD_API_KEY environment variable" });
     }
 
-    // Current state from frontend
-    const currentState = normalizeState(state);
+    // Normalize state and build upstream request body
+    const { requestBody, toolChoice } = buildProposalAgentRequest({
+      messages,
+      state,
+      model: PROPOSAL_AGENT_MODEL,
+    });
+    const requestBodyString = JSON.stringify(requestBody);
+    const requestHash = createHash("sha256")
+      .update(requestBodyString)
+      .digest("hex");
 
-    // Build conversation
-    const conversationMessages = [
-      {
-        role: "system",
-        content: getSystemPrompt(currentState),
-      },
-      ...messages,
-    ];
-
-    // Detect user intent
-    const lastUserMessage =
-      messages[messages.length - 1]?.content?.toLowerCase() || "";
-    const isWriteIntent =
-      lastUserMessage.includes("write") ||
-      lastUserMessage.includes("generate") ||
-      lastUserMessage.includes("create") ||
-      lastUserMessage.includes("add") ||
-      lastUserMessage.includes("improve") ||
-      lastUserMessage.includes("edit");
-
-    const isScreenIntent =
-      lastUserMessage.includes("screen") ||
-      lastUserMessage.includes("evaluate") ||
-      lastUserMessage.includes("check") ||
-      lastUserMessage.includes("review");
-
-    // Smart tool choice
-    let toolChoice: ToolChoice = "auto";
-
-    if (isWriteIntent && !isScreenIntent) {
-      toolChoice = {
-        type: "function",
-        function: { name: "write_proposal" },
-      };
-    } else if (isScreenIntent && !isWriteIntent) {
-      toolChoice = {
-        type: "function",
-        function: { name: "screen_proposal" },
-      };
+    if (verificationId) {
+      registerVerificationSession(
+        verificationId,
+        verificationNonce,
+        requestHash,
+        null
+      );
     }
 
     console.log("[Agent] Tool choice:", toolChoice);
+    if (verificationId) {
+      console.log("[verification][agent] request prepared", {
+        verificationId,
+        requestHash,
+      });
+    }
 
     // Direct fetch to NEAR AI Cloud (STREAMING)
     const controller = new AbortController();
@@ -279,14 +125,10 @@ export default async function handler(
         headers: {
           Authorization: `Bearer ${process.env.NEAR_AI_CLOUD_API_KEY}`,
           "Content-Type": "application/json",
+          ...(verificationId ? { "X-Verification-Id": verificationId } : {}),
+          ...(verificationNonce ? { "X-Nonce": verificationNonce } : {}),
         },
-        body: JSON.stringify({
-          model: "openai/gpt-oss-120b",
-          messages: conversationMessages,
-          tools: TOOLS,
-          tool_choice: toolChoice,
-          stream: true,
-        }),
+        body: requestBodyString,
         signal: controller.signal,
       }
     );
@@ -337,6 +179,7 @@ export default async function handler(
     const decoder = new TextDecoder();
     let buffer = "";
     let done = false;
+    let rawUpstreamResponse = "";
 
     const assistantMessageId = generateId("msg");
     let assistantMessageStarted = false;
@@ -406,6 +249,7 @@ export default async function handler(
     };
 
     let latestVerification: VerificationMetadata | undefined;
+    let remoteVerificationId: string | undefined;
 
     const handleContentDelta = (
       content: any,
@@ -492,7 +336,9 @@ export default async function handler(
     while (!done) {
       const { value, done: readerDone } = await reader.read();
       if (value) {
-        buffer += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        rawUpstreamResponse += chunk;
+        buffer += chunk;
         let newlineIndex: number;
         while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
           const line = buffer.slice(0, newlineIndex).trim();
@@ -517,6 +363,9 @@ export default async function handler(
 
               if (verification) {
                 latestVerification = verification;
+                if (verification.messageId) {
+                  remoteVerificationId = verification.messageId;
+                }
               }
 
               if (delta?.content) {
@@ -542,6 +391,11 @@ export default async function handler(
       if (readerDone) {
         break;
       }
+    }
+
+    const trailingChunk = decoder.decode();
+    if (trailingChunk) {
+      rawUpstreamResponse += trailingChunk;
     }
 
     if (assistantMessageStarted) {
@@ -692,6 +546,34 @@ export default async function handler(
           timestamp: Date.now(),
         });
       }
+    }
+
+    if (verificationId) {
+      const responseHash = createHash("sha256")
+        .update(rawUpstreamResponse)
+        .digest("hex");
+
+      updateVerificationHashes(verificationId, {
+        requestHash,
+        responseHash,
+      });
+
+      const verificationPayload = {
+        messageId: remoteVerificationId || verificationId,
+        verificationId,
+        requestHash,
+        responseHash,
+        nonce: verificationNonce ?? null,
+      };
+
+      console.log("[verification][agent] response complete", verificationPayload);
+
+      writeEvent({
+        type: EventType.CUSTOM,
+        name: "verification",
+        value: verificationPayload,
+        timestamp: Date.now(),
+      });
     }
 
     // Emit RUN_FINISHED
