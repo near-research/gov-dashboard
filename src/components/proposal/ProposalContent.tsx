@@ -102,6 +102,14 @@ export default function ProposalContent({
     return DOMPurify.sanitize(rendered);
   }, [content, showDiffHighlights, versionDiffHtml]);
 
+  // Check if any metadata fields have actual values
+  const hasMetadata = useMemo(() => {
+    return FRONTMATTER_FIELDS.some(({ key }) => {
+      const value = metadata[key];
+      return value !== undefined && value !== null && value !== "";
+    });
+  }, [metadata]);
+
   return (
     <>
       {/* Global diff styles - always present */}
@@ -235,18 +243,27 @@ export default function ProposalContent({
         )}
 
         {/* Metadata */}
-        <div className="rounded-xl border border-border/70 p-4 bg-muted/30 shadow-sm">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
-            {FRONTMATTER_FIELDS.map(({ label, key }) => (
-              <div key={label} className="flex items-start gap-2">
-                <dt className="font-medium text-muted-foreground min-w-[90px]">
-                  {label}:
-                </dt>
-                <dd className="text-foreground">{metadata[key] ?? "—"}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
+        {hasMetadata && (
+          <>
+            <div className="rounded-xl border border-border/70 p-4 bg-muted/30 shadow-sm">
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                {FRONTMATTER_FIELDS.map(({ label, key }) => {
+                  const value = metadata[key];
+                  if (!value) return null;
+                  return (
+                    <div key={label} className="flex items-start gap-2">
+                      <dt className="font-medium text-muted-foreground min-w-[90px]">
+                        {label}:
+                      </dt>
+                      <dd className="text-foreground">{value}</dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </div>
+            <Separator />
+          </>
+        )}
 
         {/* Content */}
         {isExpanded ? (

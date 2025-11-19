@@ -7,7 +7,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, ExternalLink, Calendar, User } from "lucide-react";
-import { useRouter } from "next/router";
+import Link from "next/link";
 import { servicesConfig } from "@/config/services";
 
 interface ProposalCardProps {
@@ -37,8 +37,6 @@ export default function ProposalCard({
   last_posted_at,
   near_wallet,
 }: ProposalCardProps) {
-  const router = useRouter();
-
   const getDaysSinceActivity = (lastPostedAt?: string) => {
     if (!lastPostedAt) return null;
     const now = new Date();
@@ -52,12 +50,9 @@ export default function ProposalCard({
     return num.toLocaleString();
   };
 
-  const handleCardClick = () => {
-    router.push(`/proposals/${topic_id}`);
-  };
-
   const handleDiscourseClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     window.open(
       `${servicesConfig.discourseBaseUrl}/t/${topic_slug}/${topic_id}`,
       "_blank",
@@ -68,10 +63,10 @@ export default function ProposalCard({
   const daysSinceActivity = getDaysSinceActivity(last_posted_at);
 
   return (
-    <Card
-      className="cursor-pointer transition-all hover:shadow-md border-l-4 border-l-border hover:border-l-primary group"
-      onClick={handleCardClick}
-    >
+    <Link href={`/proposals/${topic_id}`} className="block">
+      <Card
+        className="cursor-pointer transition-all hover:shadow-md border-l-4 border-l-border hover:border-l-primary group"
+      >
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <h3 className="text-lg font-semibold group-hover:text-primary transition-colors flex-1">
@@ -134,5 +129,6 @@ export default function ProposalCard({
         </div>
       </CardContent>
     </Card>
+    </Link>
   );
 }

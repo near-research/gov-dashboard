@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ChevronDown, CheckCircle2, XCircle, Info } from "lucide-react";
 import { VerificationProof } from "@/components/verification/VerificationProof";
+import { Markdown } from "@/components/proposal/Markdown";
 
 interface ScreeningBadgeProps {
   screening: {
@@ -317,9 +318,12 @@ export function ScreeningBadge({
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                           <div
-                            className={`px-3 pb-3 text-sm ${detailTextColor}`}
+                            className={`px-3 pb-3 ${detailTextColor}`}
                           >
-                            {result.reason || "No details provided."}
+                            <Markdown
+                              content={result.reason || "No details provided."}
+                              className="text-sm"
+                            />
                           </div>
                         </CollapsibleContent>
                       </Card>
@@ -439,9 +443,12 @@ export function ScreeningBadge({
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                           <div
-                            className={`px-3 pb-3 text-sm ${detailTextColor}`}
+                            className={`px-3 pb-3 ${detailTextColor}`}
                           >
-                            {attentionResult.reason || "No details provided."}
+                            <Markdown
+                              content={attentionResult.reason || "No details provided."}
+                              className="text-sm"
+                            />
                           </div>
                         </CollapsibleContent>
                       </Card>

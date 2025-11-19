@@ -159,12 +159,13 @@ export default function SettingsPage() {
     },
   ];
   const extractTemplateVariables = (template: string) => {
-    const regex = /{{\s*([\w.-]+)\s*}}/g;
+    // Matches both {variable} and {{variable}} syntaxes
+    const regex = /\{(\{)?[\s]*([\w.-]+)[\s]*(\})?\}/g;
     const matches = new Set<string>();
     let match;
     while ((match = regex.exec(template)) !== null) {
-      if (match[1]) {
-        matches.add(match[1]);
+      if (match[2]) {
+        matches.add(match[2]);
       }
     }
     return Array.from(matches);
@@ -347,8 +348,9 @@ export default function SettingsPage() {
   const buildCustomPromptPayload = () => {
     const replaceTemplate = (template: string) =>
       template.replace(
-        /{{\s*([\w.-]+)\s*}}/g,
-        (_, key) => inputValues[key]?.trim() ?? `{{${key}}}`
+        /\{(\{)?[\s]*([\w.-]+)[\s]*(\})?\}/g,
+        (fullMatch, _doubleOpen, key, _doubleClose) =>
+          inputValues[key]?.trim() ?? fullMatch
       );
     const sections: string[] = [];
     if (inputValues.title?.trim()) {

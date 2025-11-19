@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import Head from "next/head";
+import DOMPurify from "dompurify";
 import ProposalContent from "@/components/proposal/ProposalContent";
 import { ScreeningBadge } from "@/components/proposal/screening/ScreeningBadge";
 import { ScreeningButton } from "@/components/proposal/screening/ScreeningButton";
@@ -29,6 +31,7 @@ import {
   ChevronUp,
   AlertCircle,
   MessagesSquare,
+  ArrowLeft,
 } from "lucide-react";
 import { buildRateLimitMessage } from "@/utils/rateLimitHelpers";
 import { servicesConfig } from "@/config/services";
@@ -462,35 +465,64 @@ export default function ProposalDetail() {
 
   const daysSinceActivity = getDaysSinceActivity(proposal.last_posted_at);
 
+  // Create a description from content or title
+  const description = proposal.contentWithoutFrontmatter
+    ? proposal.contentWithoutFrontmatter.slice(0, 160).trim() + "..."
+    : proposal.title;
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto p-8">
-        <Card className="mb-8">
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <CardTitle className="text-3xl">{proposal.title}</CardTitle>
+    <>
+      <Head>
+        <title>{proposal.title} | NEAR Governance</title>
+        <meta name="description" content={description} />
+        <meta property="og:title" content={proposal.title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:type" content="article" />
+      </Head>
+
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl px-4 pt-6 pb-10 sm:px-6 lg:px-8 lg:pt-8">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/")}
+            className="mb-4 gap-2 hover:bg-accent"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Proposals
+          </Button>
+
+        <Card className="mb-6 sm:mb-8">
+          <CardHeader className="space-y-4">
+            {/* Title + category */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <CardTitle className="text-2xl leading-tight sm:text-3xl md:text-4xl">
+                {proposal.title}
+              </CardTitle>
 
               {proposal.metadata?.category && (
-                <div className="flex items-center gap-2 flex-shrink-0 text-sm tracking-wide text-muted-foreground">
-                  <span className="uppercase">
-                    {proposal.metadata.category}
-                  </span>
-                </div>
+                <span className="text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
+                  {proposal.metadata.category}
+                </span>
               )}
             </div>
 
-            <div className="flex items-center justify-between flex-wrap gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-4">
+            {/* Meta row */}
+            <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              {/* left cluster: author, wallet, date, view on discourse */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="font-semibold text-foreground">
                   @{proposal.username}
                 </span>
+
                 {proposal.near_wallet && (
                   <>
-                    <Separator orientation="vertical" className="h-4" />
+                    <Separator orientation="vertical" className="hidden h-4 sm:block" />
                     <span>{proposal.near_wallet}</span>
                   </>
                 )}
-                <Separator orientation="vertical" className="h-4" />
+
+                <Separator orientation="vertical" className="hidden h-4 sm:block" />
                 <span>
                   {new Date(proposal.created_at).toLocaleDateString("en-US", {
                     year: "numeric",
@@ -498,7 +530,8 @@ export default function ProposalDetail() {
                     day: "numeric",
                   })}
                 </span>
-                <Separator orientation="vertical" className="h-4" />
+
+                <Separator orientation="vertical" className="hidden h-4 sm:block" />
                 <a
                   href={`${DISCOURSE_BASE_URL}/t/${proposal.topic_slug}/${proposal.topic_id}`}
                   target="_blank"
@@ -510,7 +543,8 @@ export default function ProposalDetail() {
                 </a>
               </div>
 
-              <div className="flex items-center gap-6">
+              {/* right cluster: replies + last activity */}
+              <div className="flex items-center gap-4 sm:justify-end">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
                   <span className="font-semibold text-foreground">
@@ -530,7 +564,7 @@ export default function ProposalDetail() {
           </CardHeader>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-8 items-start">
+        <div className="grid gap-6 lg:gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
           <div className="space-y-8 min-h-0">
             <Card className="rounded-2xl border-border/60 shadow-sm">
               <ProposalContent
@@ -567,7 +601,7 @@ export default function ProposalDetail() {
             {proposal.replies && proposal.replies.length > 0 && (
               <Card className="rounded-2xl border-border/60 shadow-sm">
                 <div
-                  className={`sticky top-16 z-20 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.08)] ${
+                  className={`lg:sticky lg:top-16 z-20 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.08)] ${
                     showReplies ||
                     (discussionSummary && discussionSummaryVisible)
                       ? "rounded-t-2xl"
@@ -575,12 +609,12 @@ export default function ProposalDetail() {
                   }`}
                 >
                   <CardHeader className="pb-5">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 text-base font-semibold">
-                          <MessagesSquare className="h-5 w-5 text-muted-foreground" />
-                          Discussion
-                        </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2 text-base font-semibold">
+                        <MessagesSquare className="h-5 w-5 text-muted-foreground" />
+                        Discussion
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <Button
                           onClick={handleDiscussionSummary}
                           disabled={discussionSummaryLoading}
@@ -590,7 +624,7 @@ export default function ProposalDetail() {
                               : "default"
                           }
                           size="sm"
-                          className="gap-2"
+                          className="gap-2 w-full sm:w-auto"
                         >
                           {discussionSummaryLoading ? (
                             <>
@@ -611,13 +645,11 @@ export default function ProposalDetail() {
                             <>Summarize</>
                           )}
                         </Button>
-                      </div>
-                      <div className="flex items-center gap-3">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setShowReplies((prev) => !prev)}
-                          className="gap-2"
+                          className="gap-2 w-full sm:w-auto"
                         >
                           {showReplies ? (
                             <>
@@ -757,23 +789,42 @@ export default function ProposalDetail() {
                                 [&_aside.quote_img.avatar]:w-6 [&_aside.quote_img.avatar]:h-6 [&_aside.quote_img.avatar]:rounded-full [&_aside.quote_img.avatar]:inline-block
                                 [&_img.emoji]:inline [&_img.emoji]:align-middle [&_img.emoji]:w-5 [&_img.emoji]:h-5 [&_img.emoji]:mx-0"
                                 dangerouslySetInnerHTML={{
-                                  __html: reply.cooked
-                                    .replace(
-                                      /href="\/u\//g,
-                                      `href="${DISCOURSE_BASE_URL}/u/"`
-                                    )
-                                    .replace(
-                                      /href="\/t\//g,
-                                      `href="${DISCOURSE_BASE_URL}/t/"`
-                                    )
-                                    .replace(
-                                      /href="\/c\//g,
-                                      `href="${DISCOURSE_BASE_URL}/c/"`
-                                    )
-                                    .replace(
-                                      /src="\/user_avatar\//g,
-                                      `src="${DISCOURSE_BASE_URL}/user_avatar/"`
-                                    ),
+                                  __html: DOMPurify.sanitize(
+                                    reply.cooked
+                                      .replace(
+                                        /href="\/u\//g,
+                                        `href="${DISCOURSE_BASE_URL}/u/"`
+                                      )
+                                      .replace(
+                                        /href="\/t\//g,
+                                        `href="${DISCOURSE_BASE_URL}/t/"`
+                                      )
+                                      .replace(
+                                        /href="\/c\//g,
+                                        `href="${DISCOURSE_BASE_URL}/c/"`
+                                      )
+                                      .replace(
+                                        /src="\/user_avatar\//g,
+                                        `src="${DISCOURSE_BASE_URL}/user_avatar/"`
+                                      ),
+                                    {
+                                      ALLOWED_TAGS: [
+                                        'p', 'br', 'span', 'div', 'strong', 'em', 'u', 's', 'del', 'ins',
+                                        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                                        'ul', 'ol', 'li',
+                                        'a', 'img',
+                                        'blockquote', 'aside', 'pre', 'code',
+                                        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                                      ],
+                                      ALLOWED_ATTR: [
+                                        'href', 'src', 'alt', 'title', 'class', 'style',
+                                        'data-username', 'data-post-id', 'data-user-id',
+                                      ],
+                                      ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|data:image\/|\/)/i,
+                                      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+                                      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur'],
+                                    }
+                                  ),
                                 }}
                               />
 
@@ -915,5 +966,6 @@ export default function ProposalDetail() {
         </div>
       </div>
     </div>
+    </>
   );
 }
