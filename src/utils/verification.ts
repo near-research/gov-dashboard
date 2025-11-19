@@ -32,6 +32,24 @@ export const extractVerificationMetadata = (
 ): VerificationMetadata | undefined => {
   if (!payload || typeof payload !== "object") return undefined;
 
+  const hasMetadataFields =
+    payload.verification ||
+    payload.metadata ||
+    payload.near_metadata ||
+    envelope?.verification ||
+    envelope?.metadata;
+
+  if (
+    typeof payload.id === "string" &&
+    !hasMetadataFields
+  ) {
+    return {
+      source: "near-ai-cloud",
+      status: "pending",
+      messageId: payload.id,
+    };
+  }
+
   const metadataSources = [
     payload.verification,
     payload.metadata?.verification,

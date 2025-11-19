@@ -13,10 +13,7 @@ import {
 } from "@/types/agui-events";
 import type { RemoteProof } from "@/components/verification/VerificationProof";
 import type { PartialExpectations } from "@/utils/attestation-expectations";
-import {
-  buildProposalAgentRequest,
-  PROPOSAL_AGENT_MODEL,
-} from "@/utils/proposal-agent";
+import { AGENT_MODEL, buildProposalAgentRequest } from "@/utils/agent-tools";
 
 type AgentRole = "user" | "assistant" | "system";
 type ToolCallStatus = "pending" | "running" | "completed" | "failed";
@@ -50,7 +47,6 @@ interface ToolCallEvent extends BaseAgentEvent {
   toolName: string;
   input?: unknown;
   status: ToolCallStatus;
-  verification?: VerificationMetadata;
 }
 
 interface ToolResultEvent extends BaseAgentEvent {
@@ -58,8 +54,6 @@ interface ToolResultEvent extends BaseAgentEvent {
   toolName: string;
   output?: unknown;
   status: ToolCallStatus;
-  messageId?: string;
-  verification?: VerificationMetadata;
 }
 
 interface StatusEvent extends BaseAgentEvent {
@@ -69,11 +63,7 @@ interface StatusEvent extends BaseAgentEvent {
   level: StatusLevel;
 }
 
-type AgentEvent =
-  | MessageEvent
-  | ToolCallEvent
-  | ToolResultEvent
-  | StatusEvent;
+type AgentEvent = MessageEvent | ToolCallEvent | ToolResultEvent | StatusEvent;
 
 interface ChatProps {
   model?: string;
@@ -108,7 +98,7 @@ const hashString = async (value: string) => {
 };
 
 export const Chat = ({
-  model = PROPOSAL_AGENT_MODEL,
+  model = AGENT_MODEL,
   className = "",
   placeholder = "Ask me anything about NEAR proposals…",
   welcomeMessage = "Welcome to the NEAR AI proposal agent.",
@@ -200,7 +190,20 @@ export const Chat = ({
         return [...prev, incoming];
       }
       const next = [...prev];
-      next[index] = { ...next[index], ...incoming };
+      const existing = next[index];
+      const merged = { ...existing, ...incoming } as AgentEvent;
+
+      if ("proof" in existing || "proof" in (incoming as any)) {
+        (merged as any).proof =
+          (incoming as any).proof ?? (existing as any).proof;
+      }
+
+      if ("remoteProof" in existing || "remoteProof" in (incoming as any)) {
+        (merged as any).remoteProof =
+          (incoming as any).remoteProof ?? (existing as any).remoteProof;
+      }
+
+      next[index] = merged;
       return next;
     });
   };
@@ -252,32 +255,6 @@ export const Chat = ({
     eventId: string,
     proof: MessageProof
   ) => {
-    try {
-      const sessionResp = await fetch("/api/verification/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          verificationId,
-          requestHash: proof.requestHash,
-          responseHash: proof.responseHash,
-        }),
-      });
-
-      if (!sessionResp.ok) {
-        const text = await sessionResp.text();
-        throw new Error(text || "Failed to register verification session");
-      }
-    } catch (sessionError) {
-      console.error("Failed to register verification session:", sessionError);
-      toast.error("Unable to register verification session", {
-        description:
-          sessionError instanceof Error
-            ? sessionError.message
-            : "Unknown session error",
-      });
-      return;
-    }
-
     updateMessageEvent(eventId, {
       verification: {
         source: "near-ai-cloud",
@@ -287,6 +264,13 @@ export const Chat = ({
     });
 
     try {
+      console.log("[verification] Fetching proof:", {
+        verificationId,
+        requestHash: proof.requestHash,
+        responseHash: proof.responseHash,
+        nonce: proof.nonce,
+      });
+
       const response = await fetch("/api/verification/proof", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -305,6 +289,19 @@ export const Chat = ({
 
       const data = (await response.json()) as RemoteProof;
 
+      console.log("[verification] Raw proof data received:", {
+        hasSignature: !!data.signature,
+        signatureType: typeof data.signature,
+        signatureKeys: data.signature ? Object.keys(data.signature) : [],
+        hasAttestation: !!data.attestation,
+        hasNras: !!data.nras,
+      });
+
+      console.log("[verification] Proof fetched successfully:", {
+        verified: data.results?.verified,
+        nonceCheck: data.nonceCheck,
+      });
+
       updateMessageEvent(eventId, {
         verification: {
           source: "near-ai-cloud",
@@ -315,7 +312,13 @@ export const Chat = ({
       });
     } catch (error) {
       console.error("Automatic proof fetch failed:", error);
-      // Surface errors silently; VerificationProof handles toast feedback.
+      updateMessageEvent(eventId, {
+        verification: {
+          source: "near-ai-cloud",
+          status: "failed",
+          messageId: verificationId,
+        },
+      });
     }
   };
 
@@ -340,7 +343,9 @@ export const Chat = ({
       await sendStreamingMessage();
     } catch (sendError) {
       const messageText =
-        sendError instanceof Error ? sendError.message : "Failed to get response";
+        sendError instanceof Error
+          ? sendError.message
+          : "Failed to get response";
       setError(messageText);
       toast.error("Agent error", { description: messageText });
     } finally {
@@ -353,7 +358,6 @@ export const Chat = ({
     let fullContent = "";
     const proofData: MessageProof = {};
     let remoteMessageId: string | undefined;
-    let latestVerification: VerificationMetadata | undefined;
     let proofRequested = false;
     const messagesSnapshot = [...conversationHistoryRef.current];
     const toolCallBuffers = new Map<string, string>();
@@ -392,6 +396,15 @@ export const Chat = ({
       proofData.nonce = nonce;
       proofData.verificationId = verificationId;
 
+      updateMessageEvent(assistantEventId, {
+        proof: { ...proofData },
+        verification: {
+          source: "near-ai-cloud",
+          status: "pending",
+          messageId: verificationId,
+        },
+      });
+
       const bodyPayload = JSON.stringify({
         messages: messagesSnapshot,
         state: agentStateRef.current,
@@ -424,7 +437,7 @@ export const Chat = ({
       const decoder = new TextDecoder();
       let buffer = "";
 
-      const maybeRequestProof = () => {
+      const maybeRequestProof = async () => {
         if (
           proofRequested ||
           !remoteMessageId ||
@@ -434,6 +447,7 @@ export const Chat = ({
           return;
         }
         proofRequested = true;
+        await delay(2000);
         fetchProofForMessage(remoteMessageId, assistantEventId, {
           ...proofData,
         });
@@ -460,8 +474,7 @@ export const Chat = ({
       const handleToolCall = (
         toolCallId: string,
         toolName?: string,
-        delta?: string,
-        verification?: VerificationMetadata
+        delta?: string
       ) => {
         const existing = toolCallBuffers.get(toolCallId) || "";
         const nextPayload = delta ? existing + delta : existing;
@@ -474,22 +487,17 @@ export const Chat = ({
           toolName: resolvedName,
           input: nextPayload,
           status: "running",
-          verification,
           timestamp: new Date(),
         });
       };
 
-      const completeToolCall = (
-        toolCallId: string,
-        verification?: VerificationMetadata
-      ) => {
+      const completeToolCall = (toolCallId: string) => {
         upsertEvent({
           kind: "tool_call",
           id: toolCallId,
           toolName: toolCallMeta.get(toolCallId)?.name || "Tool call",
           input: toolCallBuffers.get(toolCallId),
           status: "completed",
-          verification,
           timestamp: new Date(),
         });
       };
@@ -508,132 +516,128 @@ export const Chat = ({
               timestamp: eventTimestamp,
             });
             break;
-        case EventType.RUN_FINISHED:
-          addEvent({
-            kind: "status",
-            id: generateEventId(),
-            label: "Agent run finished",
-            level: "success",
-            timestamp: eventTimestamp,
-          });
-          break;
-        case EventType.RUN_ERROR:
-          addEvent({
-            kind: "status",
-            id: generateEventId(),
-            label: event.message || "Agent run error",
-            detail: event.code,
-            level: "error",
-            timestamp: eventTimestamp,
-          });
-          setError(event.message || "Agent run failed");
-          break;
-        case EventType.STEP_STARTED:
-          addEvent({
-            kind: "status",
-            id: generateEventId(),
-            label: `Step started: ${event.stepName}`,
-            level: "info",
-            timestamp: eventTimestamp,
-          });
-          break;
-        case EventType.STEP_FINISHED:
-          addEvent({
-            kind: "status",
-            id: generateEventId(),
-            label: `Step finished: ${event.stepName}`,
-            level: "success",
-            timestamp: eventTimestamp,
-          });
-          break;
-        case EventType.TEXT_MESSAGE_CONTENT: {
-          const verification = event.verification ?? latestVerification;
-          if (verification?.messageId) {
-            remoteMessageId = verification.messageId;
-          }
-          fullContent += event.delta ?? "";
-          latestVerification = verification ?? latestVerification;
-          updateMessageEvent(assistantEventId, {
-            content: fullContent,
-            verification,
-            messageId: remoteMessageId ?? event.messageId,
-          });
-          break;
-        }
-        case EventType.TEXT_MESSAGE_END:
-          if (event.verification?.messageId) {
-            remoteMessageId = event.verification.messageId;
-          }
-          latestVerification = event.verification ?? latestVerification;
-          updateMessageEvent(assistantEventId, {
-            verification: latestVerification,
-            messageId: remoteMessageId ?? event.messageId,
-          });
-          maybeRequestProof();
-          break;
-        case EventType.TOOL_CALL_START:
-          toolCallMeta.set(event.toolCallId, { name: event.toolCallName });
-          handleToolCall(
-            event.toolCallId,
-            event.toolCallName,
-            undefined,
-            event.verification ?? latestVerification
-          );
-          break;
-        case EventType.TOOL_CALL_ARGS:
-          handleToolCall(
-            event.toolCallId,
-            toolCallMeta.get(event.toolCallId)?.name,
-            event.delta,
-            event.verification ?? latestVerification
-          );
-          break;
-        case EventType.TOOL_CALL_END:
-          completeToolCall(
-            event.toolCallId,
-            event.verification ?? latestVerification
-          );
-          break;
-        case EventType.TOOL_CALL_RESULT:
-          toolCallMeta.set(event.toolCallId, {
-            name: event.toolCallName ?? toolCallMeta.get(event.toolCallId)?.name,
-          });
-          addEvent({
-            kind: "tool_result",
-            id: event.toolCallId || generateEventId(),
-            toolName:
-              event.toolCallName ||
-              toolCallMeta.get(event.toolCallId || "")?.name ||
-              "Tool result",
-            output: event.content,
-            status: "completed",
-            verification: event.verification ?? latestVerification,
-            timestamp: eventTimestamp,
-          });
-          break;
-        case EventType.STATE_DELTA:
-          if (Array.isArray(event.delta)) {
-            try {
-              const nextState = applyPatch(
-                agentStateRef.current ?? {},
-                event.delta as Operation[],
-                false,
-                false
+          case EventType.RUN_FINISHED:
+            addEvent({
+              kind: "status",
+              id: generateEventId(),
+              label: "Agent run finished",
+              level: "success",
+              timestamp: eventTimestamp,
+            });
+            break;
+          case EventType.RUN_ERROR:
+            addEvent({
+              kind: "status",
+              id: generateEventId(),
+              label: event.message || "Agent run error",
+              detail: event.code,
+              level: "error",
+              timestamp: eventTimestamp,
+            });
+            setError(event.message || "Agent run failed");
+            break;
+          case EventType.STEP_STARTED:
+            addEvent({
+              kind: "status",
+              id: generateEventId(),
+              label: `Step started: ${event.stepName}`,
+              level: "info",
+              timestamp: eventTimestamp,
+            });
+            break;
+          case EventType.STEP_FINISHED:
+            addEvent({
+              kind: "status",
+              id: generateEventId(),
+              label: `Step finished: ${event.stepName}`,
+              level: "success",
+              timestamp: eventTimestamp,
+            });
+            break;
+          case EventType.TEXT_MESSAGE_CONTENT: {
+            if (event.messageId) {
+              remoteMessageId = event.messageId;
+              console.log(
+                "[Chat] Captured messageId from TEXT_MESSAGE_CONTENT:",
+                remoteMessageId
               );
-              agentStateRef.current = nextState.newDocument;
-            } catch (stateError) {
-              console.error("Failed to apply state delta", stateError);
             }
+            fullContent += event.delta ?? "";
+            updateMessageEvent(assistantEventId, {
+              content: fullContent,
+              messageId: remoteMessageId ?? event.messageId,
+            });
+            break;
           }
-          break;
-        case EventType.STATE_SNAPSHOT:
-          agentStateRef.current = event.snapshot;
-          break;
-        case EventType.CUSTOM:
-          if (event.name === "verification") {
-            handleCustomVerification(event.value);
+          case EventType.TEXT_MESSAGE_END:
+            if (event.messageId) {
+              remoteMessageId = event.messageId;
+            }
+            updateMessageEvent(assistantEventId, {
+              messageId: remoteMessageId ?? event.messageId,
+            });
+            void maybeRequestProof();
+            break;
+          case EventType.TOOL_CALL_START:
+            toolCallMeta.set(event.toolCallId, { name: event.toolCallName });
+            handleToolCall(event.toolCallId, event.toolCallName, undefined);
+            break;
+          case EventType.TOOL_CALL_ARGS:
+            handleToolCall(
+              event.toolCallId,
+              toolCallMeta.get(event.toolCallId)?.name,
+              event.delta
+            );
+            break;
+          case EventType.TOOL_CALL_END:
+            completeToolCall(event.toolCallId);
+            break;
+          case EventType.TOOL_CALL_RESULT: {
+            const resultEventId = event.toolCallId
+              ? `${event.toolCallId}-result`
+              : generateEventId();
+            toolCallMeta.set(event.toolCallId, {
+              name:
+                event.toolCallName ?? toolCallMeta.get(event.toolCallId)?.name,
+            });
+            addEvent({
+              kind: "tool_result",
+              id: resultEventId,
+              toolName:
+                event.toolCallName ||
+                toolCallMeta.get(event.toolCallId || "")?.name ||
+                "Tool result",
+              output: event.content,
+              status: "completed",
+              timestamp: eventTimestamp,
+            });
+            break;
           }
-          break;
+          case EventType.STATE_DELTA:
+            if (Array.isArray(event.delta)) {
+              try {
+                const nextState = applyPatch<Partial<ProposalAgentState>>(
+                  agentStateRef.current ?? {},
+                  event.delta as Operation[],
+                  false,
+                  false
+                );
+                agentStateRef.current = nextState.newDocument;
+              } catch (stateError) {
+                console.error("Failed to apply state delta", stateError);
+              }
+            }
+            break;
+          case EventType.STATE_SNAPSHOT:
+            agentStateRef.current = event.snapshot as
+              | Partial<ProposalAgentState>
+              | undefined;
+            break;
+          case EventType.CUSTOM:
+            if (event.name === "verification") {
+              handleCustomVerification(event.value);
+            }
+            break;
           default:
             break;
         }
@@ -675,9 +679,13 @@ export const Chat = ({
         });
       } else {
         removeEventById(assistantEventId);
+        streamingAssistantIdRef.current = null;
+        return;
       }
 
-      maybeRequestProof();
+      await delay(100);
+
+      await maybeRequestProof();
     } catch (error) {
       removeEventById(assistantEventId);
       throw error;

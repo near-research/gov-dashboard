@@ -4,9 +4,7 @@ import type {
   ToolChoice,
 } from "@/types/agui-events";
 
-export const PROPOSAL_AGENT_MODEL = "openai/gpt-oss-120b";
-
-export const PROPOSAL_AGENT_TOOLS = [
+export const PROPOSAL_TOOLS = [
   {
     type: "function",
     function: {
@@ -65,9 +63,9 @@ export const normalizeProposalAgentState = (
   evaluation: state?.evaluation ?? null,
 });
 
-export function buildProposalAgentSystemPrompt(
+export function buildProposalSystemPrompt(
   currentState: ProposalAgentState
-) {
+): string {
   return `You are a NEAR governance proposal assistant. You help users write high-quality proposals that meet NEAR's criteria.
 
 **Current Proposal State:**
@@ -155,7 +153,7 @@ Failed Quality Criteria: ${
 const containsAny = (text: string, keywords: string[]) =>
   keywords.some((kw) => text.includes(kw));
 
-export const inferProposalAgentToolChoice = (
+export const inferProposalToolChoice = (
   lastUserMessage: string
 ): ToolChoice => {
   const normalized = lastUserMessage.toLowerCase();
@@ -192,43 +190,4 @@ export const inferProposalAgentToolChoice = (
   }
 
   return "auto";
-};
-
-export interface BuildProposalAgentRequestParams {
-  messages: Array<{ role: MessageRole; content: string }>;
-  state?: Partial<ProposalAgentState>;
-  model?: string;
-}
-
-export const buildProposalAgentRequest = ({
-  messages,
-  state,
-  model = PROPOSAL_AGENT_MODEL,
-}: BuildProposalAgentRequestParams) => {
-  const normalizedState = normalizeProposalAgentState(state);
-  const systemPrompt = buildProposalAgentSystemPrompt(normalizedState);
-  const conversationMessages = [
-    { role: "system" as MessageRole, content: systemPrompt },
-    ...messages,
-  ];
-
-  const lastUserMessage =
-    [...messages]
-      .reverse()
-      .find((msg) => msg.role === "user" && typeof msg.content === "string")
-      ?.content || "";
-
-  const toolChoice = inferProposalAgentToolChoice(lastUserMessage);
-
-  return {
-    normalizedState,
-    toolChoice,
-    requestBody: {
-      model,
-      messages: conversationMessages,
-      tools: PROPOSAL_AGENT_TOOLS,
-      tool_choice: toolChoice,
-      stream: true,
-    },
-  };
 };

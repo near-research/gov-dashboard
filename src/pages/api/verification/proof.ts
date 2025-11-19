@@ -5,7 +5,12 @@ import type {
   VerificationProofResponse,
 } from "@/types/verification";
 import { deriveVerificationState } from "@/utils/attestation";
-import { getVerificationSession, registerVerificationSession, syncVerificationNonce } from "@/server/verificationSessions";
+import {
+  getVerificationSession,
+  registerVerificationSession,
+  syncVerificationNonce,
+  updateVerificationHashes,
+} from "@/server/verificationSessions";
 import { getModelExpectations } from "@/server/attestation-cache";
 
 const NEAR_API_BASE = "https://cloud-api.near.ai/v1";
@@ -61,7 +66,9 @@ async function fetchWithBackoff(
       // Abort/timeouts should not be retried; surface immediately
       if (
         (error as any)?.name === "AbortError" ||
-        String((error as any)?.message || "").toLowerCase().includes("abort")
+        String((error as any)?.message || "")
+          .toLowerCase()
+          .includes("abort")
       ) {
         throw error;
       }
@@ -70,7 +77,9 @@ async function fetchWithBackoff(
       await new Promise((r) => setTimeout(r, delay));
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "Unknown fetch error"));
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(String(lastError ?? "Unknown fetch error"));
 }
 
 const telemetry = {
@@ -154,9 +163,24 @@ export default async function handler(
         )
       : null);
 
+  if (req.body?.requestHash || req.body?.responseHash) {
+    console.log("[verification/proof] Updating session with request hashes:", {
+      verificationId,
+      hasRequestHash: !!req.body.requestHash,
+      hasResponseHash: !!req.body.responseHash,
+    });
+
+    updateVerificationHashes(verificationId, {
+      requestHash: req.body.requestHash,
+      responseHash: req.body.responseHash,
+    });
+
+    session = getVerificationSession(verificationId) || session;
+  }
+
   let expectedNonce = session?.nonce;
-  const sessionRequestHash = (session as any)?.requestHash || null;
-  const sessionResponseHash = (session as any)?.responseHash || null;
+  const sessionRequestHash = session?.requestHash || null;
+  const sessionResponseHash = session?.responseHash || null;
 
   if (!expectedNonce) {
     // Attempt to register using provided hashes if session was not established
@@ -187,22 +211,33 @@ export default async function handler(
 
   if (expectationsMissing) {
     try {
-      console.log("[verification/proof] Auto-fetching hardware expectations for model:", model);
-      const expectations = await getModelExpectations(model || "openai/gpt-oss-120b");
+      console.log(
+        "[verification/proof] Auto-fetching hardware expectations for model:",
+        model
+      );
+      const expectations = await getModelExpectations(
+        model || "openai/gpt-oss-120b"
+      );
       expectedArch = expectedArch || expectations.arch;
-      expectedDeviceCertHash = expectedDeviceCertHash || expectations.deviceCertHash;
+      expectedDeviceCertHash =
+        expectedDeviceCertHash || expectations.deviceCertHash;
       expectedRimHash = expectedRimHash || expectations.rimHash;
       expectedUeid = expectedUeid || expectations.ueid;
       expectedMeasurements = expectedMeasurements || expectations.measurements;
       console.log("[verification/proof] Using expectations:", {
         arch: expectedArch,
-        deviceCertHash: expectedDeviceCertHash ? `${expectedDeviceCertHash.slice(0, 16)}...` : null,
+        deviceCertHash: expectedDeviceCertHash
+          ? `${expectedDeviceCertHash.slice(0, 16)}...`
+          : null,
         rimHash: expectedRimHash ? `${expectedRimHash.slice(0, 16)}...` : null,
         ueid: expectedUeid ? `${expectedUeid.slice(0, 16)}...` : null,
         measurements: expectedMeasurements?.length ?? 0,
       });
     } catch (error: unknown) {
-      console.error("[verification/proof] Failed to fetch expectations:", error);
+      console.error(
+        "[verification/proof] Failed to fetch expectations:",
+        error
+      );
       return res.status(500).json({
         error: "Failed to fetch hardware expectations",
         details: error instanceof Error ? error.message : "Unknown error",
@@ -319,7 +354,9 @@ export default async function handler(
   try {
     const attestationPromise = fetchWithBackoff(() =>
       safeFetch(
-        `${NEAR_API_BASE}/attestation/report?model=${encodeURIComponent(model)}`,
+        `${NEAR_API_BASE}/attestation/report?model=${encodeURIComponent(
+          model
+        )}`,
         headers
       )
     );
@@ -351,6 +388,13 @@ export default async function handler(
     if (signatureResp.ok) {
       proof.signature = await signatureResp.json();
     } else {
+      const errorText = await signatureResp.text();
+      console.error("[proof] Signature fetch failed:", {
+        status: signatureResp.status,
+        statusText: signatureResp.statusText,
+        error: errorText,
+        url: `${NEAR_API_BASE}/signature/${verificationId}?model=${model}&signing_algo=${signingAlgo}`,
+      });
       proof.signature = null;
     }
 
@@ -391,8 +435,12 @@ export default async function handler(
             null;
 
           console.log("[proof] NRAS nonce:", {
-            sessionNonce: expectedNonce ? `${expectedNonce}`.slice(0, 20) + "..." : null,
-            attestationNonce: attestationNonce ? `${attestationNonce}`.slice(0, 20) + "..." : null,
+            sessionNonce: expectedNonce
+              ? `${expectedNonce}`.slice(0, 20) + "..."
+              : null,
+            attestationNonce: attestationNonce
+              ? `${attestationNonce}`.slice(0, 20) + "..."
+              : null,
             usingNonce: attestationNonce ? "attestation" : "session",
           });
 
@@ -507,7 +555,9 @@ export default async function handler(
             "Content-Type": "application/json",
           };
           if (process.env.INTEL_TDX_API_KEY) {
-            headersIntel["Authorization"] = `Bearer ${process.env.INTEL_TDX_API_KEY}`;
+            headersIntel[
+              "Authorization"
+            ] = `Bearer ${process.env.INTEL_TDX_API_KEY}`;
           } else {
             proof.intel = {
               verified: false,
@@ -516,7 +566,10 @@ export default async function handler(
                 "INTEL_TDX_API_KEY is required when INTEL_TDX_ATTESTATION_URL is set.",
               reasons: ["Intel API key missing"],
             } as IntelVerificationResult;
-            proof.configMissing = { ...(proof.configMissing || {}), intelApiKey: true };
+            proof.configMissing = {
+              ...(proof.configMissing || {}),
+              intelApiKey: true,
+            };
             // Early return Intel error; continue with GPU path
           }
 
@@ -576,7 +629,8 @@ export default async function handler(
 
               const reasons: string[] = [];
               if (!nonceMatches) reasons.push("Intel nonce mismatch");
-              if (!measurementPresent) reasons.push("Intel measurements missing");
+              if (!measurementPresent)
+                reasons.push("Intel measurements missing");
               if (
                 !(
                   intelParsed?.verified === true ||
@@ -659,9 +713,7 @@ export default async function handler(
         const parsed = parsePayload(raw);
         if (parsed) {
           const nonce =
-            parsed.eat_nonce ||
-            parsed.nonce ||
-            parsed["x-nvidia-eat-nonce"];
+            parsed.eat_nonce || parsed.nonce || parsed["x-nvidia-eat-nonce"];
           if (nonce) return nonce;
         }
       }
@@ -816,8 +868,8 @@ export default async function handler(
       signedHashes: signedPair,
       effectiveHashes:
         effectiveRequestHash && effectiveResponseHash
-        ? `${effectiveRequestHash}:${effectiveResponseHash}`
-        : null,
+          ? `${effectiveRequestHash}:${effectiveResponseHash}`
+          : null,
     });
 
     console.log("[verification/proof] Calling deriveVerificationState with:", {
@@ -864,10 +916,17 @@ export default async function handler(
     };
 
     if (configMissing) {
-      proof.configMissing = { ...(proof.configMissing || {}), ...configMissing };
+      proof.configMissing = {
+        ...(proof.configMissing || {}),
+        ...configMissing,
+      };
     }
 
-    telemetry.log("success", { verificationId, model, verified: proof.results?.verified });
+    telemetry.log("success", {
+      verificationId,
+      model,
+      verified: proof.results?.verified,
+    });
     console.log("[verification] Proof received:", {
       verificationId,
       signatureText: (proof.signature as any)?.text,
@@ -885,7 +944,8 @@ export default async function handler(
         ? (error as { code?: string }).code
         : undefined;
 
-    const message = error instanceof Error ? error.message : String(error ?? "");
+    const message =
+      error instanceof Error ? error.message : String(error ?? "");
     // Be liberal in timeout detection because different fetch impls surface aborts differently
     const isTimeout =
       code === "UND_ERR_CONNECT_TIMEOUT" ||
@@ -902,7 +962,11 @@ export default async function handler(
       });
     }
 
-    telemetry.log("failure", { verificationId, model, message: error instanceof Error ? error.message : String(error) });
+    telemetry.log("failure", {
+      verificationId,
+      model,
+      message: error instanceof Error ? error.message : String(error),
+    });
 
     return res.status(500).json({
       error: "Failed to fetch proof data",

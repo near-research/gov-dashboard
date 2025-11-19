@@ -201,6 +201,7 @@ export interface ToolCallResultEvent extends BaseEvent {
   messageId: string;
   toolCallId: string;
   content: string; // The actual result/output content
+  toolCallName?: string;
   role?: "tool";
 }
 

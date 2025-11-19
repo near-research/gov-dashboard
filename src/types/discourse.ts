@@ -83,6 +83,30 @@ export interface DiscourseTopicListResponse {
   users?: DiscourseUserRef[];
 }
 
+export interface DiscourseCategory {
+  id: number;
+  name: string;
+  slug: string;
+  color?: string;
+  text_color?: string;
+  parent_category_id?: number | null;
+  description?: string;
+}
+
+export interface DiscourseTag {
+  id?: number;
+  name: string;
+  count?: number;
+  pm_count?: number;
+}
+
+export interface DiscourseGroup {
+  id: number;
+  name: string;
+  full_name?: string;
+  user_count?: number;
+}
+
 export interface LatestPostSummary {
   id: number;
   title: string;
@@ -107,6 +131,32 @@ export interface LatestPostsResponse {
   latest_posts: LatestPostSummary[];
   can_create_topic: boolean;
   per_page: number;
+}
+
+export interface DiscourseGroupedSearchResult {
+  more_posts?: string;
+  more_users?: string;
+  more_categories?: string;
+  term?: string;
+  search_log_id?: number;
+  more_full_page_results?: string;
+  can_create_topic?: boolean;
+  error?: string;
+  extra?: Record<string, unknown>;
+  post_ids?: number[];
+  user_ids?: number[];
+  category_ids?: number[];
+  tag_ids?: number[];
+  group_ids?: number[];
+}
+
+export interface DiscourseSearchResponse {
+  posts: DiscoursePost[];
+  users: DiscourseUserRef[];
+  categories: DiscourseCategory[];
+  tags: DiscourseTag[];
+  groups: DiscourseGroup[];
+  grouped_search_result: DiscourseGroupedSearchResult;
 }
 
 export interface RevisionBodyChange {

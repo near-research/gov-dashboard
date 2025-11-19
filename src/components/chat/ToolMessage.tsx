@@ -1,8 +1,5 @@
 // components/chat/ToolMessage.tsx
 import { Badge } from "@/components/ui/badge";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import type { VerificationMetadata } from "@/types/agui-events";
-
 type ToolCallStatus = "pending" | "running" | "completed" | "failed";
 
 interface ToolMessageProps {
@@ -10,9 +7,6 @@ interface ToolMessageProps {
   toolName: string;
   payload?: unknown;
   status: ToolCallStatus;
-  verification?: VerificationMetadata;
-  messageId?: string;
-  model?: string;
 }
 
 const toolStatusTone: Record<ToolCallStatus, string> = {
@@ -37,9 +31,6 @@ export const ToolMessage = ({
   toolName,
   payload,
   status,
-  verification,
-  messageId,
-  model,
 }: ToolMessageProps) => {
   const title = kind === "tool_result" ? "Tool result" : "Tool call";
   const hasPayload = payload !== undefined && payload !== null;
@@ -60,12 +51,6 @@ export const ToolMessage = ({
             {stringifyPayload(payload)}
           </pre>
         )}
-        <VerificationProof
-          verification={verification}
-          verificationId={messageId}
-          model={model}
-          className="mt-3"
-        />
       </div>
     </div>
   );

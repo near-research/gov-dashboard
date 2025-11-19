@@ -37,7 +37,6 @@ interface ToolCallEvent extends BaseAgentEvent {
   toolName: string;
   input?: unknown;
   status: "pending" | "running" | "completed" | "failed";
-  verification?: VerificationMetadata;
 }
 
 interface ToolResultEvent extends BaseAgentEvent {
@@ -45,8 +44,6 @@ interface ToolResultEvent extends BaseAgentEvent {
   toolName: string;
   output?: unknown;
   status: "pending" | "running" | "completed" | "failed";
-  messageId?: string;
-  verification?: VerificationMetadata;
 }
 
 interface StatusEvent extends BaseAgentEvent {
@@ -191,8 +188,6 @@ export const ChatMessages = ({
             toolName={event.toolName}
             payload={event.input}
             status={event.status}
-            verification={event.verification}
-            model={model}
           />
         );
       case "tool_result":
@@ -203,9 +198,6 @@ export const ChatMessages = ({
             toolName={event.toolName}
             payload={event.output}
             status={event.status}
-            messageId={event.messageId}
-            verification={event.verification}
-            model={model}
           />
         );
       case "status":
