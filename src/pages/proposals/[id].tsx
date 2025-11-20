@@ -72,7 +72,7 @@ export default function ProposalDetail() {
   const [currentRevision, setCurrentRevision] = useState<number>(1);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [showRevisions, setShowRevisions] = useState(false);
-  const [showReplies, setShowReplies] = useState(false);
+  const [showReplies, setShowReplies] = useState(true);
   const [revisions, setRevisions] = useState<ProposalRevision[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number>(1);
   const [showDiffHighlights, setShowDiffHighlights] = useState(false);
@@ -105,6 +105,13 @@ export default function ProposalDetail() {
   const [discussionSummaryError, setDiscussionSummaryError] = useState("");
 
   const { wallet, signedAccountId } = useNear();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const shouldShowReplies = window.innerWidth >= 768;
+      setShowReplies(shouldShowReplies);
+    }
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -492,480 +499,574 @@ export default function ProposalDetail() {
             Back to Proposals
           </Button>
 
-        <Card className="mb-6 sm:mb-8">
-          <CardHeader className="space-y-4">
-            {/* Title + category */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <CardTitle className="text-2xl leading-tight sm:text-3xl md:text-4xl">
-                {proposal.title}
-              </CardTitle>
+          <Card className="mb-6 sm:mb-8">
+            <CardHeader className="space-y-4">
+              {/* Title + category */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <CardTitle className="text-2xl leading-tight sm:text-3xl md:text-4xl">
+                  {proposal.title}
+                </CardTitle>
 
-              {proposal.metadata?.category && (
-                <span className="text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
-                  {proposal.metadata.category}
-                </span>
-              )}
-            </div>
-
-            {/* Meta row */}
-            <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              {/* left cluster: author, wallet, date, view on discourse */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-semibold text-foreground">
-                  @{proposal.username}
-                </span>
-
-                {proposal.near_wallet && (
-                  <>
-                    <Separator orientation="vertical" className="hidden h-4 sm:block" />
-                    <span>{proposal.near_wallet}</span>
-                  </>
+                {proposal.metadata?.category && (
+                  <span className="text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
+                    {proposal.metadata.category}
+                  </span>
                 )}
-
-                <Separator orientation="vertical" className="hidden h-4 sm:block" />
-                <span>
-                  {new Date(proposal.created_at).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-
-                <Separator orientation="vertical" className="hidden h-4 sm:block" />
-                <a
-                  href={`${DISCOURSE_BASE_URL}/t/${proposal.topic_slug}/${proposal.topic_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-primary hover:underline"
-                >
-                  View on Discourse
-                  <ExternalLink className="h-3 w-3" />
-                </a>
               </div>
 
-              {/* right cluster: replies + last activity */}
-              <div className="flex items-center gap-4 sm:justify-end">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
+              {/* Meta row */}
+              <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                {/* left cluster: author, wallet, date, view on discourse */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-semibold text-foreground">
-                    {formatNumber(proposal.reply_count)}
+                    @{proposal.username}
                   </span>
-                  <span>replies</span>
+
+                  {proposal.near_wallet && (
+                    <>
+                      <Separator
+                        orientation="vertical"
+                        className="hidden h-4 sm:block"
+                      />
+                      <span>{proposal.near_wallet}</span>
+                    </>
+                  )}
+
+                  <Separator
+                    orientation="vertical"
+                    className="hidden h-4 sm:block"
+                  />
+                  <span>
+                    {new Date(proposal.created_at).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+
+                  <Separator
+                    orientation="vertical"
+                    className="hidden h-4 sm:block"
+                  />
+                  <a
+                    href={`${DISCOURSE_BASE_URL}/t/${proposal.topic_slug}/${proposal.topic_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-primary hover:underline"
+                  >
+                    View on Discourse
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span className="font-semibold text-foreground">
-                    {daysSinceActivity}d
-                  </span>
-                  <span>ago</span>
+
+                {/* right cluster: replies + last activity */}
+                <div className="flex items-center gap-4 sm:justify-end">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    <span className="font-semibold text-foreground">
+                      {formatNumber(proposal.reply_count)}
+                    </span>
+                    <span>replies</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span className="font-semibold text-foreground">
+                      {daysSinceActivity}d
+                    </span>
+                    <span>ago</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardHeader>
-        </Card>
+            </CardHeader>
+          </Card>
 
-        <div className="grid gap-6 lg:gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
-          <div className="space-y-8 min-h-0">
-            <Card className="rounded-2xl border-border/60 shadow-sm">
-              <ProposalContent
-                content={
-                  versionContent || proposal.contentWithoutFrontmatter || ""
-                }
-                metadata={proposal.metadata || {}}
-                isExpanded={isContentExpanded}
-                onToggleExpand={setIsContentExpanded}
-                proposalSummary={proposalSummary}
-                proposalSummaryLoading={proposalSummaryLoading}
-                proposalSummaryError={proposalSummaryError}
-                onFetchProposalSummary={fetchProposalSummary}
-                onHideProposalSummary={() => setProposalSummary(null)}
-                showRevisions={showRevisions}
-                onToggleRevisions={handleToggleRevisions}
-                hasRevisions={currentRevision > 1}
-                currentRevision={currentRevision}
-                revisionCount={revisions.length}
-                showDiffHighlights={showDiffHighlights}
-                versionDiffHtml={versionDiffHtml}
-                revisions={revisions}
-                selectedVersion={selectedVersion}
-                onVersionChange={handleVersionChange}
-                onToggleDiff={setShowDiffHighlights}
-                onSummarizeChanges={fetchRevisionSummary}
-                revisionSummary={revisionSummary}
-                revisionSummaryLoading={revisionSummaryLoading}
-                revisionSummaryError={revisionSummaryError}
-                onHideRevisionSummary={() => setRevisionSummary(null)}
-              />
-            </Card>
-
-            {proposal.replies && proposal.replies.length > 0 && (
+          <div className="grid gap-6 lg:gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
+            <div className="space-y-8 min-h-0">
               <Card className="rounded-2xl border-border/60 shadow-sm">
-                <div
-                  className={`lg:sticky lg:top-16 z-20 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.08)] ${
-                    showReplies ||
-                    (discussionSummary && discussionSummaryVisible)
-                      ? "rounded-t-2xl"
-                      : "rounded-2xl"
-                  }`}
-                >
-                  <CardHeader className="pb-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-2 text-base font-semibold">
-                        <MessagesSquare className="h-5 w-5 text-muted-foreground" />
-                        Discussion
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <Button
-                          onClick={handleDiscussionSummary}
-                          disabled={discussionSummaryLoading}
-                          variant={
-                            discussionSummary && discussionSummaryVisible
-                              ? "outline"
-                              : "default"
-                          }
-                          size="sm"
-                          className="gap-2 w-full sm:w-auto"
-                        >
-                          {discussionSummaryLoading ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                              Generating...
-                            </>
-                          ) : discussionSummary ? (
-                            discussionSummaryVisible ? (
+                <ProposalContent
+                  content={
+                    versionContent || proposal.contentWithoutFrontmatter || ""
+                  }
+                  metadata={proposal.metadata || {}}
+                  isExpanded={isContentExpanded}
+                  onToggleExpand={setIsContentExpanded}
+                  proposalSummary={proposalSummary}
+                  proposalSummaryLoading={proposalSummaryLoading}
+                  proposalSummaryError={proposalSummaryError}
+                  onFetchProposalSummary={fetchProposalSummary}
+                  onHideProposalSummary={() => setProposalSummary(null)}
+                  showRevisions={showRevisions}
+                  onToggleRevisions={handleToggleRevisions}
+                  hasRevisions={currentRevision > 1}
+                  currentRevision={currentRevision}
+                  revisionCount={revisions.length}
+                  showDiffHighlights={showDiffHighlights}
+                  versionDiffHtml={versionDiffHtml}
+                  revisions={revisions}
+                  selectedVersion={selectedVersion}
+                  onVersionChange={handleVersionChange}
+                  onToggleDiff={setShowDiffHighlights}
+                  onSummarizeChanges={fetchRevisionSummary}
+                  revisionSummary={revisionSummary}
+                  revisionSummaryLoading={revisionSummaryLoading}
+                  revisionSummaryError={revisionSummaryError}
+                  onHideRevisionSummary={() => setRevisionSummary(null)}
+                />
+              </Card>
+
+              {proposal.replies && proposal.replies.length > 0 && (
+                <Card className="rounded-2xl border-border/60 shadow-sm">
+                  <div
+                    className={`lg:sticky lg:top-16 z-20 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.08)] ${
+                      showReplies ||
+                      (discussionSummary && discussionSummaryVisible)
+                        ? "rounded-t-2xl"
+                        : "rounded-2xl"
+                    }`}
+                  >
+                    <CardHeader className="pb-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2 text-base font-semibold">
+                          <MessagesSquare className="h-5 w-5 text-muted-foreground" />
+                          Discussion
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <Button
+                            onClick={handleDiscussionSummary}
+                            disabled={discussionSummaryLoading}
+                            variant={
+                              discussionSummary && discussionSummaryVisible
+                                ? "outline"
+                                : "default"
+                            }
+                            size="sm"
+                            className="gap-2 w-full sm:w-auto"
+                          >
+                            {discussionSummaryLoading ? (
                               <>
-                                <ChevronUp className="h-4 w-4" /> Hide Summary
+                                <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                                Generating...
+                              </>
+                            ) : discussionSummary ? (
+                              discussionSummaryVisible ? (
+                                <>
+                                  <ChevronUp className="h-4 w-4" /> Hide Summary
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-4 w-4" /> Show
+                                  Summary
+                                </>
+                              )
+                            ) : (
+                              <>Summarize</>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowReplies((prev) => !prev)}
+                            className="gap-2 w-full sm:w-auto"
+                          >
+                            {showReplies ? (
+                              <>
+                                <ChevronUp className="h-4 w-4" />
                               </>
                             ) : (
                               <>
-                                <ChevronDown className="h-4 w-4" /> Show Summary
+                                <Glasses className="h-4 w-4" />
                               </>
-                            )
-                          ) : (
-                            <>Summarize</>
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowReplies((prev) => !prev)}
-                          className="gap-2 w-full sm:w-auto"
-                        >
-                          {showReplies ? (
-                            <>
-                              <ChevronUp className="h-4 w-4" /> Hide
-                            </>
-                          ) : (
-                            <>
-                              <Glasses className="h-4 w-4" /> Show
-                            </>
-                          )}{" "}
-                          Replies ({proposal.replies.length})
-                        </Button>
-                      </div>
-                    </div>
-                    {discussionSummaryError && (
-                      <Alert variant="destructive" className="mt-4">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>
-                          {discussionSummaryError}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </CardHeader>
-                </div>
-
-                {(showReplies ||
-                  (discussionSummary && discussionSummaryVisible)) && (
-                  <CardContent className="pt-6 space-y-4">
-                    {discussionSummary && discussionSummaryVisible && (
-                      <div className="space-y-4">
-                        <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
-                          <Markdown
-                            content={discussionSummary.summary}
-                            className="text-sm leading-relaxed"
-                          />
+                            )}{" "}
+                            Replies ({proposal.replies.length})
+                          </Button>
                         </div>
-                        {(() => {
-                          const expectations = extractExpectationsFromProposal(discussionSummary);
-                          return (
-                            <VerificationProof
-                              verification={discussionSummary.verification ?? undefined}
-                              verificationId={
-                                discussionSummary.verificationId ?? undefined
-                              }
-                              model={discussionSummary.model ?? undefined}
-                              nonce={expectations.nonce ?? undefined}
-                              expectedArch={expectations.arch ?? undefined}
-                              expectedDeviceCertHash={expectations.deviceCertHash ?? undefined}
-                              expectedRimHash={expectations.rimHash ?? undefined}
-                              expectedUeid={expectations.ueid ?? undefined}
-                              expectedMeasurements={expectations.measurements ?? undefined}
+                      </div>
+                      {discussionSummaryError && (
+                        <Alert variant="destructive" className="mt-4">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            {discussionSummaryError}
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </CardHeader>
+                  </div>
+
+                  {(showReplies ||
+                    (discussionSummary && discussionSummaryVisible)) && (
+                    <CardContent className="pt-6 space-y-4">
+                      {discussionSummary && discussionSummaryVisible && (
+                        <Alert className="bg-blue-50 border-blue-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="secondary">
+                              Discussion Summary
+                            </Badge>
+                          </div>
+                          <AlertDescription className="space-y-4">
+                            <Markdown
+                              content={discussionSummary.summary}
+                              className="text-sm leading-relaxed"
                             />
-                          );
-                        })()}
-                        <Separator />
-                        <div className="flex items-start gap-2">
-                          <Badge variant="secondary" className="text-xs">
-                            AI Generated
-                          </Badge>
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            This is an AI-generated summary. Read the full
-                            discussion for complete context.
-                          </p>
-                        </div>
-                      </div>
-                    )}
+                            {(() => {
+                              const expectations =
+                                extractExpectationsFromProposal(
+                                  discussionSummary
+                                );
+                              return (
+                                <VerificationProof
+                                  verification={
+                                    discussionSummary.verification ?? undefined
+                                  }
+                                  verificationId={
+                                    discussionSummary.verificationId ??
+                                    undefined
+                                  }
+                                  model={discussionSummary.model ?? undefined}
+                                  nonce={expectations.nonce ?? undefined}
+                                  expectedArch={expectations.arch ?? undefined}
+                                  expectedDeviceCertHash={
+                                    expectations.deviceCertHash ?? undefined
+                                  }
+                                  expectedRimHash={
+                                    expectations.rimHash ?? undefined
+                                  }
+                                  expectedUeid={expectations.ueid ?? undefined}
+                                  expectedMeasurements={
+                                    expectations.measurements ?? undefined
+                                  }
+                                />
+                              );
+                            })()}
+                          </AlertDescription>
+                        </Alert>
+                      )}
 
-                    {showReplies && (
-                      <div className="space-y-4">
-                        {proposal.replies.map((reply) => {
-                          const replySummary = replySummaries[reply.id];
-                          return (
-                            <Card key={reply.id} className="bg-muted/50">
-                            <CardContent className="pt-6">
-                              <div className="flex justify-between items-start mb-3 text-sm text-muted-foreground">
-                                <div className="flex items-center gap-3">
-                                  {reply.avatar_template ? (
-                                    /* eslint-disable-next-line @next/next/no-img-element */
-                                    <img
-                                      src={`${DISCOURSE_BASE_URL}${reply.avatar_template.replace(
-                                        "{size}",
-                                        "48"
-                                      )}`}
-                                      alt={`${reply.username} avatar`}
-                                      className="w-10 h-10 rounded-full"
-                                      onError={(e) => {
-                                        // Fallback to initials if image fails to load
-                                        const target =
-                                          e.target as HTMLImageElement;
-                                        target.style.display = "none";
-                                        if (target.nextElementSibling) {
-                                          (
-                                            target.nextElementSibling as HTMLElement
-                                          ).style.display = "flex";
-                                        }
-                                      }}
-                                    />
-                                  ) : null}
+                      {showReplies && (
+                        <div className="space-y-4">
+                          {proposal.replies.map((reply) => {
+                            const replySummary = replySummaries[reply.id];
+                            return (
+                              <Card key={reply.id} className="bg-muted/50">
+                                <CardContent className="pt-6">
+                                  <div className="flex justify-between items-start mb-3 text-sm text-muted-foreground">
+                                    <div className="flex items-center gap-3">
+                                      {reply.avatar_template ? (
+                                        /* eslint-disable-next-line @next/next/no-img-element */
+                                        <img
+                                          src={`${DISCOURSE_BASE_URL}${reply.avatar_template.replace(
+                                            "{size}",
+                                            "48"
+                                          )}`}
+                                          alt={`${reply.username} avatar`}
+                                          className="w-10 h-10 rounded-full"
+                                          onError={(e) => {
+                                            // Fallback to initials if image fails to load
+                                            const target =
+                                              e.target as HTMLImageElement;
+                                            target.style.display = "none";
+                                            if (target.nextElementSibling) {
+                                              (
+                                                target.nextElementSibling as HTMLElement
+                                              ).style.display = "flex";
+                                            }
+                                          }}
+                                        />
+                                      ) : null}
+                                      <div
+                                        className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary"
+                                        style={{
+                                          display: reply.avatar_template
+                                            ? "none"
+                                            : "flex",
+                                        }}
+                                      >
+                                        {reply.username
+                                          .substring(0, 2)
+                                          .toUpperCase()}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-foreground">
+                                          @{reply.username}
+                                        </span>
+                                        <span className="ml-2">
+                                          #{reply.post_number}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      {new Date(
+                                        reply.created_at
+                                      ).toLocaleDateString("en-US", {
+                                        year: "numeric",
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </div>
+                                  </div>
+
                                   <div
-                                    className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary"
-                                    style={{
-                                      display: reply.avatar_template
-                                        ? "none"
-                                        : "flex",
-                                    }}
-                                  >
-                                    {reply.username
-                                      .substring(0, 2)
-                                      .toUpperCase()}
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold text-foreground">
-                                      @{reply.username}
-                                    </span>
-                                    <span className="ml-2">
-                                      #{reply.post_number}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div>
-                                  {new Date(
-                                    reply.created_at
-                                  ).toLocaleDateString("en-US", {
-                                    year: "numeric",
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </div>
-                              </div>
-
-                              <div
-                                className="prose prose-sm max-w-none mb-3
+                                    className="prose prose-sm max-w-none mb-3
                                 [&_aside.quote]:border-l-4 [&_aside.quote]:border-primary/30 [&_aside.quote]:pl-4 [&_aside.quote]:py-2 [&_aside.quote]:bg-muted/30 [&_aside.quote]:rounded-r [&_aside.quote]:my-3
                                 [&_aside.quote_.title]:flex [&_aside.quote_.title]:items-center [&_aside.quote_.title]:gap-2 [&_aside.quote_.title]:mb-2 [&_aside.quote_.title]:font-semibold [&_aside.quote_.title]:text-sm [&_aside.quote_.title]:text-foreground
                                 [&_aside.quote_img.avatar]:w-6 [&_aside.quote_img.avatar]:h-6 [&_aside.quote_img.avatar]:rounded-full [&_aside.quote_img.avatar]:inline-block
                                 [&_img.emoji]:inline [&_img.emoji]:align-middle [&_img.emoji]:w-5 [&_img.emoji]:h-5 [&_img.emoji]:mx-0"
-                                dangerouslySetInnerHTML={{
-                                  __html: DOMPurify.sanitize(
-                                    reply.cooked
-                                      .replace(
-                                        /href="\/u\//g,
-                                        `href="${DISCOURSE_BASE_URL}/u/"`
-                                      )
-                                      .replace(
-                                        /href="\/t\//g,
-                                        `href="${DISCOURSE_BASE_URL}/t/"`
-                                      )
-                                      .replace(
-                                        /href="\/c\//g,
-                                        `href="${DISCOURSE_BASE_URL}/c/"`
-                                      )
-                                      .replace(
-                                        /src="\/user_avatar\//g,
-                                        `src="${DISCOURSE_BASE_URL}/user_avatar/"`
+                                    dangerouslySetInnerHTML={{
+                                      __html: DOMPurify.sanitize(
+                                        reply.cooked
+                                          .replace(
+                                            /href="\/u\//g,
+                                            `href="${DISCOURSE_BASE_URL}/u/"`
+                                          )
+                                          .replace(
+                                            /href="\/t\//g,
+                                            `href="${DISCOURSE_BASE_URL}/t/"`
+                                          )
+                                          .replace(
+                                            /href="\/c\//g,
+                                            `href="${DISCOURSE_BASE_URL}/c/"`
+                                          )
+                                          .replace(
+                                            /src="\/user_avatar\//g,
+                                            `src="${DISCOURSE_BASE_URL}/user_avatar/"`
+                                          ),
+                                        {
+                                          ALLOWED_TAGS: [
+                                            "p",
+                                            "br",
+                                            "span",
+                                            "div",
+                                            "strong",
+                                            "em",
+                                            "u",
+                                            "s",
+                                            "del",
+                                            "ins",
+                                            "h1",
+                                            "h2",
+                                            "h3",
+                                            "h4",
+                                            "h5",
+                                            "h6",
+                                            "ul",
+                                            "ol",
+                                            "li",
+                                            "a",
+                                            "img",
+                                            "blockquote",
+                                            "aside",
+                                            "pre",
+                                            "code",
+                                            "table",
+                                            "thead",
+                                            "tbody",
+                                            "tr",
+                                            "th",
+                                            "td",
+                                          ],
+                                          ALLOWED_ATTR: [
+                                            "href",
+                                            "src",
+                                            "alt",
+                                            "title",
+                                            "class",
+                                            "style",
+                                            "data-username",
+                                            "data-post-id",
+                                            "data-user-id",
+                                          ],
+                                          ALLOWED_URI_REGEXP:
+                                            /^(?:https?:|mailto:|data:image\/|\/)/i,
+                                          FORBID_TAGS: [
+                                            "script",
+                                            "iframe",
+                                            "object",
+                                            "embed",
+                                            "form",
+                                            "input",
+                                            "button",
+                                          ],
+                                          FORBID_ATTR: [
+                                            "onerror",
+                                            "onload",
+                                            "onclick",
+                                            "onmouseover",
+                                            "onmouseout",
+                                            "onfocus",
+                                            "onblur",
+                                          ],
+                                        }
                                       ),
-                                    {
-                                      ALLOWED_TAGS: [
-                                        'p', 'br', 'span', 'div', 'strong', 'em', 'u', 's', 'del', 'ins',
-                                        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-                                        'ul', 'ol', 'li',
-                                        'a', 'img',
-                                        'blockquote', 'aside', 'pre', 'code',
-                                        'table', 'thead', 'tbody', 'tr', 'th', 'td',
-                                      ],
-                                      ALLOWED_ATTR: [
-                                        'href', 'src', 'alt', 'title', 'class', 'style',
-                                        'data-username', 'data-post-id', 'data-user-id',
-                                      ],
-                                      ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|data:image\/|\/)/i,
-                                      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
-                                      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur'],
-                                    }
-                                  ),
-                                }}
-                              />
+                                    }}
+                                  />
 
-                              {!replySummary ? (
-                                <>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => fetchReplySummary(reply.id)}
-                                    disabled={replySummaryLoading[reply.id]}
-                                  >
-                                    {replySummaryLoading[reply.id]
-                                      ? "Summarizing..."
-                                      : "Summarize"}
-                                  </Button>
-                                  {replySummaryErrors[reply.id] && (
-                                    <Alert className="bg-red-50 border-red-200 text-red-900 mt-3">
+                                  {!replySummary ? (
+                                    <>
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() =>
+                                          fetchReplySummary(reply.id)
+                                        }
+                                        disabled={replySummaryLoading[reply.id]}
+                                      >
+                                        {replySummaryLoading[reply.id]
+                                          ? "Summarizing..."
+                                          : "Summarize"}
+                                      </Button>
+                                      {replySummaryErrors[reply.id] && (
+                                        <Alert className="bg-red-50 border-red-200 text-red-900 mt-3">
+                                          <AlertDescription>
+                                            {replySummaryErrors[reply.id]}
+                                          </AlertDescription>
+                                        </Alert>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <Alert className="bg-orange-50 border-orange-200 mt-3">
                                       <AlertDescription>
-                                        {replySummaryErrors[reply.id]}
+                                        <div className="flex justify-between items-center mb-2">
+                                          <span className="font-semibold text-orange-900 text-xs">
+                                            Summary
+                                          </span>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 text-xs"
+                                            onClick={() => {
+                                              setReplySummaries((prev) => {
+                                                const newSummaries = {
+                                                  ...prev,
+                                                };
+                                                delete newSummaries[reply.id];
+                                                return newSummaries;
+                                              });
+                                              setReplySummaryErrors((prev) => {
+                                                const next = { ...prev };
+                                                delete next[reply.id];
+                                                return next;
+                                              });
+                                            }}
+                                          >
+                                            Hide
+                                          </Button>
+                                        </div>
+                                        <Markdown
+                                          content={replySummary.summary}
+                                          className="text-xs"
+                                        />
+                                        {(() => {
+                                          const expectations =
+                                            extractExpectationsFromProposal(
+                                              replySummary
+                                            );
+                                          return (
+                                            <VerificationProof
+                                              verification={
+                                                replySummary.verification ??
+                                                undefined
+                                              }
+                                              verificationId={
+                                                replySummary.verificationId ??
+                                                undefined
+                                              }
+                                              model={
+                                                replySummary.model ?? undefined
+                                              }
+                                              nonce={
+                                                expectations.nonce ?? undefined
+                                              }
+                                              expectedArch={
+                                                expectations.arch ?? undefined
+                                              }
+                                              expectedDeviceCertHash={
+                                                expectations.deviceCertHash ??
+                                                undefined
+                                              }
+                                              expectedRimHash={
+                                                expectations.rimHash ??
+                                                undefined
+                                              }
+                                              expectedUeid={
+                                                expectations.ueid ?? undefined
+                                              }
+                                              expectedMeasurements={
+                                                expectations.measurements ??
+                                                undefined
+                                              }
+                                              className="mt-2"
+                                            />
+                                          );
+                                        })()}
                                       </AlertDescription>
                                     </Alert>
                                   )}
-                                </>
-                              ) : (
-                                <Alert className="bg-orange-50 border-orange-200 mt-3">
-                                  <AlertDescription>
-                                    <div className="flex justify-between items-center mb-2">
-                                      <span className="font-semibold text-orange-900 text-xs">
-                                        Summary
-                                      </span>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 text-xs"
-                                        onClick={() => {
-                                          setReplySummaries((prev) => {
-                                            const newSummaries = { ...prev };
-                                            delete newSummaries[reply.id];
-                                            return newSummaries;
-                                          });
-                                          setReplySummaryErrors((prev) => {
-                                            const next = { ...prev };
-                                            delete next[reply.id];
-                                            return next;
-                                          });
-                                        }}
-                                      >
-                                        Hide
-                                      </Button>
-                                    </div>
-                                    <Markdown
-                                      content={replySummary.summary}
-                                  className="text-xs"
-                                />
-                                {(() => {
-                                  const expectations = extractExpectationsFromProposal(
-                                    replySummary
-                                  );
-                                  return (
-                                    <VerificationProof
-                                      verification={replySummary.verification ?? undefined}
-                                      verificationId={
-                                        replySummary.verificationId ?? undefined
-                                      }
-                                      model={replySummary.model ?? undefined}
-                                      nonce={expectations.nonce ?? undefined}
-                                      expectedArch={expectations.arch ?? undefined}
-                                      expectedDeviceCertHash={expectations.deviceCertHash ?? undefined}
-                                      expectedRimHash={expectations.rimHash ?? undefined}
-                                      expectedUeid={expectations.ueid ?? undefined}
-                                      expectedMeasurements={expectations.measurements ?? undefined}
-                                      className="mt-2"
-                                    />
-                                  );
-                                })()}
-                              </AlertDescription>
-                            </Alert>
-                          )}
-                            </CardContent>
-                          </Card>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                )}
-              </Card>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            <div className="lg:sticky lg:top-8 space-y-6">
-              {screeningChecked &&
-                screening &&
-                screening.revisionNumber === selectedVersion && (
-                  <ScreeningBadge
-                    screening={screening}
-                    verification={screening.verification ?? undefined}
-                    verificationId={screening.verificationId ?? undefined}
-                  />
-                )}
-
-              {screeningChecked &&
-                (!screening || screening.revisionNumber !== selectedVersion) &&
-                wallet &&
-                signedAccountId && (
-                  <ScreeningButton
-                    topicId={id as string}
-                    title={proposal.title}
-                    content={proposal.content}
-                    revisionNumber={selectedVersion}
-                    onScreeningComplete={() =>
-                      fetchScreening(id as string, selectedVersion)
-                    }
-                  />
-                )}
-
-              {screeningChecked &&
-                (!screening || screening.revisionNumber !== selectedVersion) &&
-                (!wallet || !signedAccountId) && (
-                  <Card>
-                    <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground">
-                        Connect your NEAR wallet to screen this proposal with AI
-                      </p>
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      )}
                     </CardContent>
-                  </Card>
-                )}
+                  )}
+                </Card>
+              )}
+            </div>
 
-              <ProposalChatbot
-                proposalTitle={proposal.title}
-                proposalContent={proposal.content}
-                proposalId={id as string}
-                replies={proposal.replies ?? []}
-                proposalAuthor={proposal.username}
-              />
+            <div className="space-y-6">
+              <div className="lg:sticky lg:top-8 space-y-6">
+                {screeningChecked &&
+                  screening &&
+                  screening.revisionNumber === selectedVersion && (
+                    <ScreeningBadge
+                      screening={screening}
+                      verification={screening.verification ?? undefined}
+                      verificationId={screening.verificationId ?? undefined}
+                    />
+                  )}
+
+                {screeningChecked &&
+                  (!screening ||
+                    screening.revisionNumber !== selectedVersion) &&
+                  wallet &&
+                  signedAccountId && (
+                    <ScreeningButton
+                      topicId={id as string}
+                      title={proposal.title}
+                      content={proposal.content}
+                      revisionNumber={selectedVersion}
+                      onScreeningComplete={() =>
+                        fetchScreening(id as string, selectedVersion)
+                      }
+                    />
+                  )}
+
+                {screeningChecked &&
+                  (!screening ||
+                    screening.revisionNumber !== selectedVersion) &&
+                  (!wallet || !signedAccountId) && (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <p className="text-sm text-muted-foreground">
+                          Connect NEAR wallet to sign proposal evaluation.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                <ProposalChatbot
+                  proposalTitle={proposal.title}
+                  proposalContent={proposal.content}
+                  proposalId={id as string}
+                  replies={proposal.replies ?? []}
+                  proposalAuthor={proposal.username}
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
     </>
   );
 }

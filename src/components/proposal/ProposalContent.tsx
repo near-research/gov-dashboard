@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
 import { Markdown } from "@/components/proposal/Markdown";
@@ -31,6 +31,9 @@ const FRONTMATTER_FIELDS: Array<{
   { label: "created", key: "created" },
   { label: "requires", key: "requires" },
 ];
+
+const PREVIEW_LINE_COUNT = 3;
+const PREVIEW_CHARACTER_LIMIT = 1200;
 
 interface ProposalContentProps {
   content: string;
@@ -110,6 +113,34 @@ export default function ProposalContent({
     });
   }, [metadata]);
 
+  const previewClampStyle = useMemo<CSSProperties>(
+    () => ({
+      display: "-webkit-box",
+      WebkitBoxOrient: "vertical",
+      WebkitLineClamp: PREVIEW_LINE_COUNT,
+      overflow: "hidden",
+    }),
+    []
+  );
+
+  const previewContent = useMemo(() => {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    if (trimmed.length <= PREVIEW_CHARACTER_LIMIT) {
+      return trimmed;
+    }
+
+    const truncated = trimmed.slice(0, PREVIEW_CHARACTER_LIMIT);
+    const lastSpace = truncated.lastIndexOf(" ");
+    const safeSlice =
+      lastSpace > 0 ? truncated.slice(0, lastSpace).trim() : truncated.trim();
+
+    return `${safeSlice}..`;
+  }, [content]);
+
   return (
     <>
       {/* Global diff styles - always present */}
@@ -133,8 +164,24 @@ export default function ProposalContent({
               <div className="flex items-center gap-3 min-h-[40px]">
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Content
+                  Proposal
                 </CardTitle>
+                <Button
+                  onClick={() => onToggleExpand(!isExpanded)}
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2"
+                >
+                  {isExpanded && (
+                    <>
+                      Hide
+                      <ChevronUp className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2 min-h-[40px]">
                 <Button
                   onClick={() => {
                     if (proposalSummary) {
@@ -154,9 +201,6 @@ export default function ProposalContent({
                     ? "Hide Summary"
                     : "Summarize"}
                 </Button>
-              </div>
-
-              <div className="flex items-center gap-2 min-h-[40px]">
                 {hasRevisions && (
                   <Button
                     onClick={onToggleRevisions}
@@ -165,28 +209,9 @@ export default function ProposalContent({
                     className="gap-2"
                   >
                     <History className="h-4 w-4" />
-                    {showRevisions ? "Hide" : "Show"} Revisions (
-                    {currentRevision - 1})
+                    Revisions ({currentRevision - 1})
                   </Button>
                 )}
-                <Button
-                  onClick={() => onToggleExpand(!isExpanded)}
-                  variant="secondary"
-                  size="sm"
-                  className="gap-2"
-                >
-                  {isExpanded ? (
-                    <>
-                      Hide Content
-                      <ChevronUp className="h-4 w-4" />
-                    </>
-                  ) : (
-                    <>
-                      Show Content
-                      <ChevronDown className="h-4 w-4" />
-                    </>
-                  )}
-                </Button>
               </div>
             </div>
             {proposalSummaryError && (
@@ -274,15 +299,24 @@ export default function ProposalContent({
             />
           </div>
         ) : (
-          <div className="flex justify-center pt-2">
-            <Button
-              onClick={() => onToggleExpand(true)}
-              variant="secondary"
-              className="gap-2"
-            >
-              Read More
-              <ChevronDown className="h-4 w-4" />
-            </Button>
+          <div className="space-y-4">
+            {previewContent && (
+              <Markdown
+                content={previewContent}
+                className="prose-sm text-muted-foreground"
+                style={previewClampStyle}
+              />
+            )}
+            <div className="flex justify-center pt-2">
+              <Button
+                onClick={() => onToggleExpand(true)}
+                variant="ghost"
+                className="gap-2"
+              >
+                Read More
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>
