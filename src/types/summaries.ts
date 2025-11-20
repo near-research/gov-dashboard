@@ -1,4 +1,13 @@
 import type { VerificationMetadata } from "@/types/agui-events";
+import type { PartialExpectations } from "@/utils/attestation-expectations";
+import type { VerificationProofResponse } from "@/types/verification";
+
+export interface SummaryProof extends PartialExpectations {
+  requestHash?: string;
+  responseHash?: string;
+  nonce?: string;
+}
+
 export interface DiscussionEngagementSummary {
   totalLikes: number;
   totalReplies: number;
@@ -16,6 +25,8 @@ export interface TextSummaryResponse {
   model?: string | null;
   verification?: VerificationMetadata | null;
   verificationId?: string | null;
+  proof?: SummaryProof | null;
+  remoteProof?: VerificationProofResponse | null;
 }
 
 export interface ProposalSummaryResponse extends TextSummaryResponse {
@@ -30,9 +41,7 @@ export interface ProposalSummaryResponse extends TextSummaryResponse {
   generatedAt: number;
 }
 
-export interface DiscussionSummaryResponse {
-  success: true;
-  summary: string;
+export interface DiscussionSummaryResponse extends TextSummaryResponse {
   topicId: string;
   title: string;
   replyCount: number;
@@ -40,15 +49,9 @@ export interface DiscussionSummaryResponse {
   engagement?: DiscussionEngagementSummary;
   generatedAt: number;
   cached: boolean;
-  cacheAge?: number;
-  model?: string | null;
-  verification?: VerificationMetadata | null;
-  verificationId?: string | null;
 }
 
-export interface ReplySummaryResponse {
-  success: true;
-  summary: string;
+export interface ReplySummaryResponse extends TextSummaryResponse {
   replyId: string;
   author: string;
   postNumber: number;
@@ -59,15 +62,9 @@ export interface ReplySummaryResponse {
   truncated: boolean;
   generatedAt: number;
   cached: boolean;
-  cacheAge?: number;
-  model?: string | null;
-  verification?: VerificationMetadata | null;
-  verificationId?: string | null;
 }
 
-export interface ProposalRevisionSummaryResponse {
-  success: true;
-  summary: string;
+export interface ProposalRevisionSummaryResponse extends TextSummaryResponse {
   topicId: string;
   postId: number;
   author: string;
@@ -84,15 +81,9 @@ export interface ProposalRevisionSummaryResponse {
   truncated: boolean;
   generatedAt: number;
   cached: boolean;
-  cacheAge?: number;
-  model?: string | null;
-  verification?: VerificationMetadata | null;
-  verificationId?: string | null;
 }
 
-export interface PostRevisionSummaryResponse {
-  success: true;
-  summary: string;
+export interface PostRevisionSummaryResponse extends TextSummaryResponse {
   postId: string;
   author: string;
   currentVersion: number;
@@ -101,8 +92,4 @@ export interface PostRevisionSummaryResponse {
   truncated: boolean;
   generatedAt: number;
   cached: boolean;
-  cacheAge?: number;
-  model?: string | null;
-  verification?: VerificationMetadata | null;
-  verificationId?: string | null;
 }

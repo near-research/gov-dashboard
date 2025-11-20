@@ -722,17 +722,46 @@ export default function ProposalDetail() {
                                     undefined
                                   }
                                   model={discussionSummary.model ?? undefined}
-                                  nonce={expectations.nonce ?? undefined}
-                                  expectedArch={expectations.arch ?? undefined}
+                                  requestHash={
+                                    discussionSummary.proof?.requestHash ??
+                                    undefined
+                                  }
+                                  responseHash={
+                                    discussionSummary.proof?.responseHash ??
+                                    undefined
+                                  }
+                                  nonce={
+                                    discussionSummary.proof?.nonce ??
+                                    expectations.nonce ??
+                                    undefined
+                                  }
+                                  expectedArch={
+                                    discussionSummary.proof?.arch ??
+                                    expectations.arch ??
+                                    undefined
+                                  }
                                   expectedDeviceCertHash={
-                                    expectations.deviceCertHash ?? undefined
+                                    discussionSummary.proof?.deviceCertHash ??
+                                    expectations.deviceCertHash ??
+                                    undefined
                                   }
                                   expectedRimHash={
-                                    expectations.rimHash ?? undefined
+                                    discussionSummary.proof?.rimHash ??
+                                    expectations.rimHash ??
+                                    undefined
                                   }
-                                  expectedUeid={expectations.ueid ?? undefined}
+                                  expectedUeid={
+                                    discussionSummary.proof?.ueid ??
+                                    expectations.ueid ??
+                                    undefined
+                                  }
                                   expectedMeasurements={
-                                    expectations.measurements ?? undefined
+                                    discussionSummary.proof?.measurements ??
+                                    expectations.measurements ??
+                                    undefined
+                                  }
+                                  prefetchedProof={
+                                    discussionSummary.remoteProof ?? undefined
                                   }
                                 />
                               );
@@ -974,28 +1003,51 @@ export default function ProposalDetail() {
                                               model={
                                                 replySummary.model ?? undefined
                                               }
+                                              requestHash={
+                                                replySummary.proof
+                                                  ?.requestHash ?? undefined
+                                              }
+                                              responseHash={
+                                                replySummary.proof
+                                                  ?.responseHash ?? undefined
+                                              }
                                               nonce={
-                                                expectations.nonce ?? undefined
+                                                replySummary.proof?.nonce ??
+                                                expectations.nonce ??
+                                                undefined
                                               }
                                               expectedArch={
-                                                expectations.arch ?? undefined
+                                                replySummary.proof?.arch ??
+                                                expectations.arch ??
+                                                undefined
                                               }
                                               expectedDeviceCertHash={
+                                                replySummary.proof
+                                                  ?.deviceCertHash ??
                                                 expectations.deviceCertHash ??
                                                 undefined
                                               }
                                               expectedRimHash={
+                                                replySummary.proof?.rimHash ??
                                                 expectations.rimHash ??
                                                 undefined
                                               }
                                               expectedUeid={
-                                                expectations.ueid ?? undefined
+                                                replySummary.proof?.ueid ??
+                                                expectations.ueid ??
+                                                undefined
                                               }
                                               expectedMeasurements={
+                                                replySummary.proof
+                                                  ?.measurements ??
                                                 expectations.measurements ??
                                                 undefined
                                               }
                                               className="mt-2"
+                                              prefetchedProof={
+                                                replySummary.remoteProof ??
+                                                undefined
+                                              }
                                             />
                                           );
                                         })()}

@@ -260,6 +260,21 @@ export default function ProposalContent({
                   verification={proposalSummary.verification ?? undefined}
                   verificationId={proposalSummary.verificationId ?? undefined}
                   model={proposalSummary.model ?? undefined}
+                  requestHash={proposalSummary.proof?.requestHash ?? undefined}
+                  responseHash={
+                    proposalSummary.proof?.responseHash ?? undefined
+                  }
+                  nonce={proposalSummary.proof?.nonce ?? undefined}
+                  expectedArch={proposalSummary.proof?.arch ?? undefined}
+                  expectedDeviceCertHash={
+                    proposalSummary.proof?.deviceCertHash ?? undefined
+                  }
+                  expectedRimHash={proposalSummary.proof?.rimHash ?? undefined}
+                  expectedUeid={proposalSummary.proof?.ueid ?? undefined}
+                  expectedMeasurements={
+                    proposalSummary.proof?.measurements ?? undefined
+                  }
+                  prefetchedProof={proposalSummary.remoteProof ?? undefined}
                 />
               </AlertDescription>
             </Alert>

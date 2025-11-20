@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { createHash, randomBytes } from "crypto";
 import { revisionCache, CacheKeys } from "@/utils/cache-utils";
 import { buildRevisionAnalysisPrompt } from "@/lib/prompts/summarizeRevisions";
 import { stripHtml } from "@/utils/html-utils";
@@ -11,11 +12,41 @@ import type {
   RevisionTitleChange,
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
-import type { ProposalRevisionSummaryResponse } from "@/types/summaries";
+import type {
+  ProposalRevisionSummaryResponse,
+  SummaryProof,
+} from "@/types/summaries";
 import {
   extractVerificationMetadata,
   normalizeVerificationPayload,
 } from "@/utils/verification";
+import {
+  registerVerificationSession,
+  updateVerificationHashes,
+} from "@/server/verificationSessions";
+import { getModelExpectations } from "@/server/attestation-cache";
+import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
+import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
+
+const ensureVerificationSession = (
+  verificationId?: string | null,
+  proof?: SummaryProof | null
+) => {
+  if (!verificationId || !proof) return;
+  try {
+    registerVerificationSession(
+      verificationId,
+      proof.nonce || undefined,
+      proof.requestHash || null,
+      proof.responseHash || null
+    );
+  } catch (err) {
+    console.error(
+      "[proposal revision summary] Failed to ensure verification session:",
+      err
+    );
+  }
+};
 
 const proposalRevisionLimiter = createRateLimiter(
   rateLimitConfig.proposalRevisions
@@ -51,6 +82,9 @@ export default async function handler(
   }
 
   const clientId = getClientIdentifier(req);
+  const origin =
+    req.headers.origin ||
+    (req.headers.host ? `http://${req.headers.host}` : undefined);
   const { allowed, remaining, resetTime } =
     proposalRevisionLimiter.check(clientId);
   const secondsUntilReset = Math.max(
@@ -87,8 +121,14 @@ export default async function handler(
     const cached = revisionCache.get(cacheKey);
 
     if (cached) {
+      ensureVerificationSession(cached.verificationId, cached.proof || null);
+      const verification = mergeVerificationStatusFromProof(
+        cached.verification,
+        cached.remoteProof
+      );
       return res.status(200).json({
         ...cached,
+        verification,
         cached: true,
         cacheAge: Math.round((Date.now() - cached.generatedAt) / 1000),
       });
@@ -270,6 +310,29 @@ export default async function handler(
     );
 
     const model = "deepseek-ai/DeepSeek-V3.1";
+    const nearRequest = {
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4,
+      max_tokens: 800,
+    };
+    const requestBody = JSON.stringify(nearRequest);
+    const requestHash = createHash("sha256").update(requestBody).digest("hex");
+    const generatedVerificationId = `summary-${randomBytes(8).toString("hex")}`;
+    const session = registerVerificationSession(
+      generatedVerificationId,
+      undefined,
+      requestHash,
+      null
+    );
+    let expectations: Awaited<ReturnType<typeof getModelExpectations>> | null =
+      null;
+    try {
+      expectations = await getModelExpectations(model);
+    } catch (err) {
+      console.error("[Proposal Revision Summary] Failed to fetch hardware expectations:", err);
+    }
+
     const summaryResponse = await fetch(
       "https://cloud-api.near.ai/v1/chat/completions",
       {
@@ -277,13 +340,10 @@ export default async function handler(
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          "X-Verification-Id": generatedVerificationId,
+          "X-Nonce": session.nonce,
         },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.4,
-          max_tokens: 800,
-        }),
+        body: requestBody,
       }
     );
 
@@ -291,13 +351,33 @@ export default async function handler(
       throw new Error(`AI summary failed: ${summaryResponse.status}`);
     }
 
-    const data = await summaryResponse.json();
+    const responseText = await summaryResponse.text();
+    const responseHash = createHash("sha256")
+      .update(responseText)
+      .digest("hex");
+    const data = JSON.parse(responseText);
     const summary: string = data.choices[0]?.message?.content ?? "";
     const rawVerification = extractVerificationMetadata(data);
-    const { verification, verificationId } = normalizeVerificationPayload(
-      rawVerification,
-      data?.id || data?.choices?.[0]?.id
-    );
+    const nearMessageId =
+      data?.id || data?.choices?.[0]?.id || generatedVerificationId;
+    const { verification, verificationId: normalizedVerificationId } =
+      normalizeVerificationPayload(rawVerification, nearMessageId);
+    const effectiveVerificationId =
+      normalizedVerificationId || generatedVerificationId;
+
+    updateVerificationHashes(generatedVerificationId, {
+      requestHash,
+      responseHash,
+    });
+
+    if (effectiveVerificationId !== generatedVerificationId) {
+      registerVerificationSession(
+        effectiveVerificationId,
+        session.nonce,
+        requestHash,
+        responseHash
+      );
+    }
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
@@ -329,14 +409,44 @@ export default async function handler(
       cached: false,
       model,
       verification,
-      verificationId,
+      verificationId: effectiveVerificationId,
+      proof: {
+        requestHash,
+        responseHash,
+        nonce: session.nonce,
+        arch: expectations?.arch,
+        deviceCertHash: expectations?.deviceCertHash,
+        rimHash: expectations?.rimHash,
+        ueid: expectations?.ueid,
+        measurements: expectations?.measurements,
+      },
     };
+
+    const remoteProof = await prefetchVerificationProof(origin, {
+      verificationId: effectiveVerificationId,
+      model,
+      requestHash,
+      responseHash,
+      nonce: session.nonce,
+      expectedArch: expectations?.arch ?? null,
+      expectedDeviceCertHash: expectations?.deviceCertHash ?? null,
+      expectedRimHash: expectations?.rimHash ?? null,
+      expectedUeid: expectations?.ueid ?? null,
+      expectedMeasurements: expectations?.measurements ?? null,
+    });
+    if (remoteProof) {
+      response.remoteProof = remoteProof;
+      response.verification =
+        mergeVerificationStatusFromProof(response.verification, remoteProof) ??
+        response.verification;
+    }
 
     // ===================================================================
     // STORE IN CACHE (15 minute TTL)
     // ===================================================================
     revisionCache.set(cacheKey, response);
 
+    ensureVerificationSession(response.verificationId, response.proof);
     return res.status(200).json(response);
   } catch (error: unknown) {
     console.error("[Proposal Revisions] Error:", error);

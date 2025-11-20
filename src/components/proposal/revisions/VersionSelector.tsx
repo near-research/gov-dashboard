@@ -185,6 +185,21 @@ export default function VersionSelector({
                   verification={revisionSummary.verification ?? undefined}
                   verificationId={revisionSummary.verificationId ?? undefined}
                   model={revisionSummary.model ?? undefined}
+                  requestHash={revisionSummary.proof?.requestHash ?? undefined}
+                  responseHash={
+                    revisionSummary.proof?.responseHash ?? undefined
+                  }
+                  nonce={revisionSummary.proof?.nonce ?? undefined}
+                  expectedArch={revisionSummary.proof?.arch ?? undefined}
+                  expectedDeviceCertHash={
+                    revisionSummary.proof?.deviceCertHash ?? undefined
+                  }
+                  expectedRimHash={revisionSummary.proof?.rimHash ?? undefined}
+                  expectedUeid={revisionSummary.proof?.ueid ?? undefined}
+                  expectedMeasurements={
+                    revisionSummary.proof?.measurements ?? undefined
+                  }
+                  prefetchedProof={revisionSummary.remoteProof ?? undefined}
                   className="mt-3"
                 />
               </AlertDescription>
