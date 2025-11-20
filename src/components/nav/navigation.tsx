@@ -70,7 +70,7 @@ export const Navigation = () => {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            {/* Create Proposal Button - Hidden when on new proposal page */}
+            {/* Draft Proposal Button - Hidden when on new proposal page */}
             {!isOnNewProposalPage && (
               <Button
                 size="sm"
@@ -78,7 +78,7 @@ export const Navigation = () => {
                 className="gap-2"
               >
                 <Plus className="h-4 w-4" />
-                Create
+                Draft
               </Button>
             )}
 

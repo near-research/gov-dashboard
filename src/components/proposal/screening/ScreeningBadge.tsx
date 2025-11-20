@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { Evaluation } from "@/types/evaluation";
 import type { VerificationMetadata } from "@/types/agui-events";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ChevronDown, CheckCircle2, XCircle, Info } from "lucide-react";
 import { VerificationProof } from "@/components/verification/VerificationProof";
+import { Markdown } from "@/components/proposal/Markdown";
 
 interface ScreeningBadgeProps {
   screening: {
@@ -73,12 +73,12 @@ const QUALITY_CRITERIA = [
 const ATTENTION_CRITERIA = [
   {
     key: "relevant",
-    label: "Relevant",
+    label: "Relevance",
     description: "Proposal directly relates to the NEAR ecosystem.",
   },
   {
     key: "material",
-    label: "Material",
+    label: "Impact",
     description: "Proposal has high potential impact and/or risks.",
   },
 ];
@@ -88,9 +88,12 @@ export function ScreeningBadge({
   verification,
   verificationId,
 }: ScreeningBadgeProps) {
-  const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(
-    new Set()
-  );
+  const [expandedQualityCriteria, setExpandedQualityCriteria] = useState<
+    Set<string>
+  >(new Set());
+  const [expandedAttentionCriteria, setExpandedAttentionCriteria] = useState<
+    Set<string>
+  >(new Set());
   const [isExpanded, setIsExpanded] = useState(true);
 
   const formatScore = (score: number) => `${(score * 100).toFixed(0)}%`;
@@ -133,29 +136,11 @@ export function ScreeningBadge({
     );
   }, 0);
 
-  const getAttentionSummaryTone = () => {
-    if (screening.attentionScore >= 0.66) {
-      return {
-        card: "bg-[#5CEFBB] border border-[#5CEFBB] text-black",
-        label: "text-black",
-        value: "text-black",
-      };
-    }
-    if (screening.attentionScore >= 0.33) {
-      return {
-        card: "bg-[#6BE7E2] border border-[#6BE7E2]",
-        label: "text-black",
-        value: "text-black",
-      };
-    }
-    return {
-      card: "bg-[#FFBEB5] border border-[#FFBEB5]",
-      label: "text-black",
-      value: "text-black",
-    };
+  const getScoreTone = (score: number) => {
+    if (score >= 0.66) return "bg-emerald-100/80";
+    if (score >= 0.33) return "bg-cyan-100/80";
+    return "bg-rose-100/80";
   };
-
-  const attentionSummaryTone = getAttentionSummaryTone();
 
   return (
     <TooltipProvider>
@@ -202,30 +187,30 @@ export function ScreeningBadge({
             {/* Score Summary */}
             <div className="grid grid-cols-2 gap-4">
               <Card
-                className={
-                  screening.qualityScore >= 0.66
-                    ? "bg-[#5CEFBB] border border-[#5CEFBB] text-black"
-                    : screening.qualityScore >= 0.33
-                    ? "bg-[#FFEAC2] border border-[#FFEAC2] text-black"
-                    : "bg-[#FFBEB5] border border-[#FFBEB5] text-black"
-                }
+                className={`border-none shadow-sm rounded-2xl ${getScoreTone(
+                  screening.qualityScore
+                )}`}
               >
-                <CardContent className="pt-6 space-y-2">
-                  <div className="text-sm font-semibold tracking-wide text-black uppercase">
-                    Quality
+                <CardContent className="px-4 py-3 space-y-1">
+                  <div className="text-xs font-semibold tracking-wide text-black uppercase">
+                    Ready
                   </div>
-                  <div className="text-3xl font-extrabold text-black">
+                  <div className="text-2xl font-semibold text-black">
                     {formatScore(screening.qualityScore)}
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className={attentionSummaryTone.card}>
-                <CardContent className="pt-6 space-y-2">
-                  <div className="text-sm font-semibold tracking-wide text-black uppercase">
-                    Attention
+              <Card
+                className={`border-none shadow-sm rounded-2xl ${getScoreTone(
+                  screening.attentionScore
+                )}`}
+              >
+                <CardContent className="px-4 py-3 space-y-1">
+                  <div className="text-xs font-semibold tracking-wide text-black uppercase">
+                    Aligned
                   </div>
-                  <div className="text-3xl font-extrabold text-black">
+                  <div className="text-2xl font-semibold text-black">
                     {formatScore(screening.attentionScore)}
                   </div>
                 </CardContent>
@@ -236,33 +221,29 @@ export function ScreeningBadge({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-black uppercase tracking-wide">
-                  Quality Criteria
+                  Criteria
                 </h4>
                 <span className="text-sm text-black">
                   {qualityPassed} / {QUALITY_CRITERIA.length}
                 </span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {QUALITY_CRITERIA.map((criterion) => {
                   const result = getCriterionResult(criterion.key, "quality");
                   if (!result) return null;
 
-                  const qualityColor = result.pass
-                    ? "bg-[#5CEFBB] border border-[#5CEFBB] text-black transition-colors hover:bg-[#2EEDAA]"
-                    : "bg-[#FFBEB5] border border-[#FFBEB5] transition-colors hover:bg-[#FF988A]";
-                  const triggerHover = result.pass
-                    ? "hover:bg-[#2eedaa]"
-                    : "hover:bg-[#FF988A]";
-                  const detailTextColor = result.pass
-                    ? "text-black"
-                    : "text-black";
+                  const cardTone = result.pass
+                    ? "bg-emerald-100/80"
+                    : "bg-rose-100/80";
+
+                  const isOpen = expandedQualityCriteria.has(criterion.key);
 
                   return (
                     <Collapsible
                       key={criterion.key}
-                      open={expandedCriteria.has(criterion.key)}
+                      open={isOpen}
                       onOpenChange={(open) => {
-                        setExpandedCriteria((prev) => {
+                        setExpandedQualityCriteria((prev) => {
                           const next = new Set(prev);
                           if (open) {
                             next.add(criterion.key);
@@ -273,55 +254,51 @@ export function ScreeningBadge({
                         });
                       }}
                     >
-                      <Card className={`${qualityColor} h-full`}>
-                        <CollapsibleTrigger asChild>
-                          <div className="group w-full cursor-pointer">
-                            <div
-                              className={`flex items-center justify-between p-3 transition-colors rounded-lg ${triggerHover}`}
+                      <Card className={`${cardTone} border-none shadow-sm`}>
+                        <CardContent className="px-4 py-2">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-2 text-sm font-semibold tracking-wide text-black py-1 cursor-pointer"
                             >
-                              <div className="flex items-center gap-2 font-medium text-sm text-black">
-                                {criterion.label}
+                              <div className="flex items-center gap-2">
+                                <span>{criterion.label}</span>
                                 <Tooltip>
-                                  <TooltipTrigger
-                                    asChild
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center justify-center"
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      role="presentation"
+                                      className="inline-flex items-center justify-center cursor-help"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <Info className="h-3.5 w-3.5 text-black/60 hover:text-black transition-colors" />
-                                    </button>
+                                      <Info className="h-3.5 w-3.5 opacity-70" />
+                                    </span>
                                   </TooltipTrigger>
                                   <TooltipContent
                                     side="top"
-                                    className="max-w-xs text-sm"
+                                    className="max-w-xs text-xs"
                                   >
                                     <p>{criterion.description}</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={
-                                    result.pass ? "success" : "destructive"
-                                  }
-                                  className="pointer-events-none"
-                                >
-                                  {result.pass ? "PASS" : "FAIL"}
-                                </Badge>
-                                <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                              </div>
+                              <ChevronDown
+                                className={`h-4 w-4 transition-transform duration-200 ${
+                                  isOpen ? "rotate-180" : ""
+                                }`}
+                              />
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2 data-[state=closed]:mt-0 data-[state=closed]:hidden">
+                            <div className="text-sm leading-relaxed text-black/80">
+                              <Markdown
+                                content={
+                                  result.reason || "No details provided."
+                                }
+                                className="prose prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 [&_ul]:ml-0 [&_ol]:ml-0 [&_ul]:!pl-1 [&_ol]:!pl-1"
+                              />
                             </div>
-                          </div>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <div
-                            className={`px-3 pb-3 text-sm ${detailTextColor}`}
-                          >
-                            {result.reason || "No details provided."}
-                          </div>
-                        </CollapsibleContent>
+                          </CollapsibleContent>
+                        </CardContent>
                       </Card>
                     </Collapsible>
                   );
@@ -329,53 +306,42 @@ export function ScreeningBadge({
               </div>
             </div>
 
-            {/* Attention Scores */}
+            {/* Alignment Scores */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-black uppercase tracking-wide">
-                  Attention Scores
+                <h4 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+                  Alignment
                 </h4>
-                <span className="text-sm text-black">
+                <span className="text-sm text-muted-foreground">
                   {attentionPoints} / 4
                 </span>
               </div>
-              <div className="space-y-2">
+
+              <div className="space-y-3">
                 {ATTENTION_CRITERIA.map((criterion) => {
                   const result = getCriterionResult(criterion.key, "attention");
                   if (!result) return null;
 
-                  // Type Guard
                   const attentionResult = result as {
                     pass: boolean;
                     reason: string;
                     attentionScore: "high" | "medium" | "low";
                   };
 
-                  const scoreColor =
+                  const cardTone =
                     attentionResult.attentionScore === "high"
-                      ? "bg-[#5CEFBB] border border-[#5CEFBB] text-black transition-colors hover:bg-[#2EEDAA]"
+                      ? "bg-emerald-100/80"
                       : attentionResult.attentionScore === "medium"
-                      ? "bg-[#6BE7E2] border border-[#6BE7E2] text-black transition-colors hover:bg-[#3EDFD9]"
-                      : "bg-[#FFBEB5] border border-[#FFBEB5] transition-colors hover:bg-[#FF988A]";
-                  const triggerHover =
-                    attentionResult.attentionScore === "high"
-                      ? "hover:bg-[#2eedaa]"
-                      : attentionResult.attentionScore === "medium"
-                      ? "hover:bg-[#3EDFD9]"
-                      : "hover:bg-[#FF988A]";
-                  const detailTextColor =
-                    attentionResult.attentionScore === "high"
-                      ? "text-black"
-                      : attentionResult.attentionScore === "medium"
-                      ? "text-black"
-                      : "text-black";
+                      ? "bg-cyan-100/80"
+                      : "bg-rose-100/80";
+                  const isOpen = expandedAttentionCriteria.has(criterion.key);
 
                   return (
                     <Collapsible
                       key={criterion.key}
-                      open={expandedCriteria.has(criterion.key)}
+                      open={isOpen}
                       onOpenChange={(open) => {
-                        setExpandedCriteria((prev) => {
+                        setExpandedAttentionCriteria((prev) => {
                           const next = new Set(prev);
                           if (open) {
                             next.add(criterion.key);
@@ -386,70 +352,60 @@ export function ScreeningBadge({
                         });
                       }}
                     >
-                      <Card className={`${scoreColor} h-full`}>
-                        <CollapsibleTrigger asChild>
-                          <div className="group w-full cursor-pointer">
-                            <div
-                              className={`flex items-center justify-between p-3 rounded-lg transition-colors ${triggerHover}`}
+                      <Card className={`${cardTone} border-none shadow-sm`}>
+                        <CardContent className="px-4 py-2">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-2 text-sm font-semibold tracking-wide text-black py-1 cursor-pointer"
                             >
-                              <div className="flex items-center gap-2 font-medium text-sm text-black">
-                                {criterion.label}
+                              <div className="flex items-center gap-2">
+                                <span>{criterion.label}</span>
                                 <Tooltip>
-                                  <TooltipTrigger
-                                    asChild
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center justify-center"
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      role="presentation"
+                                      className="inline-flex items-center justify-center cursor-help"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <Info className="h-3.5 w-3.5 text-black/60 hover:text-black transition-colors" />
-                                    </button>
+                                      <Info className="h-3.5 w-3.5 opacity-70" />
+                                    </span>
                                   </TooltipTrigger>
                                   <TooltipContent
                                     side="top"
-                                    className="max-w-xs text-sm"
+                                    className="max-w-xs text-xs"
                                   >
                                     <p>{criterion.description}</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={
-                                    attentionResult.attentionScore === "high"
-                                      ? "success"
-                                      : attentionResult.attentionScore ===
-                                        "medium"
-                                      ? "secondary"
-                                      : "destructive"
-                                  }
-                                  className={`pointer-events-none ${
-                                    attentionResult.attentionScore === "medium"
-                                      ? "bg-[#008F8A] text-white border-transparent"
-                                      : ""
-                                  }`}
-                                >
-                                  {attentionResult.attentionScore?.toUpperCase()}
-                                </Badge>
-                                <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                              </div>
+                              <ChevronDown
+                                className={`h-4 w-4 transition-transform duration-200 ${
+                                  isOpen ? "rotate-180" : ""
+                                }`}
+                              />
+                            </button>
+                          </CollapsibleTrigger>
+
+                          <CollapsibleContent className="mt-2 data-[state=closed]:mt-0 data-[state=closed]:hidden">
+                            <div className="text-sm leading-relaxed text-black/80">
+                              <Markdown
+                                content={
+                                  attentionResult.reason ||
+                                  "No details provided."
+                                }
+                                className="prose prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 [&_ul]:ml-0 [&_ol]:ml-0 [&_ul]:!pl-1 [&_ol]:!pl-1"
+                              />
                             </div>
-                          </div>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <div
-                            className={`px-3 pb-3 text-sm ${detailTextColor}`}
-                          >
-                            {attentionResult.reason || "No details provided."}
-                          </div>
-                        </CollapsibleContent>
+                          </CollapsibleContent>
+                        </CardContent>
                       </Card>
                     </Collapsible>
                   );
                 })}
               </div>
             </div>
+
             {(verification || verificationId) && (
               <VerificationProof
                 verification={verification}

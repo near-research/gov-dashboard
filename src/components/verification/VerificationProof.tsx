@@ -922,14 +922,7 @@ export function VerificationProof({
     if (verificationState.overall === "verified") return "verified";
     if (verificationState.overall === "failed") return "failed";
     return "pending";
-  }, [
-    loading,
-    independentVerification?.status,
-    verificationState.overall,
-    verification?.status,
-    remoteProof,
-    verification,
-  ]);
+  }, [loading, independentVerification?.status, verificationState.overall, remoteProof, verification]);
 
   const verificationSections = useMemo(() => {
     const steps = verificationState.steps;

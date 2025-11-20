@@ -160,6 +160,17 @@ async function ensureInitialized() {
 
         const nearConnector = new NearConnector({
           network: nearConfig.networkId,
+          walletConnect: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+            ? {
+                projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+                metadata: {
+                  name: "NEAR Governance Dashboard",
+                  description: "AI-powered governance dashboard for NEAR community",
+                  url: typeof window !== "undefined" ? window.location.origin : "https://gov.near.org",
+                  icons: typeof window !== "undefined" ? [`${window.location.origin}/near-logo.svg`] : [],
+                },
+              }
+            : undefined,
         });
         const rpcProvider = new JsonRpcProvider({
           url: nearConfig.rpcUrl,

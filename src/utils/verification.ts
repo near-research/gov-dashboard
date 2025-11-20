@@ -158,7 +158,6 @@ export const normalizeVerificationPayload = (
   // Server-side only: generate and attach a nonce bound to this verificationId.
   if (typeof window === "undefined" && verificationId) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { registerVerificationSession } = require("@/server/verificationSessions") as typeof import("@/server/verificationSessions");
       const session = registerVerificationSession(verificationId);
       if (normalized && !normalized.nonce) {

@@ -127,7 +127,7 @@ export function HardwareAttestationPanel({
                       <Gpu className="h-4 w-4 text-emerald-600" />
                       <div className="min-w-0">
                         <p className="text-xs font-semibold leading-tight">
-                          'NVIDIA Payload'
+                          NVIDIA Payload
                         </p>
                       </div>
                     </div>
