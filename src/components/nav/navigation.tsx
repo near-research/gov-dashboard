@@ -13,15 +13,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useNear } from "@/hooks/useNear";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 import { Loader2, LogOut, User, Plus } from "lucide-react";
 import NearLogo from "/public/near-logo.svg";
 
 export const Navigation = () => {
   const router = useRouter();
   const { wallet, signedAccountId, loading, signIn, signOut } = useNear();
+  const track = useGovernanceAnalytics();
 
   const handleSignIn = async () => {
     console.log("Connect Wallet clicked", { wallet, signedAccountId, loading });
+    track("wallet_connect_clicked");
 
     try {
       console.log("Attempting to sign in...");
@@ -33,11 +36,15 @@ export const Navigation = () => {
         error instanceof Error
           ? error.message
           : "Failed to connect wallet. Please try again.";
+      track("wallet_connect_failed", {
+        props: { message },
+      });
       toast.error(message);
     }
   };
 
   const handleSignOut = async () => {
+    track("wallet_disconnect_clicked");
     try {
       await signOut();
     } catch (error) {
@@ -49,7 +56,6 @@ export const Navigation = () => {
     return accountId.slice(0, 2).toUpperCase();
   };
 
-  // Check if we're on the new proposal page
   const isOnNewProposalPage = router.pathname === "/proposals/new";
 
   return (
@@ -70,7 +76,7 @@ export const Navigation = () => {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            {/* Draft Proposal Button - Hidden when on new proposal page */}
+            {/* Draft Button */}
             {!isOnNewProposalPage && (
               <Button
                 size="sm"

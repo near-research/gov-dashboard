@@ -1,4 +1,6 @@
 // components/chat/Chat.tsx
+"use client";
+
 import { useState, useRef, useEffect, useMemo, useReducer } from "react";
 import MarkdownIt from "markdown-it";
 import { toast } from "sonner";
@@ -18,12 +20,12 @@ import {
   type AgentUIEvent,
   type MessageUIEvent,
   type MessageProof,
-  type ToolCallStatus,
 } from "@/types/agent-ui";
 import type { RemoteProof } from "@/components/verification/VerificationProof";
 import { AGENT_MODEL, buildProposalAgentRequest } from "@/utils/agent-tools";
 import { normalizeSignaturePayload } from "@/utils/verification";
 import { extractHashesFromSignedText } from "@/utils/request-hash";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 
 type AgentRole = "user" | "assistant" | "system";
 
@@ -147,7 +149,7 @@ export const eventsReducer = (
       const nextById = { ...state.byId };
       let nextOrder = state.order;
 
-      updatedEvents.forEach((event, index) => {
+      updatedEvents.forEach((event) => {
         const existing = state.byId[event.id];
         if (!existing) {
           nextOrder = [...nextOrder, event.id];
@@ -183,7 +185,9 @@ export const selectConversationHistory = (
       const mappedRole = mapMessageRoleToAgentRole(event.role);
       if (!mappedRole) return null;
       const sanitizedContent =
-        mappedRole === "assistant" ? stripJsonBlocks(event.content) : event.content;
+        mappedRole === "assistant"
+          ? stripJsonBlocks(event.content)
+          : event.content;
       if (!sanitizedContent) return null;
       return { role: mappedRole, content: sanitizedContent };
     })
@@ -213,7 +217,6 @@ const deriveEventsAndHistory = (
   };
 };
 
-
 export const Chat = ({
   model = AGENT_MODEL,
   className = "",
@@ -240,6 +243,8 @@ export const Chat = ({
   const lastUserMessageRef = useRef<string>("");
   const hasHydratedRef = useRef(false);
   const streamingAssistantIdRef = useRef<string | null>(null);
+
+  const track = useGovernanceAnalytics();
 
   const markdown = useMemo(
     () =>
@@ -472,6 +477,16 @@ export const Chat = ({
       eventsState,
       [userEvent]
     );
+
+    // Track message sent
+    track("agent_chat_message_sent", {
+      props: {
+        length: message.length,
+        turn_number: nextTurn,
+        has_history: conversationHistorySnapshot.length > 0,
+      },
+    });
+
     dispatchEvents({ type: "add", event: userEvent });
 
     setIsLoading(true);
@@ -499,6 +514,13 @@ export const Chat = ({
     turnNumber: number,
     conversationHistory: Array<{ role: AgentRole; content: string }>
   ) => {
+    // Track run started
+    track("agent_chat_run_started", {
+      props: {
+        turn_number: turnNumber,
+      },
+    });
+
     const assistantEventId = generateEventId();
     let fullContent = "";
     const initialProofData: MessageProof = { stage: "initial_reasoning" };
@@ -536,6 +558,7 @@ export const Chat = ({
         model,
       });
       const requestBodyString = JSON.stringify(requestBody);
+      void requestBodyString; // avoid unused var if not used elsewhere
 
       initialProofData.nonce = nonce;
       initialProofData.verificationId = verificationId;
@@ -664,12 +687,13 @@ export const Chat = ({
       const handleAgentEvent = (event: AGUIEvent) => {
         pendingAguiEvents.push(event);
         switch (event.type) {
-          case EventType.RUN_ERROR:
-      const messageText = event.message || "Agent run failed";
-      setError(messageText);
-      setChatError(messageText);
-      failActiveTools();
+          case EventType.RUN_ERROR: {
+            const messageText = event.message || "Agent run failed";
+            setError(messageText);
+            setChatError(messageText);
+            failActiveTools();
             break;
+          }
           case EventType.TEXT_MESSAGE_CONTENT:
             fullContent += event.delta ?? "";
             break;
@@ -742,10 +766,29 @@ export const Chat = ({
         return;
       }
 
+      // Track successful run
+      track("agent_chat_run_succeeded", {
+        props: {
+          turn_number: turnNumber,
+          response_length: fullContent.length,
+        },
+      });
+
       await delay(100);
     } catch (error) {
       removeEventById(assistantEventId);
       failActiveTools();
+
+      const message =
+        error instanceof Error ? error.message : "Unknown agent error";
+
+      track("agent_chat_run_failed", {
+        props: {
+          turn_number: turnNumber,
+          message: message.slice(0, 120),
+        },
+      });
+
       throw error;
     } finally {
       streamingAssistantIdRef.current = null;
@@ -754,6 +797,12 @@ export const Chat = ({
 
   const clearChat = () => {
     if (window.confirm("Clear chat history?")) {
+      track("agent_chat_cleared", {
+        props: {
+          had_events: events.length > 0,
+        },
+      });
+
       dispatchEvents({ type: "set_all", events: [] });
       setError(null);
       setCurrentTurn(0);
@@ -793,10 +842,16 @@ export const Chat = ({
             <Button
               variant="destructive"
               size="sm"
-              onClick={() =>
-                lastUserMessageRef.current &&
-                handleSend(lastUserMessageRef.current)
-              }
+              onClick={() => {
+                track("agent_chat_retry_clicked", {
+                  props: {
+                    last_error: chatError ?? null,
+                  },
+                });
+                if (lastUserMessageRef.current) {
+                  handleSend(lastUserMessageRef.current);
+                }
+              }}
             >
               Retry
             </Button>

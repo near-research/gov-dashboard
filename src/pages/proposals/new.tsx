@@ -11,9 +11,12 @@ import {
   buildRateLimitMessage,
   extractRateLimitInfo,
 } from "@/utils/rateLimitHelpers";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 
 export default function NewProposalPage() {
   const { signedAccountId } = useNear();
+  const track = useGovernanceAnalytics();
+
   const [title, setTitle] = useState("");
   const [proposal, setProposal] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,6 +45,13 @@ export default function NewProposalPage() {
       setError("Please enter both title and proposal");
       return;
     }
+
+    // track start
+    track("draft_evaluation_started", {
+      props: {
+        content_length: proposal.trim().length,
+      },
+    });
 
     setLoading(true);
     setError("");
@@ -75,6 +85,13 @@ export default function NewProposalPage() {
         }
 
         if (response.status === 429) {
+          track("draft_evaluation_rate_limited", {
+            props: {
+              remaining: rateLimit.remaining ?? null,
+              reset_seconds: rateLimit.resetSeconds ?? null,
+            },
+          });
+
           setError(
             buildRateLimitMessage(response, errorData?.retryAfter ?? null)
           );
@@ -100,9 +117,12 @@ export default function NewProposalPage() {
         } | null;
         expectationsFetchFailed?: boolean;
       } = await response.json();
+
       setResult(data.evaluation);
       setVerificationMeta(data.verification ?? null);
-      setVerificationId(data.verificationId ?? data.verification?.messageId ?? null);
+      setVerificationId(
+        data.verificationId ?? data.verification?.messageId ?? null
+      );
       setModel(data.model ?? null);
       setExpectations(data.expectations ?? null);
 
@@ -111,11 +131,28 @@ export default function NewProposalPage() {
           "[NewProposal] Hardware expectations unavailable - client-side verification may be limited. Server-side verification will still validate the proof."
         );
       }
+
+      // track success
+      track("draft_evaluation_succeeded", {
+        props: {
+          overall_pass: data.evaluation.overallPass,
+          quality_score: data.evaluation.qualityScore,
+          model: data.model ?? "unknown",
+          has_verification: Boolean(data.verification),
+        },
+      });
     } catch (err: unknown) {
       console.error("Evaluation error:", err);
       const message =
         err instanceof Error ? err.message : "Failed to evaluate proposal";
       setError(message);
+
+      // track failure
+      track("draft_evaluation_failed", {
+        props: {
+          message: message.slice(0, 120),
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -200,12 +237,12 @@ export default function NewProposalPage() {
                 verificationId={verificationId ?? undefined}
                 nonce={verificationMeta?.nonce ?? undefined}
                 expectedArch={expectations?.arch ?? undefined}
-                expectedDeviceCertHash={expectations?.deviceCertHash ?? undefined}
+                expectedDeviceCertHash={
+                  expectations?.deviceCertHash ?? undefined
+                }
                 expectedRimHash={expectations?.rimHash ?? undefined}
                 expectedUeid={expectations?.ueid ?? undefined}
-                expectedMeasurements={
-                  expectations?.measurements ?? undefined
-                }
+                expectedMeasurements={expectations?.measurements ?? undefined}
                 autoFetchProof
               />
             </div>

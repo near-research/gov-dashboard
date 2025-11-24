@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
 import type { LatestPostsResponse } from "@/types/discourse";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 
 type Post = LatestPostsResponse["latest_posts"][number] & {
   near_wallet?: string;
@@ -14,12 +15,20 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const track = useGovernanceAnalytics();
 
   useEffect(() => {
     fetchProposals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchProposals = async () => {
+    setLoading(true);
+    setError("");
+
+    // track request start
+    track("home_latest_proposals_requested");
+
     try {
       const response = await fetch("/api/discourse/latest");
 
@@ -28,11 +37,26 @@ export default function Home() {
       }
 
       const data: LatestPostsResponse = await response.json();
-      setPosts(data.latest_posts || []);
+      const latestPosts = data.latest_posts || [];
+      setPosts(latestPosts);
+
+      // track success
+      track("home_latest_proposals_succeeded", {
+        props: {
+          count: latestPosts.length,
+        },
+      });
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Failed to fetch proposals";
       setError(message);
+
+      // track failure
+      track("home_latest_proposals_failed", {
+        props: {
+          message: message.slice(0, 120),
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -72,7 +96,7 @@ export default function Home() {
         )}
 
         {/* Error State */}
-        {error && (
+        {error && !loading && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>

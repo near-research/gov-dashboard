@@ -4,6 +4,7 @@ import type { VerificationMetadata } from "@/types/agui-events";
 import { sign } from "near-sign-verify";
 import { Button } from "@/components/ui/button";
 import { useNear } from "@/hooks/useNear";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 import { VerificationProof } from "@/components/verification/VerificationProof";
 
 interface ScreeningButtonProps {
@@ -22,6 +23,7 @@ export function ScreeningButton({
   onScreeningComplete,
 }: ScreeningButtonProps) {
   const { signedAccountId, wallet, loading } = useNear();
+  const track = useGovernanceAnalytics();
 
   const [screening, setScreening] = useState(false);
   const [result, setResult] = useState<Evaluation | null>(null);
@@ -53,6 +55,10 @@ export function ScreeningButton({
     setVerificationMeta(null);
     setVerificationId(null);
     setModel(null);
+
+    track("proposal_screening_started", {
+      props: { topic_id: topicId, revision: revisionNumber },
+    });
 
     try {
       if (!wallet)
@@ -87,24 +93,45 @@ export function ScreeningButton({
             ? (saveData as { message?: string }).message
             : undefined;
 
-        if (saveResponse.status === 401)
-          setError("Authentication failed. Please try signing again.");
-        else if (saveResponse.status === 409)
-          setError(
-            message ||
-              "This proposal revision has already been evaluated."
-          );
-        else if (saveResponse.status === 429)
-          setError(
-            message || "Rate limit exceeded. Please try again later."
-          );
-        else
+        if (saveResponse.status === 401) {
+          const errorMsg = "Authentication failed. Please try signing again.";
+          setError(errorMsg);
+          track("proposal_screening_failed", {
+            props: {
+              topic_id: topicId,
+              revision: revisionNumber,
+              message: errorMsg,
+            },
+          });
+        } else if (saveResponse.status === 409) {
+          const errorMsg =
+            message || "This proposal revision has already been evaluated.";
+          setError(errorMsg);
+          track("proposal_screening_failed", {
+            props: {
+              topic_id: topicId,
+              revision: revisionNumber,
+              message: errorMsg,
+            },
+          });
+        } else if (saveResponse.status === 429) {
+          const errorMsg =
+            message || "Rate limit exceeded. Please try again later.";
+          setError(errorMsg);
+          track("proposal_screening_failed", {
+            props: {
+              topic_id: topicId,
+              revision: revisionNumber,
+              message: errorMsg,
+            },
+          });
+        } else {
           throw new Error(
             (typeof saveData === "object" && saveData !== null
               ? (saveData as { error?: string }).error
-              : undefined) ||
-              `Failed to save screening: ${saveResponse.status}`
+              : undefined) || `Failed to save screening: ${saveResponse.status}`
           );
+        }
         return;
       }
 
@@ -137,17 +164,27 @@ export function ScreeningButton({
       setVerificationMeta(verification);
       setVerificationId(proofVerificationId ?? verification?.messageId ?? null);
       const responseModel =
-        typeof saveData === "object" &&
-        saveData !== null &&
-        "model" in saveData
+        typeof saveData === "object" && saveData !== null && "model" in saveData
           ? (saveData as { model?: string | null }).model ?? null
           : null;
       setModel(responseModel ?? evaluation.model ?? null);
+
+      track("proposal_screening_succeeded", {
+        props: {
+          topic_id: topicId,
+          revision: revisionNumber,
+          overall_pass: evaluation.overallPass,
+        },
+      });
+
       onScreeningComplete?.();
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Failed to screen proposal";
       setError(message);
+      track("proposal_screening_failed", {
+        props: { topic_id: topicId, revision: revisionNumber, message },
+      });
     } finally {
       setScreening(false);
     }
@@ -186,24 +223,24 @@ export function ScreeningButton({
           </p>
         </div>
 
-      <p className="mb-3">
-        <strong>Summary:</strong> {result.summary}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        ✓ Results saved! Screening status has been updated.
-      </p>
-      {(verificationMeta || verificationId) && (
-        <div className="mt-4">
-          <VerificationProof
-            verification={verificationMeta ?? undefined}
-            verificationId={verificationId ?? undefined}
-            model={model ?? result?.model ?? undefined}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
+        <p className="mb-3">
+          <strong>Summary:</strong> {result.summary}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          ✓ Results saved! Screening status has been updated.
+        </p>
+        {(verificationMeta || verificationId) && (
+          <div className="mt-4">
+            <VerificationProof
+              verification={verificationMeta ?? undefined}
+              verificationId={verificationId ?? undefined}
+              model={model ?? result?.model ?? undefined}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Show loading state
   if (loading) {

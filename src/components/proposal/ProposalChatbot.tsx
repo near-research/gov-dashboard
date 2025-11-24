@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Send, Wrench } from "lucide-react";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 import type {
   DiscussionSummaryResponse,
   ProposalRevisionSummaryResponse,
@@ -62,6 +63,8 @@ export const ProposalChatbot = ({
   proposalAuthor,
   model = "deepseek-ai/DeepSeek-V3.1",
 }: ProposalChatbotProps) => {
+  const track = useGovernanceAnalytics();
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -121,6 +124,11 @@ export const ProposalChatbot = ({
     toolName: string,
     _args?: Record<string, unknown>
   ): Promise<string> => {
+    // Track tool usage
+    track("proposal_chatbot_tool_used", {
+      props: { topic_id: proposalId, tool_name: toolName },
+    });
+
     try {
       switch (toolName) {
         case "summarize_revisions":
@@ -153,8 +161,7 @@ export const ProposalChatbot = ({
           );
           if (!discResponse.ok)
             throw new Error("Failed to fetch discussion summary");
-          const discData: DiscussionSummaryResponse =
-            await discResponse.json();
+          const discData: DiscussionSummaryResponse = await discResponse.json();
           return `Discussion Summary:\n\n${discData.summary}`;
 
         default:
@@ -197,6 +204,18 @@ export const ProposalChatbot = ({
     }
 
     return context;
+  };
+
+  // Handle expand/collapse with tracking
+  const handleToggleExpand = () => {
+    const newExpandedState = !isExpanded;
+    setIsExpanded(newExpandedState);
+
+    if (newExpandedState) {
+      track("proposal_chatbot_opened", {
+        props: { topic_id: proposalId },
+      });
+    }
   };
 
   // Initialize with system message when expanded
@@ -285,9 +304,7 @@ Respond in plain text only. No markdown formatting.`,
     });
   };
 
-  const safeParseToolArguments = (
-    rawArgs: string
-  ): Record<string, unknown> => {
+  const safeParseToolArguments = (rawArgs: string): Record<string, unknown> => {
     if (!rawArgs?.trim()) return {};
     try {
       return JSON.parse(rawArgs);
@@ -432,15 +449,18 @@ Respond in plain text only. No markdown formatting.`,
         const data = await response.json();
         const choice = data.choices?.[0];
         const message = choice?.message ?? {};
-        const rawToolCalls = (message.tool_calls as RawToolCall[] | undefined) ?? [];
-        const formattedToolCalls: ToolCall[] = rawToolCalls.map((call, index) => ({
-          id: call.id ?? `tool-${index}`,
-          type: call.type || "function",
-          function: {
-            name: call.function?.name || "",
-            arguments: call.function?.arguments || "",
-          },
-        }));
+        const rawToolCalls =
+          (message.tool_calls as RawToolCall[] | undefined) ?? [];
+        const formattedToolCalls: ToolCall[] = rawToolCalls.map(
+          (call, index) => ({
+            id: call.id ?? `tool-${index}`,
+            type: call.type || "function",
+            function: {
+              name: call.function?.name || "",
+              arguments: call.function?.arguments || "",
+            },
+          })
+        );
 
         return {
           content: message.content || "",
@@ -518,6 +538,14 @@ Respond in plain text only. No markdown formatting.`,
     addMessage(message, "user");
     conversationHistoryRef.current.push({ role: "user", content: message });
 
+    // Track message sent
+    track("proposal_chatbot_message_sent", {
+      props: {
+        topic_id: proposalId,
+        length: message.length,
+      },
+    });
+
     setIsLoading(true);
     setError(null);
 
@@ -558,7 +586,7 @@ Respond in plain text only. No markdown formatting.`,
     <Card>
       <CardHeader
         className="cursor-pointer select-none bg-muted/50 hover:bg-muted/70 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleToggleExpand}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">

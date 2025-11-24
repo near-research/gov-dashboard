@@ -47,6 +47,7 @@ import type {
   ReplySummaryResponse,
   TextSummaryResponse,
 } from "@/types/summaries";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 
 interface ScreeningData {
   evaluation: Evaluation;
@@ -104,15 +105,28 @@ export default function ProposalDetail() {
   const [discussionSummaryLoading, setDiscussionSummaryLoading] =
     useState(false);
   const [discussionSummaryError, setDiscussionSummaryError] = useState("");
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const { wallet, signedAccountId } = useNear();
+  const track = useGovernanceAnalytics();
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const shouldShowReplies = window.innerWidth >= 768;
-      setShowReplies(shouldShowReplies);
-    }
+    if (typeof window === "undefined") return;
+
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    if (isDesktop) {
+      setShowReplies(true);
+    }
+  }, [isDesktop]);
 
   useEffect(() => {
     if (id) {
@@ -135,6 +149,14 @@ export default function ProposalDetail() {
       setCurrentRevision(initialRevision);
       setSelectedVersion(initialRevision);
       fetchScreening(proposalId, initialRevision);
+
+      track("proposal_viewed", {
+        props: {
+          topic_id: proposalId,
+          category: data.metadata?.category ?? null,
+          reply_count: data.reply_count,
+        },
+      });
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Failed to fetch proposal";
@@ -299,8 +321,14 @@ export default function ProposalDetail() {
 
   const fetchProposalSummary = async () => {
     if (!id) return;
+    const topicId = String(id);
     setProposalSummaryLoading(true);
     setProposalSummaryError("");
+
+    track("proposal_summary_requested", {
+      props: { topic_id: topicId },
+    });
+
     try {
       const response = await fetch(`/api/proposals/${id}/summarize`, {
         method: "POST",
@@ -309,6 +337,10 @@ export default function ProposalDetail() {
         const data: TextSummaryResponse = await response.json();
         setProposalSummary(data);
         setProposalSummaryError("");
+
+        track("proposal_summary_succeeded", {
+          props: { topic_id: topicId },
+        });
       } else {
         const message = await parseErrorResponse(
           response,
@@ -316,14 +348,28 @@ export default function ProposalDetail() {
         );
         setProposalSummaryError(message);
         console.error(message);
+
+        track("proposal_summary_failed", {
+          props: {
+            topic_id: topicId,
+            message: message.slice(0, 120),
+          },
+        });
       }
     } catch (error) {
       console.error("Error fetching proposal summary:", error);
-      setProposalSummaryError(
+      const message =
         error instanceof Error
           ? error.message
-          : "Failed to fetch proposal summary"
-      );
+          : "Failed to fetch proposal summary";
+      setProposalSummaryError(message);
+
+      track("proposal_summary_failed", {
+        props: {
+          topic_id: topicId,
+          message: message.slice(0, 120),
+        },
+      });
     } finally {
       setProposalSummaryLoading(false);
     }
@@ -331,8 +377,17 @@ export default function ProposalDetail() {
 
   const fetchRevisionSummary = async () => {
     if (!id) return;
+    const topicId = String(id);
     setRevisionSummaryLoading(true);
     setRevisionSummaryError("");
+
+    track("proposal_revision_summary_requested", {
+      props: {
+        topic_id: topicId,
+        revision: selectedVersion,
+      },
+    });
+
     try {
       const response = await fetch(`/api/proposals/${id}/revisions/summarize`, {
         method: "POST",
@@ -341,6 +396,13 @@ export default function ProposalDetail() {
         const data: ProposalRevisionSummaryResponse = await response.json();
         setRevisionSummary(data);
         setRevisionSummaryError("");
+
+        track("proposal_revision_summary_succeeded", {
+          props: {
+            topic_id: topicId,
+            revision: selectedVersion,
+          },
+        });
       } else {
         const message = await parseErrorResponse(
           response,
@@ -348,22 +410,49 @@ export default function ProposalDetail() {
         );
         setRevisionSummaryError(message);
         console.error(message);
+
+        track("proposal_revision_summary_failed", {
+          props: {
+            topic_id: topicId,
+            revision: selectedVersion,
+            message: message.slice(0, 120),
+          },
+        });
       }
     } catch (error) {
       console.error("Error fetching revision summary:", error);
-      setRevisionSummaryError(
+      const message =
         error instanceof Error
           ? error.message
-          : "Failed to fetch revision summary"
-      );
+          : "Failed to fetch revision summary";
+      setRevisionSummaryError(message);
+
+      track("proposal_revision_summary_failed", {
+        props: {
+          topic_id: topicId,
+          revision: selectedVersion,
+          message: message.slice(0, 120),
+        },
+      });
     } finally {
       setRevisionSummaryLoading(false);
     }
   };
 
   const fetchReplySummary = async (replyId: number) => {
+    if (!id) return;
+    const topicId = String(id);
+
     setReplySummaryLoading((prev) => ({ ...prev, [replyId]: true }));
     setReplySummaryErrors((prev) => ({ ...prev, [replyId]: "" }));
+
+    track("proposal_reply_summary_requested", {
+      props: {
+        topic_id: topicId,
+        reply_id: replyId,
+      },
+    });
+
     try {
       const response = await fetch(
         `/api/discourse/replies/${replyId}/summarize`,
@@ -375,6 +464,13 @@ export default function ProposalDetail() {
         const data: ReplySummaryResponse = await response.json();
         setReplySummaries((prev) => ({ ...prev, [replyId]: data }));
         setReplySummaryErrors((prev) => ({ ...prev, [replyId]: "" }));
+
+        track("proposal_reply_summary_succeeded", {
+          props: {
+            topic_id: topicId,
+            reply_id: replyId,
+          },
+        });
       } else {
         const message = await parseErrorResponse(
           response,
@@ -382,16 +478,34 @@ export default function ProposalDetail() {
         );
         setReplySummaryErrors((prev) => ({ ...prev, [replyId]: message }));
         console.error(message);
+
+        track("proposal_reply_summary_failed", {
+          props: {
+            topic_id: topicId,
+            reply_id: replyId,
+            message: message.slice(0, 120),
+          },
+        });
       }
     } catch (error) {
       console.error("Error fetching reply summary:", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch reply summary";
+
       setReplySummaryErrors((prev) => ({
         ...prev,
-        [replyId]:
-          error instanceof Error
-            ? error.message
-            : "Failed to fetch reply summary",
+        [replyId]: message,
       }));
+
+      track("proposal_reply_summary_failed", {
+        props: {
+          topic_id: topicId,
+          reply_id: replyId,
+          message: message.slice(0, 120),
+        },
+      });
     } finally {
       setReplySummaryLoading((prev) => ({ ...prev, [replyId]: false }));
     }
@@ -415,13 +529,28 @@ export default function ProposalDetail() {
 
   const handleDiscussionSummary = async () => {
     if (!id) return;
+    const topicId = String(id);
+
     if (discussionSummary) {
-      setDiscussionSummaryVisible((prev) => !prev);
+      const nextVisible = !discussionSummaryVisible;
+      setDiscussionSummaryVisible(nextVisible);
+
+      track("proposal_discussion_summary_toggled", {
+        props: {
+          topic_id: topicId,
+          visible: nextVisible,
+        },
+      });
       return;
     }
 
     setDiscussionSummaryLoading(true);
     setDiscussionSummaryError("");
+
+    track("proposal_discussion_summary_requested", {
+      props: { topic_id: topicId },
+    });
+
     try {
       const response = await fetch(`/api/discourse/topics/${id}/summarize`, {
         method: "POST",
@@ -436,10 +565,21 @@ export default function ProposalDetail() {
       const data: DiscussionSummaryResponse = await response.json();
       setDiscussionSummary(data);
       setDiscussionSummaryVisible(true);
+
+      track("proposal_discussion_summary_succeeded", {
+        props: { topic_id: topicId },
+      });
     } catch (err: unknown) {
-      setDiscussionSummaryError(
-        err instanceof Error ? err.message : "Failed to generate summary"
-      );
+      const message =
+        err instanceof Error ? err.message : "Failed to generate summary";
+      setDiscussionSummaryError(message);
+
+      track("proposal_discussion_summary_failed", {
+        props: {
+          topic_id: topicId,
+          message: message.slice(0, 120),
+        },
+      });
     } finally {
       setDiscussionSummaryLoading(false);
     }
@@ -585,7 +725,7 @@ export default function ProposalDetail() {
             </CardHeader>
           </Card>
 
-          <div className="grid gap-6 lg:gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
+          <div className="grid grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
             <div className="space-y-8 min-h-0">
               <Card className="rounded-2xl border-border/60 shadow-sm">
                 <ProposalContent

@@ -113,6 +113,15 @@ const syncWalletState = (
   });
 };
 
+// Analytics helper for module-level tracking (can't use hooks here)
+const trackWalletConnectSuccess = (accountId: string) => {
+  if (typeof window !== "undefined" && window.plausible) {
+    window.plausible("wallet_connect_succeeded", {
+      props: { account_id: accountId },
+    });
+  }
+};
+
 const handleConnectorSignOut = () => {
   syncWalletState(undefined, "");
 };
@@ -124,7 +133,13 @@ const handleConnectorSignIn = async (payload: ConnectorSignInPayload) => {
       devInstrumentation && (devInstrumentation.rpcCallCount += 1);
       accounts = await payload.wallet.getAccounts();
     }
-    syncWalletState(payload.wallet, accounts?.[0]?.accountId ?? "");
+    const accountId = accounts?.[0]?.accountId ?? "";
+    syncWalletState(payload.wallet, accountId);
+
+    // Track successful wallet connection
+    if (accountId) {
+      trackWalletConnectSuccess(accountId);
+    }
   } catch (err) {
     console.error("Failed to fetch wallet accounts:", err);
     syncWalletState(payload.wallet, "");
@@ -165,9 +180,16 @@ async function ensureInitialized() {
                 projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
                 metadata: {
                   name: "NEAR Governance Dashboard",
-                  description: "AI-powered governance dashboard for NEAR community",
-                  url: typeof window !== "undefined" ? window.location.origin : "https://gov.near.org",
-                  icons: typeof window !== "undefined" ? [`${window.location.origin}/near-logo.svg`] : [],
+                  description:
+                    "AI-powered governance dashboard for NEAR community",
+                  url:
+                    typeof window !== "undefined"
+                      ? window.location.origin
+                      : "https://gov.near.org",
+                  icons:
+                    typeof window !== "undefined"
+                      ? [`${window.location.origin}/near-logo.svg`]
+                      : [],
                 },
               }
             : undefined,
@@ -414,17 +436,14 @@ const registerTestHarness = () => {
           }));
       }
 
-      const accountsPayload =
-        options.accountsPayload?.map((acc) => ({
-          accountId: acc.accountId,
-          publicKey: acc.publicKey ?? "test-public-key",
-        })) ?? [{ accountId, publicKey: "test-public-key" }];
+      const accountsPayload = options.accountsPayload?.map((acc) => ({
+        accountId: acc.accountId,
+        publicKey: acc.publicKey ?? "test-public-key",
+      })) ?? [{ accountId, publicKey: "test-public-key" }];
 
       await handleConnectorSignIn({
         wallet,
-        accounts: options.useUndefinedAccounts
-          ? undefined
-          : accountsPayload,
+        accounts: options.useUndefinedAccounts ? undefined : accountsPayload,
       });
     },
     emitSignOut() {

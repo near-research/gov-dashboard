@@ -6,6 +6,7 @@ import type { VerificationMetadata } from "@/types/agui-events";
 import { ScreeningBadge } from "@/components/proposal/screening/ScreeningBadge";
 import { reconstructRevisionContent } from "@/utils/revisionContentUtils";
 import { sanitizeHtml, stripHtml } from "@/utils/html-utils";
+import { useGovernanceAnalytics } from "@/lib/analytics";
 import {
   Card,
   CardContent,
@@ -48,6 +49,8 @@ export default function VersionHistory({
   nearAccount,
   wallet,
 }: VersionHistoryProps) {
+  const track = useGovernanceAnalytics();
+
   const [revisions, setRevisions] = useState<ProposalRevision[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -153,6 +156,10 @@ export default function VersionHistory({
     setScreeningRevision(revisionNumber);
     setScreeningErrors((prev) => ({ ...prev, [revisionNumber]: "" }));
 
+    track("revision_screening_started", {
+      props: { topic_id: proposalId, revision: revisionNumber },
+    });
+
     try {
       if (!wallet) {
         throw new Error(
@@ -204,17 +211,32 @@ export default function VersionHistory({
 
       if (!saveResponse.ok) {
         if (saveResponse.status === 409) {
+          const errorMsg = "This revision has already been evaluated.";
           setScreeningErrors((prev) => ({
             ...prev,
-            [revisionNumber]: "This revision has already been evaluated.",
+            [revisionNumber]: errorMsg,
           }));
+          track("revision_screening_failed", {
+            props: {
+              topic_id: proposalId,
+              revision: revisionNumber,
+              message: errorMsg,
+            },
+          });
         } else if (saveResponse.status === 429) {
+          const errorMsg =
+            saveData.message || "Rate limit exceeded. Please try again later.";
           setScreeningErrors((prev) => ({
             ...prev,
-            [revisionNumber]:
-              saveData.message ||
-              "Rate limit exceeded. Please try again later.",
+            [revisionNumber]: errorMsg,
           }));
+          track("revision_screening_failed", {
+            props: {
+              topic_id: proposalId,
+              revision: revisionNumber,
+              message: errorMsg,
+            },
+          });
         } else {
           throw new Error(
             saveData.error || `Failed to save screening: ${saveResponse.status}`
@@ -245,10 +267,19 @@ export default function VersionHistory({
           nearAccount: nearAccount,
           timestamp: new Date().toISOString(),
           verification,
-          verificationId: proofVerificationId ?? verification?.messageId ?? null,
+          verificationId:
+            proofVerificationId ?? verification?.messageId ?? null,
           model: saveData.model ?? saveData.evaluation?.model ?? null,
         },
       }));
+
+      track("revision_screening_succeeded", {
+        props: {
+          topic_id: proposalId,
+          revision: revisionNumber,
+          overall_pass: saveData.evaluation.overallPass,
+        },
+      });
     } catch (err: unknown) {
       const message =
         err instanceof Error
@@ -258,6 +289,9 @@ export default function VersionHistory({
         ...prev,
         [revisionNumber]: message,
       }));
+      track("revision_screening_failed", {
+        props: { topic_id: proposalId, revision: revisionNumber, message },
+      });
       console.error("Screening error:", err);
     } finally {
       setScreeningRevision(null);
@@ -281,7 +315,10 @@ export default function VersionHistory({
               revisionNumber: revisionNumber,
               qualityScore: screeningData.evaluation.qualityScore,
               attentionScore: screeningData.evaluation.attentionScore,
-              model: screeningData.model ?? screeningData.evaluation.model ?? undefined,
+              model:
+                screeningData.model ??
+                screeningData.evaluation.model ??
+                undefined,
             }}
             verification={screeningData.verification ?? undefined}
             verificationId={screeningData.verificationId ?? undefined}
