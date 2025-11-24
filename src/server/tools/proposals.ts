@@ -1,8 +1,14 @@
-import type {
-  MessageRole,
-  ProposalAgentState,
-  ToolChoice,
-} from "@/types/agui-events";
+/**
+ * Proposal Tools - Writing & Screening
+ */
+
+import type { AgentState, ToolChoice } from "@/types/agui-events";
+import type { Evaluation } from "@/types/evaluation";
+import { requestEvaluation } from "@/server/screening";
+
+// ============================================================================
+// Tool Definitions
+// ============================================================================
 
 export const PROPOSAL_TOOLS = [
   {
@@ -55,17 +61,69 @@ export const PROPOSAL_TOOLS = [
   },
 ] as const;
 
-export const normalizeProposalAgentState = (
-  state: Partial<ProposalAgentState> | undefined
-): ProposalAgentState => ({
+// ============================================================================
+// State Normalization
+// ============================================================================
+
+export const normalizeAgentState = (
+  state: Partial<AgentState> | undefined
+): AgentState => ({
   title: state?.title ?? "",
   content: state?.content ?? "",
   evaluation: state?.evaluation ?? null,
 });
 
-export function buildProposalSystemPrompt(
-  currentState: ProposalAgentState
-): string {
+// ============================================================================
+// Tool Choice Inference
+// ============================================================================
+
+const containsAny = (text: string, keywords: string[]) =>
+  keywords.some((kw) => text.includes(kw));
+
+export const inferProposalToolChoice = (
+  lastUserMessage: string
+): ToolChoice => {
+  const normalized = lastUserMessage.toLowerCase();
+  const isWriteIntent = containsAny(normalized, [
+    "write",
+    "generate",
+    "create",
+    "add",
+    "improve",
+    "edit",
+    "draft",
+  ]);
+  const isScreenIntent = containsAny(normalized, [
+    "screen",
+    "evaluate",
+    "check",
+    "review",
+    "analysis",
+    "analyze",
+  ]);
+
+  if (isWriteIntent && !isScreenIntent) {
+    return {
+      type: "function",
+      function: { name: "write_proposal" },
+    };
+  }
+
+  if (isScreenIntent && !isWriteIntent) {
+    return {
+      type: "function",
+      function: { name: "screen_proposal" },
+    };
+  }
+
+  return "auto";
+};
+
+// ============================================================================
+// System Prompt
+// ============================================================================
+
+export function buildProposalSystemPrompt(currentState: AgentState): string {
   return `You are a NEAR governance proposal assistant. You help users write high-quality proposals that meet NEAR's criteria.
 
 **Current Proposal State:**
@@ -130,7 +188,7 @@ Attention Score: ${(currentState.evaluation.attentionScore * 100).toFixed(
 Failed Quality Criteria: ${
         Object.entries(currentState.evaluation)
           .filter(
-            ([key, val]: [string, any]) =>
+            ([key, val]: [string, unknown]) =>
               [
                 "complete",
                 "legible",
@@ -140,9 +198,12 @@ Failed Quality Criteria: ${
                 "measurable",
               ].includes(key) &&
               typeof val === "object" &&
-              val.pass === false
+              val !== null &&
+              (val as { pass?: boolean }).pass === false
           )
-          .map(([key, val]: [string, any]) => `${key} (${val.reason})`)
+          .map(
+            ([key, val]) => `${key} (${(val as { reason?: string }).reason})`
+          )
           .join("; ") || "None - all quality criteria passed!"
       }
 `
@@ -150,44 +211,41 @@ Failed Quality Criteria: ${
 }`;
 }
 
-const containsAny = (text: string, keywords: string[]) =>
-  keywords.some((kw) => text.includes(kw));
+// ============================================================================
+// Tool Handlers
+// ============================================================================
 
-export const inferProposalToolChoice = (
-  lastUserMessage: string
-): ToolChoice => {
-  const normalized = lastUserMessage.toLowerCase();
-  const isWriteIntent = containsAny(normalized, [
-    "write",
-    "generate",
-    "create",
-    "add",
-    "improve",
-    "edit",
-    "draft",
-  ]);
-  const isScreenIntent = containsAny(normalized, [
-    "screen",
-    "evaluate",
-    "check",
-    "review",
-    "analysis",
-    "analyze",
-  ]);
+export interface WriteProposalResult {
+  title: string;
+  content: string;
+  status: "pending_confirmation";
+}
 
-  if (isWriteIntent && !isScreenIntent) {
-    return {
-      type: "function",
-      function: { name: "write_proposal" },
-    };
-  }
+export interface ScreenProposalResult {
+  evaluation: Evaluation;
+}
 
-  if (isScreenIntent && !isWriteIntent) {
-    return {
-      type: "function",
-      function: { name: "screen_proposal" },
-    };
-  }
+export async function handleWriteProposal(args: {
+  title: string;
+  content: string;
+}): Promise<{ result: WriteProposalResult }> {
+  return {
+    result: {
+      title: args.title,
+      content: args.content,
+      status: "pending_confirmation",
+    },
+  };
+}
 
-  return "auto";
-};
+export async function handleScreenProposal(args: {
+  title: string;
+  content: string;
+}): Promise<{ result: ScreenProposalResult }> {
+  const screeningResult = await requestEvaluation(args.title, args.content);
+  return {
+    result: {
+      evaluation: screeningResult.evaluation,
+    },
+  };
+}

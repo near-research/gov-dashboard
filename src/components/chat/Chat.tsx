@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   EventType,
   type AGUIEvent,
-  type ProposalAgentState,
+  type AgentState,
   type VerificationMetadata,
 } from "@/types/agui-events";
 import {
@@ -22,7 +22,7 @@ import {
   type MessageProof,
 } from "@/types/agent-ui";
 import type { RemoteProof } from "@/components/verification/VerificationProof";
-import { AGENT_MODEL, buildProposalAgentRequest } from "@/utils/agent-tools";
+import { AGENT_MODEL, buildAgentRequest } from "@/server/tools";
 import { normalizeSignaturePayload } from "@/utils/verification";
 import { extractHashesFromSignedText } from "@/utils/request-hash";
 import { useGovernanceAnalytics } from "@/lib/analytics";
@@ -34,7 +34,7 @@ interface ChatProps {
   className?: string;
   placeholder?: string;
   welcomeMessage?: string;
-  state?: Partial<ProposalAgentState>;
+  state?: Partial<AgentState>;
   threadId?: string;
   runId?: string;
   quickActions?: ChatQuickAction[];
@@ -241,7 +241,7 @@ export const Chat = ({
   const [inputHeight, setInputHeight] = useState(220);
   const [currentTurn, setCurrentTurn] = useState(0);
 
-  const agentStateRef = useRef<Partial<ProposalAgentState> | undefined>(state);
+  const agentStateRef = useRef<Partial<AgentState> | undefined>(state);
   const lastUserMessageRef = useRef<string>("");
   const hasHydratedRef = useRef(false);
   const streamingAssistantIdRef = useRef<string | null>(null);
@@ -569,7 +569,7 @@ export const Chat = ({
       }
       const { nonce } = await sessionResp.json();
 
-      const { requestBody } = buildProposalAgentRequest({
+      const { requestBody } = buildAgentRequest({
         messages: conversationHistory,
         state: agentStateRef.current,
         model,
@@ -719,7 +719,7 @@ export const Chat = ({
           case EventType.STATE_DELTA:
             if (Array.isArray(event.delta)) {
               try {
-                const nextState = applyPatch<Partial<ProposalAgentState>>(
+                const nextState = applyPatch<Partial<AgentState>>(
                   agentStateRef.current ?? {},
                   event.delta as Operation[],
                   false,
@@ -733,7 +733,7 @@ export const Chat = ({
             break;
           case EventType.STATE_SNAPSHOT:
             agentStateRef.current = event.snapshot as
-              | Partial<ProposalAgentState>
+              | Partial<AgentState>
               | undefined;
             break;
           case EventType.CUSTOM:
