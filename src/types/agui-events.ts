@@ -406,7 +406,7 @@ export interface AgentResponse {
   stream: ReadableStream<Uint8Array>;
 }
 
-export interface ProposalAgentState {
+export interface AgentState {
   title: string;
   content: string;
   evaluation: import("@/types/evaluation").Evaluation | null;
