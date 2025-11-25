@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -14,6 +15,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useNear } from "@/hooks/useNear";
 import { useGovernanceAnalytics } from "@/lib/analytics";
+import { client } from "@/lib/orpc";
 import { Loader2, LogOut, User, Plus } from "lucide-react";
 import NearLogo from "/public/near-logo.svg";
 
@@ -21,6 +23,38 @@ export const Navigation = () => {
   const router = useRouter();
   const { wallet, signedAccountId, loading, signIn, signOut } = useNear();
   const track = useGovernanceAnalytics();
+  const [isDiscourseLinked, setIsDiscourseLinked] = useState(false);
+  const [checkingDiscourse, setCheckingDiscourse] = useState(false);
+
+  // Check Discourse linkage status
+  useEffect(() => {
+    const checkDiscourseLink = async () => {
+      if (!signedAccountId) {
+        setIsDiscourseLinked(false);
+        return;
+      }
+
+      if (typeof signedAccountId !== "string" || signedAccountId.length === 0) {
+        setIsDiscourseLinked(false);
+        return;
+      }
+
+      setCheckingDiscourse(true);
+
+      try {
+        const data = await client.discourse.getLinkage({
+          nearAccount: signedAccountId,
+        });
+        setIsDiscourseLinked(!!data);
+      } catch (error: any) {
+        setIsDiscourseLinked(false);
+      } finally {
+        setCheckingDiscourse(false);
+      }
+    };
+
+    checkDiscourseLink();
+  }, [signedAccountId]);
 
   const handleSignIn = async () => {
     console.log("Connect Wallet clicked", { wallet, signedAccountId, loading });
@@ -109,14 +143,40 @@ export const Navigation = () => {
                     <span className="hidden sm:inline-block max-w-[150px] truncate">
                       {signedAccountId}
                     </span>
+                    {/* Discourse Connected Indicator */}
+                    {!checkingDiscourse && isDiscourseLinked && (
+                      <span
+                        className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-background"
+                        title="Discourse Connected"
+                      />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuLabel className="flex items-center gap-2">
+                    <span>My Account</span>
+                    {/* Discourse Status */}
+                    {checkingDiscourse ? (
+                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    ) : (
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          isDiscourseLinked ? "bg-emerald-500" : "bg-gray-300"
+                        }`}
+                        title={
+                          isDiscourseLinked
+                            ? "Discourse Connected"
+                            : "Discourse Not Linked"
+                        }
+                      />
+                    )}
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem disabled>
-                    <User className="mr-2 h-4 w-4" />
-                    <span className="truncate">{signedAccountId}</span>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="cursor-pointer">
+                      <User className="mr-2 h-4 w-4" />
+                      Profile
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>

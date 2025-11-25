@@ -175,22 +175,10 @@ export default function VersionHistory({
         reconstructRevisionContent(content, title, revisions, revisionNumber);
 
       const { sign } = await import("near-sign-verify");
-      const { base58 } = await import("@scure/base");
-
-      const walletWrapper = {
-        signMessage: async (params: any) => {
-          const result = await wallet.signMessage(params);
-          const signatureBytes = Uint8Array.from(atob(result.signature), (c) =>
-            c.charCodeAt(0)
-          );
-          const base58Signature = base58.encode(signatureBytes);
-          return { ...result, signature: `ed25519:${base58Signature}` };
-        },
-      };
 
       const authToken = await sign(
         `Evaluate proposal ${proposalId} revision ${revisionNumber}`,
-        { signer: walletWrapper, recipient: "social.near" }
+        { signer: wallet, recipient: "social.near" }
       );
 
       const saveResponse = await fetch(`/api/saveAnalysis/${proposalId}`, {
