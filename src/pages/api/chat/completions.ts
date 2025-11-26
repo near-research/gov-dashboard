@@ -5,6 +5,8 @@ import {
 } from "@/utils/verification";
 import { createHash } from "crypto";
 import { registerVerificationSession, updateVerificationHashes } from "@/server/verificationSessions";
+import { getNearAIClient } from "@/lib/near-ai/client";
+import type { ChatCompletionRequest } from "@/lib/near-ai/types";
 
 type ChatMessage = {
   role: string;
@@ -72,9 +74,11 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = process.env.NEAR_AI_CLOUD_API_KEY;
-
-  if (!apiKey) {
+  // Initialize client (will throw if API key not configured)
+  let client;
+  try {
+    client = getNearAIClient();
+  } catch (error) {
     console.error("NEAR_AI_CLOUD_API_KEY not configured");
     return res.status(500).json({
       error: "API key not configured on server",
@@ -118,7 +122,7 @@ export default async function handler(
 
   try {
     // Build request body with optional parameters
-    const requestBody: ChatCompletionRequestPayload = {
+    const requestBody: ChatCompletionRequest = {
       model,
       messages,
       stream: Boolean(stream),
@@ -152,48 +156,32 @@ export default async function handler(
       requestBodyPreview: requestBodyString.substring(0, 100),
     });
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
-
-    const response = await fetch(
-      "https://cloud-api.near.ai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          ...(verificationId ? { "X-Verification-Id": verificationId } : {}),
-          ...(verificationNonce ? { "X-Nonce": verificationNonce } : {}),
-        },
-        // Send the hashed body exactly as NEAR AI will see it (no verification field)
-        body: requestBodyString,
-        signal: controller.signal,
-      }
-    );
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("NEAR AI Cloud API error:", response.status, errorText);
-
-      // Try to parse error as JSON for better error messages
-      let errorDetails = errorText;
+    // If streaming, use streaming method
+    if (stream) {
+      let response;
       try {
-        const errorJson = JSON.parse(errorText);
-        errorDetails = errorJson.error || errorJson.message || errorText;
-      } catch {
-        // Keep original text if not JSON
+        response = await client.chatCompletionsStream(requestBody, {
+          verificationId,
+          verificationNonce,
+        });
+      } catch (error) {
+        console.error("NEAR AI Cloud API error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const statusCode = error instanceof Error && "statusCode" in error
+          ? (error as { statusCode?: number }).statusCode || 500
+          : 500;
+        return res.status(statusCode).json({
+          error: `NEAR AI Cloud API Error: ${statusCode}`,
+          details: errorMessage,
+        });
       }
 
-      return res.status(response.status).json({
-        error: `NEAR AI Cloud API Error: ${response.status}`,
-        details: errorDetails,
-      });
-    }
+      if (!response.body) {
+        return res.status(500).json({
+          error: "Failed to get response stream",
+        });
+      }
 
-    // If streaming, pass through exact bytes from NEAR AI
-    if (stream && response.body) {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
@@ -250,20 +238,37 @@ export default async function handler(
       return;
     } else {
       // Non-streaming response
-      const responseText = await response.text();
+      let data;
+      try {
+        data = await client.chatCompletions(requestBody, {
+          verificationId,
+          verificationNonce,
+        });
+      } catch (error) {
+        console.error("NEAR AI Cloud API error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const statusCode = error instanceof Error && "statusCode" in error
+          ? (error as { statusCode?: number }).statusCode || 500
+          : 500;
+        return res.status(statusCode).json({
+          error: `NEAR AI Cloud API Error: ${statusCode}`,
+          details: errorMessage,
+        });
+      }
+
+      const responseText = JSON.stringify(data);
       const responseHash = createHash("sha256").update(responseText).digest("hex");
-      const data = JSON.parse(responseText);
       const rawVerification = extractVerificationMetadata(data);
-      const { verification, verificationId } = normalizeVerificationPayload(
+      const { verification, verificationId: normalizedVerificationId } = normalizeVerificationPayload(
         rawVerification,
-        data?.id || data?.choices?.[0]?.id
+        data?.id
       );
       if (verification) {
-        data.verification = verification;
+        (data as any).verification = verification;
       }
-      if (verificationId) {
-        data.verificationId = verificationId;
-        registerVerificationSession(verificationId, undefined, requestHash, responseHash);
+      if (normalizedVerificationId) {
+        (data as any).verificationId = normalizedVerificationId;
+        registerVerificationSession(normalizedVerificationId, undefined, requestHash, responseHash);
       }
       res.status(200).json(data);
     }

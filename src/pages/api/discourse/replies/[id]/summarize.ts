@@ -23,6 +23,8 @@ import {
 import { getModelExpectations } from "@/server/attestation-cache";
 import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
+import { getNearAIClient } from "@/lib/near-ai/client";
+import { NEAR_AI_MODELS } from "@/utils/model-utils";
 
 const ensureVerificationSession = (
   verificationId?: string | null,
@@ -224,10 +226,7 @@ ${truncatedContent}`;
     // ===================================================================
     // GENERATE AI SUMMARY USING PROMPT BUILDER
     // ===================================================================
-    const apiKey = process.env.NEAR_AI_CLOUD_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "AI API not configured" });
-    }
+    const client = getNearAIClient();
 
     // Get like count for engagement context
     const likeCount =
@@ -247,7 +246,7 @@ ${truncatedContent}`;
       contentWithContext
     );
 
-    const model = "deepseek-ai/DeepSeek-V3.1";
+    const model = NEAR_AI_MODELS.DEEPSEEK_V3_1;
     const nearRequest = {
       model,
       messages: [{ role: "user", content: prompt }],
@@ -271,33 +270,19 @@ ${truncatedContent}`;
       console.error("[Reply Summary] Failed to fetch hardware expectations:", err);
     }
 
-    const summaryResponse = await fetch(
-      "https://cloud-api.near.ai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "X-Verification-Id": generatedVerificationId,
-          "X-Nonce": session.nonce,
-        },
-        body: requestBody,
-      }
-    );
+    const data = await client.chatCompletions(nearRequest, {
+      verificationId: generatedVerificationId,
+      verificationNonce: session.nonce,
+    });
 
-    if (!summaryResponse.ok) {
-      throw new Error(`AI summary failed: ${summaryResponse.status}`);
-    }
-
-    const responseText = await summaryResponse.text();
+    const responseText = JSON.stringify(data);
     const responseHash = createHash("sha256")
       .update(responseText)
       .digest("hex");
-    const data = JSON.parse(responseText);
     const summary: string = data.choices[0]?.message?.content ?? "";
     const rawVerification = extractVerificationMetadata(data);
     const nearMessageId =
-      data?.id || data?.choices?.[0]?.id || generatedVerificationId;
+      data?.id || generatedVerificationId;
     const { verification, verificationId: normalizedVerificationId } =
       normalizeVerificationPayload(rawVerification, nearMessageId);
     const effectiveVerificationId =

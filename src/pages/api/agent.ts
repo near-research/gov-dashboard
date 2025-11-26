@@ -37,6 +37,7 @@ import {
   handleSummarizeReply,
 } from "@/server/tools/discourse";
 import { handleGetDoc, handleSearchDocs } from "@/server/tools/docs";
+import { getNearAIClient } from "@/lib/near-ai/client";
 
 interface AgentRequestBody {
   messages: Array<{ role: MessageRole; content: string }>;
@@ -358,40 +359,31 @@ export default async function handler(
       });
     }
 
-    // Direct fetch to NEAR AI Cloud (STREAMING)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
-
-    const nearAIResponse = await fetch(
-      "https://cloud-api.near.ai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.NEAR_AI_CLOUD_API_KEY}`,
-          "Content-Type": "application/json",
-          ...(verificationId ? { "X-Verification-Id": verificationId } : {}),
-          ...(verificationNonce ? { "X-Nonce": verificationNonce } : {}),
-        },
-        body: requestBodyString,
-        signal: controller.signal,
-      }
-    );
-    clearTimeout(timeout);
-
-    console.log("[Agent] NEAR AI Response status:", nearAIResponse.status);
-
-    if (!nearAIResponse.ok) {
-      const errorText = await nearAIResponse.text();
-      console.error(
-        "[Agent] NEAR AI API error:",
-        nearAIResponse.status,
-        errorText
+    // Use NEAR AI client (STREAMING)
+    const client = getNearAIClient();
+    
+    let nearAIResponse: Response;
+    try {
+      nearAIResponse = await client.chatCompletionsStream(
+        JSON.parse(requestBodyString),
+        {
+          verificationId,
+          verificationNonce,
+        }
       );
-      return res.status(500).json({
-        error: `NEAR AI API error: ${nearAIResponse.status}`,
-        details: errorText,
+    } catch (error) {
+      console.error("[Agent] NEAR AI API error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const statusCode = error instanceof Error && "statusCode" in error 
+        ? (error as { statusCode?: number }).statusCode || 500
+        : 500;
+      return res.status(statusCode).json({
+        error: `NEAR AI API error: ${statusCode}`,
+        details: errorMessage,
       });
     }
+
+    console.log("[Agent] NEAR AI Response status:", nearAIResponse.status);
 
     if (!nearAIResponse.body) {
       console.error("[Agent] Streaming body missing");
@@ -831,29 +823,17 @@ export default async function handler(
         toolCount: toolMessages.length,
       });
 
-      const secondController = new AbortController();
-      const secondTimeout = setTimeout(() => secondController.abort(), 120000);
-
-      const secondNearAIResponse = await fetch(
-        "https://cloud-api.near.ai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.NEAR_AI_CLOUD_API_KEY}`,
-            "Content-Type": "application/json",
-            ...(secondVerificationId
-              ? { "X-Verification-Id": secondVerificationId }
-              : {}),
-            ...(secondNonce ? { "X-Nonce": secondNonce } : {}),
-          },
-          body: secondRequestBodyString,
-          signal: secondController.signal,
-        }
-      );
-      clearTimeout(secondTimeout);
-
-      if (!secondNearAIResponse.ok) {
-        const errorText = await secondNearAIResponse.text();
+      let secondNearAIResponse: Response;
+      try {
+        secondNearAIResponse = await client.chatCompletionsStream(
+          JSON.parse(secondRequestBodyString),
+          {
+            verificationId: secondVerificationId,
+            verificationNonce: secondNonce,
+          }
+        );
+      } catch (error) {
+        const errorText = error instanceof Error ? error.message : "Unknown error";
         console.error("[Agent] Second completion failed:", errorText);
         writeEvent({
           type: EventType.RUN_ERROR,
@@ -861,7 +841,22 @@ export default async function handler(
           code: "SECOND_COMPLETION_FAILED",
           timestamp: Date.now(),
         });
-      } else if (secondNearAIResponse.body) {
+        return;
+      }
+
+      if (!secondNearAIResponse.ok) {
+        const errorText = await secondNearAIResponse.text().catch(() => "Unknown error");
+        console.error("[Agent] Second completion failed:", errorText);
+        writeEvent({
+          type: EventType.RUN_ERROR,
+          message: "Failed to get final response after tool execution",
+          code: "SECOND_COMPLETION_FAILED",
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      if (secondNearAIResponse.body) {
         const secondReader = secondNearAIResponse.body.getReader();
         const secondDecoder = new TextDecoder();
         let secondBuffer = "";
