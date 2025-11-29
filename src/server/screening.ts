@@ -11,6 +11,8 @@ import {
   type VerificationResult,
   type VerifyOptions,
 } from "near-sign-verify";
+import { getNearAIClient } from "@/lib/near-ai/client";
+import { NEAR_AI_MODELS } from "@/utils/model-utils";
 
 type ScreeningErrorDetails = {
   code?: string;
@@ -139,93 +141,83 @@ export async function requestEvaluation(
   title: string,
   content: string
 ): Promise<EvaluationRequestResult> {
-  const apiKey = process.env.NEAR_AI_CLOUD_API_KEY;
-  if (!apiKey) {
-    throw new ScreeningError(500, "AI API not configured");
-  }
-
+  const client = getNearAIClient();
   const prompt = buildScreeningPrompt(title, content);
 
-  const model = "openai/gpt-oss-120b";
+  const model = NEAR_AI_MODELS.GPT_OSS_120B;
 
-  const response = await fetch(
-    "https://cloud-api.near.ai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-      }),
+  try {
+    const data = await client.chatCompletions({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+    });
+
+    const contentText = data.choices?.[0]?.message?.content;
+
+    if (!contentText) {
+      throw new ScreeningError(500, "Empty response from AI");
     }
-  );
 
-  if (!response.ok) {
-    const errorText = await response
-      .text()
-      .catch(() => "Failed to read error body");
-    console.error(
-      "[Screening] NEAR AI API error:",
-      response.status,
-      response.statusText,
-      errorText
+    const jsonMatch = contentText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new ScreeningError(500, "Could not parse evaluation response");
+    }
+
+    const evaluation: Evaluation = JSON.parse(jsonMatch[0]);
+
+    if (
+      evaluation.overallPass === undefined ||
+      evaluation.qualityScore === undefined ||
+      evaluation.attentionScore === undefined
+    ) {
+      throw new ScreeningError(
+        500,
+        "Invalid evaluation structure returned by AI"
+      );
+    }
+
+    evaluation.model = model;
+
+    const verificationRaw = extractVerificationMetadata(data);
+    const verificationMessageId = data?.id ?? undefined;
+    const { verification, verificationId } = normalizeVerificationPayload(
+      verificationRaw,
+      verificationMessageId
     );
-    const statusCategory =
-      response.status === 504
-        ? "NEAR AI timed out while evaluating the proposal. Please try again or shorten the content."
-        : "NEAR AI API error";
 
-    throw new ScreeningError(502, statusCategory, {
-      status: response.status,
-      statusText: response.statusText,
-      body: errorText,
+    return {
+      evaluation,
+      verification,
+      verificationId: verificationId ?? undefined,
+      model,
+    };
+  } catch (error) {
+    // Handle NEAR AI client errors
+    if (error instanceof Error) {
+      console.error("[Screening] NEAR AI API error:", error.message);
+      
+      const statusCategory =
+        error.message.includes("timeout") || error.message.includes("504")
+          ? "NEAR AI timed out while evaluating the proposal. Please try again or shorten the content."
+          : "NEAR AI API error";
+
+      throw new ScreeningError(502, statusCategory, {
+        message: error.message,
+        details: error.message,
+      });
+    }
+
+    // Re-throw ScreeningError as-is
+    if (error instanceof ScreeningError) {
+      throw error;
+    }
+
+    // Unknown error
+    throw new ScreeningError(500, "Failed to evaluate proposal", {
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
-
-  const data = await response.json();
-  const contentText = data.choices?.[0]?.message?.content;
-
-  if (!contentText) {
-    throw new ScreeningError(500, "Empty response from AI");
-  }
-
-  const jsonMatch = contentText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new ScreeningError(500, "Could not parse evaluation response");
-  }
-
-  const evaluation: Evaluation = JSON.parse(jsonMatch[0]);
-
-  if (
-    evaluation.overallPass === undefined ||
-    evaluation.qualityScore === undefined ||
-    evaluation.attentionScore === undefined
-  ) {
-    throw new ScreeningError(
-      500,
-      "Invalid evaluation structure returned by AI"
-    );
-  }
-
-  evaluation.model = model;
-
-  const verificationRaw = extractVerificationMetadata(data);
-  const verificationMessageId = data?.id ?? data?.choices?.[0]?.id ?? undefined;
-  const { verification, verificationId } = normalizeVerificationPayload(
-    verificationRaw,
-    verificationMessageId
-  );
-
-  return {
-    evaluation,
-    verification,
-    verificationId: verificationId ?? undefined,
-    model,
-  };
 }
 
 export function respondWithScreeningError(
