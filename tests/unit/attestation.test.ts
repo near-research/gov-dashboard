@@ -274,7 +274,7 @@ describe("deriveVerificationState", () => {
       nonceCheck: null,
       intelRequired: false,
     });
-    expect(state.overall).toBe("failed");
+    expect(state.overall).toBe("pending");
   });
 
   it("handles prefetched proof correctly", () => {

@@ -252,6 +252,7 @@ ${truncatedContent}`;
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3, // Very low for focused, brief output
       max_tokens: 250, // Short summaries only
+      stream: false,
     };
     const requestBody = JSON.stringify(nearRequest);
     const requestHash = createHash("sha256").update(requestBody).digest("hex");

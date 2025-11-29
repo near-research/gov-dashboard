@@ -300,6 +300,7 @@ ${truncatedOriginal}
       messages: [{ role: "user", content: prompt }],
       temperature: 0.4,
       max_tokens: 1000,
+      stream: false,
     };
     const requestBody = JSON.stringify(nearRequest);
     const requestHash = createHash("sha256").update(requestBody).digest("hex");

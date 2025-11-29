@@ -7,7 +7,13 @@ export const mergeVerificationStatusFromProof = (
 ): VerificationMetadata | undefined => {
   if (!proof?.results) return verification ?? undefined;
 
-  const status = proof.results.verified ? "verified" : "failed";
+  const status: VerificationMetadata["status"] =
+    proof.results.verified === true
+      ? "verified"
+      : proof.results.verified === false &&
+        (proof.results.reasons?.length || 0) > 0
+      ? "failed"
+      : "pending";
   const base: VerificationMetadata =
     verification ??
     ({

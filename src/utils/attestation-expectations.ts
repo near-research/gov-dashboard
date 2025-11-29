@@ -2,8 +2,8 @@ export interface AttestationExpectations {
   nonce: string;
   arch: string;
   deviceCertHash: string;
-  rimHash: string;
-  ueid: string;
+  rimHash?: string;
+  ueid?: string;
   measurements: string[];
 }
 
@@ -158,9 +158,6 @@ export const validateExpectations = (
   if (!expectations.nonce) missing.push("nonce");
   if (!expectations.arch) missing.push("arch");
   if (!expectations.deviceCertHash) missing.push("deviceCertHash");
-  // rimHash and ueid are optional - NRAS validates these internally
-  // if (!expectations.rimHash) missing.push("rimHash");
-  // if (!expectations.ueid) missing.push("ueid");
   if (!expectations.measurements || expectations.measurements.length === 0) {
     missing.push("measurements");
   }

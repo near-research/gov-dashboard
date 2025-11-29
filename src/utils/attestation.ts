@@ -88,6 +88,22 @@ export function deriveVerificationState({
   const normalizedSignatureText = normalize(signatureText);
   const normalizedRequestHash = normalize(requestHash);
   const normalizedResponseHash = normalize(responseHash);
+  const hasVerificationSignals =
+    hasProof ||
+    (attestationResult !== undefined && attestationResult !== null) ||
+    typeof nrasVerified === "boolean" ||
+    typeof intelVerified === "boolean";
+  const noVerificationData =
+    !hasProof &&
+    !requestHash &&
+    !responseHash &&
+    !signatureText &&
+    !signature &&
+    !signatureAddress &&
+    attestationResult == null &&
+    typeof nrasVerified !== "boolean" &&
+    typeof intelVerified !== "boolean" &&
+    !nonceCheck;
 
   // Hash step
   if (!normalizedSignatureText || !normalizedRequestHash || !normalizedResponseHash) {
@@ -156,31 +172,36 @@ export function deriveVerificationState({
 
   // Nonce step
   if (!nonceCheck) {
-    steps.nonce = hasProof
-      ? {
-          status: "error",
-          message: "Nonce not validated - missing nonce check",
-        }
-      : {
-          status: "pending",
-          message: "Waiting for proof to validate nonce",
-        };
-    if (hasProof) {
-      reasons.push("Nonce not validated");
-    }
-  } else if (nonceCheck) {
-    if (nonceCheck.valid) {
-      steps.nonce = { status: "success", message: "Nonce bound" };
-    } else {
+    if (hasVerificationSignals) {
       steps.nonce = {
         status: "error",
-        message: "Nonce mismatch",
-        details: `Expected: ${nonceCheck.expected || "unknown"}\nAttested: ${
-          nonceCheck.attested || "unknown"
-        }\nNRAS: ${nonceCheck.nras || "unknown"}`,
+        message: "Nonce not validated - missing nonce check",
       };
-      reasons.push("Nonce mismatch");
+      reasons.push("Nonce not validated");
+    } else {
+      steps.nonce = {
+        status: "pending",
+        message: "Waiting for proof to validate nonce",
+      };
     }
+  } else if (nonceCheck.valid) {
+    steps.nonce = { status: "success", message: "Nonce bound" };
+  } else {
+    steps.nonce = {
+      status: "error",
+      message: "Nonce mismatch",
+      details: `Expected: ${nonceCheck.expected || "unknown"}\nAttested: ${
+        nonceCheck.attested || "unknown"
+      }\nNRAS: ${nonceCheck.nras || "unknown"}`,
+    };
+    reasons.push("Nonce mismatch");
+  }
+
+  if (noVerificationData) {
+    steps.hash = {
+      status: "pending",
+      message: "Waiting for verification inputs",
+    };
   }
 
   // GPU

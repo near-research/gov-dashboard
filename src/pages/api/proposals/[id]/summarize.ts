@@ -196,6 +196,7 @@ export default async function handler(
       messages: [{ role: "user", content: prompt }],
       temperature: 0.5,
       max_tokens: 800,
+      stream: false,
     };
     const requestBody = JSON.stringify(nearRequest);
     const requestHash = createHash("sha256").update(requestBody).digest("hex");

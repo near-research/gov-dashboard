@@ -12,6 +12,7 @@ import {
   updateVerificationHashes,
 } from "@/server/verificationSessions";
 import { getModelExpectations } from "@/server/attestation-cache";
+import { extractHashesFromSignedText } from "@/utils/request-hash";
 
 const NEAR_API_BASE = "https://cloud-api.near.ai/v1";
 
@@ -186,8 +187,8 @@ export default async function handler(
   }
 
   let expectedNonce = session?.nonce;
-  const sessionRequestHash = session?.requestHash || null;
-  const sessionResponseHash = session?.responseHash || null;
+  let sessionRequestHash: string | null = session?.requestHash || null;
+  let sessionResponseHash: string | null = session?.responseHash || null;
 
   if (!expectedNonce) {
     // Attempt to register using provided hashes if session was not established
@@ -206,6 +207,10 @@ export default async function handler(
       });
     }
   }
+
+  // Refresh session hashes after any late registration
+  sessionRequestHash = session?.requestHash ?? sessionRequestHash ?? null;
+  sessionResponseHash = session?.responseHash ?? sessionResponseHash ?? null;
 
   // Auto-fetch expectations if missing
   const expectationsMissing =
@@ -837,42 +842,51 @@ export default async function handler(
       result: attestationSummaryResult,
     });
 
-    // Prefer hashes embedded in the signed text. If present, override session hashes to prevent false mismatches.
-    let effectiveRequestHash = sessionRequestHash;
-    let effectiveResponseHash = sessionResponseHash;
+    // Prefer hashes embedded in the signed text. Only override session hashes when both signed hashes are present.
+    const attestedHashes = extractHashesFromSignedText(
+      typeof signaturePayload?.text === "string" ? signaturePayload.text : null
+    );
+    let signedRequestHash = attestedHashes?.requestHash || null;
+    let signedResponseHash = attestedHashes?.responseHash || null;
 
-    const signedParts =
+    // Fallback: split on colon for older/plain signed text formats
+    if (
+      (!signedRequestHash || !signedResponseHash) &&
       typeof signaturePayload?.text === "string" &&
       signaturePayload.text.includes(":")
-        ? signaturePayload.text.split(":")
-        : [];
+    ) {
+      const [signedReq, signedRes] = signaturePayload.text.split(":");
+      signedRequestHash = signedRequestHash || signedReq || null;
+      signedResponseHash = signedResponseHash || signedRes || null;
+    }
 
-    const signedRequestHash = signedParts[0];
-    const signedResponseHash = signedParts[1];
+    const hasSignedPair = !!signedRequestHash && !!signedResponseHash;
 
-    const localPair =
-      effectiveRequestHash && effectiveResponseHash
-        ? `${effectiveRequestHash}:${effectiveResponseHash}`.toLowerCase()
+    const sessionPair =
+      sessionRequestHash && sessionResponseHash
+        ? `${sessionRequestHash}:${sessionResponseHash}`.toLowerCase()
         : null;
     const signedPair =
-      signedRequestHash && signedResponseHash
+      hasSignedPair && signedRequestHash && signedResponseHash
         ? `${signedRequestHash}:${signedResponseHash}`.toLowerCase()
         : null;
 
-    if (signedPair) {
-      if (!localPair || localPair !== signedPair) {
-        infoMessages.push(
-          "Session hashes did not match signed text; using signed request/response hashes for verification."
-        );
-      }
-      // Always prefer signed text hashes when present
-      effectiveRequestHash = signedRequestHash || effectiveRequestHash;
-      effectiveResponseHash = signedResponseHash || effectiveResponseHash;
+    let effectiveRequestHash = hasSignedPair
+      ? signedRequestHash
+      : sessionRequestHash;
+    let effectiveResponseHash = hasSignedPair
+      ? signedResponseHash
+      : sessionResponseHash;
+
+    if (hasSignedPair && sessionPair && signedPair && signedPair !== sessionPair) {
+      infoMessages.push(
+        "Session hashes did not match signed text; using signed request/response hashes for verification."
+      );
     }
 
     console.info("[verification/proof] hash-debug", {
       verificationId,
-      sessionHashes: localPair,
+      sessionHashes: sessionPair,
       signedHashes: signedPair,
       effectiveHashes:
         effectiveRequestHash && effectiveResponseHash
@@ -886,7 +900,8 @@ export default async function handler(
         responseHash: effectiveResponseHash,
       });
     }
-
+    proof.sessionRequestHash = sessionRequestHash ?? null;
+    proof.sessionResponseHash = sessionResponseHash ?? null;
     proof.requestHash = effectiveRequestHash ?? sessionRequestHash ?? null;
     proof.responseHash = effectiveResponseHash ?? sessionResponseHash ?? null;
 

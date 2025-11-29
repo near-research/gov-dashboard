@@ -76,16 +76,21 @@ const buildExpectations = (payload: any): AttestationExpectations => {
     nonce: String(base.nonce ?? fromEvidence.nonce ?? ""),
     arch: String(base.arch ?? fromEvidence.arch ?? ""),
     deviceCertHash: String(base.deviceCertHash ?? fromEvidence.deviceCertHash ?? ""),
-    rimHash: String(base.rimHash ?? fromEvidence.rimHash ?? ""),
-    ueid: String(base.ueid ?? fromEvidence.ueid ?? ""),
+    rimHash: (base.rimHash ?? fromEvidence.rimHash)?.toString(),
+    ueid: (base.ueid ?? fromEvidence.ueid)?.toString(),
     measurements: (fromEvidence.measurements ?? []).map((m) => String(m)),
   };
 
-  const missing = Object.entries(expectations).filter(
-    ([, v]) => v === undefined || v === null || (Array.isArray(v) && v.length === 0) || (typeof v === "string" && v.trim() === "")
-  );
-  if (missing.length) {
-    throw new Error(`Missing expected attestation fields: ${missing.map(([k]) => k).join(", ")}`);
+  const requiredMissing: string[] = [];
+  if (!expectations.nonce.trim()) requiredMissing.push("nonce");
+  if (!expectations.arch.trim()) requiredMissing.push("arch");
+  if (!expectations.deviceCertHash.trim()) requiredMissing.push("deviceCertHash");
+  if (!expectations.measurements.length) requiredMissing.push("measurements");
+
+  if (requiredMissing.length) {
+    throw new Error(
+      `Missing expected attestation fields: ${requiredMissing.join(", ")}`
+    );
   }
 
   return expectations;

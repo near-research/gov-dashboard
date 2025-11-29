@@ -182,11 +182,29 @@ export function VerificationProof({
     );
   }, [attestedHashes, remoteProof?.responseHash, responseHash]);
 
+  const recordedRequestHash = useMemo(
+    () =>
+      remoteProof?.sessionRequestHash ||
+      remoteProof?.requestHash ||
+      requestHash ||
+      null,
+    [remoteProof?.sessionRequestHash, remoteProof?.requestHash, requestHash]
+  );
+
+  const recordedResponseHash = useMemo(
+    () =>
+      remoteProof?.sessionResponseHash ||
+      remoteProof?.responseHash ||
+      responseHash ||
+      null,
+    [remoteProof?.sessionResponseHash, remoteProof?.responseHash, responseHash]
+  );
+
   const hashMismatch = useMemo(() => {
     if (
       !attestedHashes ||
-      !requestHash ||
-      !responseHash ||
+      !recordedRequestHash ||
+      !recordedResponseHash ||
       !attestedHashes.requestHash ||
       !attestedHashes.responseHash
     ) {
@@ -195,10 +213,10 @@ export function VerificationProof({
 
     const normalize = (value: string) => value.trim().toLowerCase();
     return (
-      normalize(attestedHashes.requestHash) !== normalize(requestHash) ||
-      normalize(attestedHashes.responseHash) !== normalize(responseHash)
+      normalize(attestedHashes.requestHash) !== normalize(recordedRequestHash) ||
+      normalize(attestedHashes.responseHash) !== normalize(recordedResponseHash)
     );
-  }, [attestedHashes, requestHash, responseHash]);
+  }, [attestedHashes, recordedRequestHash, recordedResponseHash]);
 
   const attestationPayload = (() => {
     const att = remoteProof?.attestation;
@@ -1287,8 +1305,18 @@ export function VerificationProof({
                 hashMismatch={hashMismatch}
                 attestedRequestHash={attestedHashes?.requestHash}
                 attestedResponseHash={attestedHashes?.responseHash}
-                recordedRequestHash={requestHash || remoteProof?.requestHash || null}
-                recordedResponseHash={responseHash || remoteProof?.responseHash || null}
+                recordedRequestHash={
+                  remoteProof?.sessionRequestHash ||
+                  remoteProof?.requestHash ||
+                  requestHash ||
+                  null
+                }
+                recordedResponseHash={
+                  remoteProof?.sessionResponseHash ||
+                  remoteProof?.responseHash ||
+                  responseHash ||
+                  null
+                }
               />
 
               {hasInlineProof && (

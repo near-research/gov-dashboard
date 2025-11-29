@@ -98,6 +98,8 @@ export interface VerificationProofResponse {
   };
   requestHash?: string | null;
   responseHash?: string | null;
+  sessionRequestHash?: string | null;
+  sessionResponseHash?: string | null;
 }
 
 export interface NrasVerificationRequest {

@@ -6,6 +6,7 @@ import {
   normalizeVerificationPayload,
 } from "@/utils/verification";
 import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
+import { createHash, randomBytes } from "crypto";
 import {
   verify,
   type VerificationResult,
@@ -13,6 +14,7 @@ import {
 } from "near-sign-verify";
 import { getNearAIClient } from "@/lib/near-ai/client";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
+import { registerVerificationSession } from "@/server/verificationSessions";
 
 type ScreeningErrorDetails = {
   code?: string;
@@ -145,13 +147,17 @@ export async function requestEvaluation(
   const prompt = buildScreeningPrompt(title, content);
 
   const model = NEAR_AI_MODELS.GPT_OSS_120B;
+  const requestPayload = {
+    model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.3,
+    stream: false,
+  };
+  const requestBodyString = JSON.stringify(requestPayload);
+  const requestHash = createHash("sha256").update(requestBodyString).digest("hex");
 
   try {
-    const data = await client.chatCompletions({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-    });
+    const data = await client.chatCompletions(requestPayload);
 
     const contentText = data.choices?.[0]?.message?.content;
 
@@ -185,11 +191,30 @@ export async function requestEvaluation(
       verificationRaw,
       verificationMessageId
     );
+    const sessionVerificationId =
+      verificationId || verificationMessageId || undefined;
+
+    let sessionNonce: string | undefined;
+    if (sessionVerificationId) {
+      sessionNonce = randomBytes(32).toString("hex");
+      registerVerificationSession(
+        sessionVerificationId,
+        sessionNonce,
+        requestHash,
+        null
+      );
+    }
+
+    const verificationWithNonce = verification
+      ? { ...verification, nonce: verification?.nonce ?? sessionNonce }
+      : sessionNonce
+      ? { nonce: sessionNonce, messageId: sessionVerificationId ?? undefined }
+      : verification ?? undefined;
 
     return {
       evaluation,
-      verification,
-      verificationId: verificationId ?? undefined,
+      verification: verificationWithNonce ?? undefined,
+      verificationId: sessionVerificationId ?? undefined,
       model,
     };
   } catch (error) {

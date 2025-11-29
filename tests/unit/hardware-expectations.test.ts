@@ -17,20 +17,18 @@ const fullExpectations: AttestationExpectations = {
 };
 
 describe("validateExpectations", () => {
-  it("returns complete:true when all 6 fields present", () => {
+  it("returns complete:true when required fields present", () => {
     const res = validateExpectations(fullExpectations);
     expect(res.complete).toBe(true);
     expect(res.missing).toHaveLength(0);
     expect(res.message).toBeUndefined();
   });
 
-  it("returns complete:false when any field missing", () => {
+  it("returns complete:false when required field missing", () => {
     const keys: Array<keyof AttestationExpectations> = [
       "nonce",
       "arch",
       "deviceCertHash",
-      "rimHash",
-      "ueid",
       "measurements",
     ];
     for (const key of keys) {
@@ -48,8 +46,6 @@ describe("validateExpectations", () => {
     expect(res.missing).toEqual([
       "arch",
       "deviceCertHash",
-      "rimHash",
-      "ueid",
       "measurements",
     ]);
   });
@@ -62,7 +58,7 @@ describe("validateExpectations", () => {
 
   it("includes descriptive message for missing fields", () => {
     const res = validateExpectations({ arch: "HOPPER" });
-    expect(res.message).toBe("Missing expectations: nonce, deviceCertHash, rimHash, ueid, measurements");
+    expect(res.message).toBe("Missing expectations: nonce, deviceCertHash, measurements");
   });
 });
 

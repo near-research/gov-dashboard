@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vites
 import handler from "@/pages/api/verification/proof";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { verifiedProofMock } from "../../fixtures/verification";
+import * as requestHashUtils from "@/utils/request-hash";
 import {
   registerVerificationSession,
   clearVerificationSession,
@@ -33,7 +34,7 @@ describe("verification/proof API (mock)", () => {
   const prev = process.env.VERIFY_USE_MOCKS;
   beforeEach(() => {
     clearVerificationSession("id1");
-    registerVerificationSession("id1", "nonce123");
+    registerVerificationSession("id1", "nonce123", "req-session", "res-session");
   });
   beforeAll(() => {
     process.env.VERIFY_USE_MOCKS = "true";
@@ -123,7 +124,7 @@ describe("verification/proof API (mocked fetch)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     clearVerificationSession("id1");
-    registerVerificationSession("id1", "nonce123");
+    registerVerificationSession("id1", "nonce123", "req-session", "res-session");
   });
 
   it("handles happy path with mocked attestation/signature/NRAS", async () => {
@@ -155,6 +156,122 @@ describe("verification/proof API (mocked fetch)", () => {
     expect(state.body?.results?.verified).toBe(true);
     expect(state.body?.nras?.verified).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not override session hashes when only one signed hash is present", async () => {
+    const extractSpy = vi
+      .spyOn(requestHashUtils, "extractHashesFromSignedText")
+      .mockReturnValue({ requestHash: "signed-only", responseHash: undefined });
+
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ...verifiedProofMock.signature, text: "signed-only" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: "nonce123",
+      model: "m",
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+    });
+
+    await handler(req, res);
+    expect(state.body?.requestHash).toBe("req-session");
+    expect(state.body?.responseHash).toBe("res-session");
+    expect(state.body?.sessionRequestHash).toBe("req-session");
+    expect(state.body?.results?.info || []).not.toContain(
+      expect.stringContaining("Session hashes did not match")
+    );
+    extractSpy.mockRestore();
+  });
+
+  it("overrides hashes and emits info when signed pair differs from session", async () => {
+    const extractSpy = vi
+      .spyOn(requestHashUtils, "extractHashesFromSignedText")
+      .mockReturnValue({
+        requestHash: "signed-req",
+        responseHash: "signed-res",
+      });
+
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: "nonce123",
+      model: "m",
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+    });
+
+    await handler(req, res);
+    expect(state.body?.requestHash).toBe("signed-req");
+    expect(state.body?.responseHash).toBe("signed-res");
+    expect(state.body?.sessionRequestHash).toBe("req-session");
+    expect(
+      (state.body?.results?.info || []).some((msg: string) =>
+        msg.includes("Session hashes did not match")
+      )
+    ).toBe(true);
+    extractSpy.mockRestore();
+  });
+
+  it("uses signed hashes when they match session without emitting mismatch info", async () => {
+    const extractSpy = vi
+      .spyOn(requestHashUtils, "extractHashesFromSignedText")
+      .mockReturnValue({
+        requestHash: "req-session",
+        responseHash: "res-session",
+      });
+
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: "nonce123",
+      model: "m",
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+    });
+
+    await handler(req, res);
+    expect(state.body?.requestHash).toBe("req-session");
+    expect(state.body?.responseHash).toBe("res-session");
+    expect(state.body?.sessionRequestHash).toBe("req-session");
+    expect(state.body?.results?.info || []).not.toContain(
+      expect.stringContaining("Session hashes did not match")
+    );
+    extractSpy.mockRestore();
   });
 
   it("propagates NRAS error", async () => {

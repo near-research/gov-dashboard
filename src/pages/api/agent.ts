@@ -3,6 +3,7 @@
  */
 
 import { PassThrough } from "stream";
+import { createHash } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 import {
   EventType,
@@ -342,12 +343,15 @@ export default async function handler(
     });
 
     const requestBodyString = JSON.stringify(requestBody);
+    const requestHash = createHash("sha256")
+      .update(requestBodyString)
+      .digest("hex");
 
     if (verificationId) {
       registerVerificationSession(
         verificationId,
         verificationNonce,
-        null,
+        requestHash,
         null
       );
     }
@@ -781,6 +785,9 @@ export default async function handler(
       };
 
       const secondRequestBodyString = JSON.stringify(secondRequestBody);
+      const secondRequestHash = createHash("sha256")
+        .update(secondRequestBodyString)
+        .digest("hex");
 
       if (verificationId) {
         secondVerificationId = `${verificationId}-synthesis`;
@@ -814,7 +821,7 @@ export default async function handler(
         registerVerificationSession(
           secondVerificationId,
           secondNonce,
-          null,
+          secondRequestHash,
           null
         );
       }

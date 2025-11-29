@@ -6,8 +6,8 @@ import {
 type CachedExpectations = {
   arch: string;
   deviceCertHash: string;
-  rimHash: string;
-  ueid: string;
+  rimHash?: string | null;
+  ueid?: string | null;
   measurements: string[];
   fetchedAt: number;
 };
