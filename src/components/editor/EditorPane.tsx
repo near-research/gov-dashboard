@@ -5,7 +5,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Check, X } from "lucide-react";
+import { AlertCircle, Check, Copy, X, Image as ImageIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Markdown } from "@/components/proposal/Markdown";
 
 export function EditorPane({
   title,
@@ -13,7 +15,6 @@ export function EditorPane({
   setTitle,
   setContent,
   disabled,
-  renderedPreview,
   viewMode,
   onToggleView,
   showDiffHighlights,
@@ -27,7 +28,6 @@ export function EditorPane({
   setTitle: (s: string) => void;
   setContent: (s: string) => void;
   disabled: boolean;
-  renderedPreview: string;
   viewMode: "editor" | "preview";
   onToggleView: (mode: "editor" | "preview") => void;
   showDiffHighlights: boolean;
@@ -36,21 +36,22 @@ export function EditorPane({
   onAcceptChanges?: () => void;
   onRejectChanges?: () => void;
 }) {
+  const [showImageDialog, setShowImageDialog] = React.useState(false);
+  const [imageUrl, setImageUrl] = React.useState("");
+  const [imageAlt, setImageAlt] = React.useState("");
+
+  const insertImage = () => {
+    if (!imageUrl.trim()) return;
+    const alt = imageAlt.trim() || "image";
+    const snippet = `![${alt}](${imageUrl.trim()})`;
+    setContent(content ? `${content}\n\n${snippet}` : snippet);
+    setShowImageDialog(false);
+    setImageUrl("");
+    setImageAlt("");
+  };
+
   return (
     <div className="space-y-6">
-      {/* Title Input */}
-      <div className="space-y-2">
-        <Label htmlFor="title">Proposal Title</Label>
-        <Input
-          id="title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={disabled}
-          placeholder="Enter your proposal title…"
-          className="text-base font-semibold"
-        />
-      </div>
-
       {/* Diff Controls Banner */}
       {hasPendingChanges && showDiffHighlights && (
         <Alert className="bg-orange-50 border-orange-300">
@@ -86,23 +87,68 @@ export function EditorPane({
         </Alert>
       )}
 
-      {/* View Toggle */}
-      <div className="flex items-center justify-between">
-        <Tabs value={viewMode} onValueChange={(v) => onToggleView(v as any)}>
-          <TabsList>
-            <TabsTrigger value="editor">Editor</TabsTrigger>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <kbd className="px-2 py-1 text-xs bg-muted border rounded">
-          ⌘/Ctrl + E to toggle
-        </kbd>
+      {/* Title Input / Preview */}
+      <div className="space-y-2">
+        {viewMode === "editor" ? (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="title" className="text-sm font-medium">
+                Title
+              </Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                onClick={() => navigator.clipboard.writeText(title || "")}
+              >
+                <Copy className="h-4 w-4" aria-hidden />
+                Copy
+              </Button>
+            </div>
+            <Input
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              disabled={disabled}
+              placeholder="Title goes here…"
+              className="text-base font-semibold"
+            />
+          </>
+        ) : (
+          <div className="text-3xl font-bold text-foreground min-h-[3rem]">
+            {title || "Untitled proposal"}
+          </div>
+        )}
       </div>
 
       {/* Editor View */}
       {viewMode === "editor" && (
-        <div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="title" className="text-sm font-medium">
+              Content
+            </Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                onClick={() => setShowImageDialog(true)}
+              >
+                <ImageIcon className="h-4 w-4" aria-hidden />
+                Add image
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                onClick={() => navigator.clipboard.writeText(content || "")}
+              >
+                <Copy className="h-4 w-4" aria-hidden />
+                Copy
+              </Button>
+            </div>
+          </div>
           {showDiffHighlights && diffHtml ? (
             <div
               className="min-h-[400px] max-h-[640px] overflow-y-auto p-4 border-2 rounded-lg bg-muted font-mono text-sm leading-relaxed whitespace-pre-wrap"
@@ -113,13 +159,7 @@ export function EditorPane({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               disabled={disabled}
-              placeholder="Write your proposal in Markdown…
-
-Include:
-- Objectives and goals
-- Detailed budget breakdown
-- Timeline with milestones
-- Measurable KPIs"
+              placeholder="Write your proposal content in Markdown format. Be sure to include any objectives, key performance indicators, a timeline with milestones, and a detailed budget breakdown if necessary."
               rows={24}
               className="font-mono text-sm resize-none"
             />
@@ -129,27 +169,62 @@ Include:
 
       {/* Preview View */}
       {viewMode === "preview" && (
-        <div className="min-h-[400px] max-h-[640px] overflow-y-auto p-5 border-2 rounded-lg bg-muted">
-          {title && (
-            <h1 className="text-2xl font-bold mb-4 text-foreground">{title}</h1>
-          )}
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              onClick={() => navigator.clipboard.writeText(content || "")}
+            >
+              <Copy className="h-4 w-4" aria-hidden />
+              Copy content
+            </Button>
+          </div>
           {showDiffHighlights && diffHtml ? (
             <div
-              className="prose prose-sm max-w-none"
+              className="prose prose-sm max-w-none border rounded-lg p-4"
               dangerouslySetInnerHTML={{ __html: diffHtml }}
             />
           ) : content ? (
-            <div
-              className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: renderedPreview }}
-            />
+            <div className="prose prose-sm max-w-none">
+              <Markdown content={content} />
+            </div>
           ) : (
-            <p className="text-sm text-muted-foreground italic">
-              Your markdown preview will appear here…
-            </p>
+            <div className="h-full w-full rounded-lg border border-dashed border-muted-foreground/30 p-6 text-sm text-muted-foreground italic">
+              Add a title and content to see the preview.
+            </div>
           )}
         </div>
       )}
+
+      <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add image</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Image URL (https://...)"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+            />
+            <Input
+              placeholder="Alt text (optional)"
+              value={imageAlt}
+              onChange={(e) => setImageAlt(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowImageDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={insertImage} disabled={!imageUrl.trim()}>
+                Insert
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

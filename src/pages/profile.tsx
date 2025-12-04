@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useNear } from "@/hooks/useNear";
+import { useAuth } from "@/components/providers/auth-provider";
 import { client } from "@/lib/orpc";
 import { WalletStatus } from "@/components/profile/WalletStatus";
 import { DiscourseConnect } from "@/components/profile/DiscourseConnect";
@@ -25,6 +25,11 @@ import {
   ExternalLink,
   MessageCircle,
 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  clearDiscourseUserApiKey,
+  saveDiscourseUserApiKey,
+} from "@/utils/discourse";
 
 type AccountView = {
   amount: string;
@@ -78,12 +83,8 @@ const formatDate = (iso?: string | null) => {
 };
 
 export default function Profile() {
-  const {
-    signedAccountId,
-    wallet,
-    loading: walletLoading,
-    provider,
-  } = useNear();
+  const { user, isPending, nearAccountId, wallet, walletLoading, provider } =
+    useAuth();
   const [discourseLink, setDiscourseLink] = useState<any>(null);
   const [discourseCheckFailed, setDiscourseCheckFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -101,28 +102,32 @@ export default function Profile() {
     lastSeenAt: string | null;
     createdAt: string | null;
   } | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const loadProfile = useCallback(async () => {
-    if (!signedAccountId) return;
+    if (!nearAccountId) return;
 
     try {
       const linkData = await client.discourse.getLinkage({
-        nearAccount: signedAccountId,
+        nearAccount: nearAccountId,
       });
       setDiscourseLink(linkData);
+      if ((linkData as any)?.userApiKey) {
+        saveDiscourseUserApiKey((linkData as any).userApiKey);
+      }
       setDiscourseCheckFailed(false);
     } catch (error) {
       console.log("Discourse plugin server not available");
       setDiscourseCheckFailed(true);
     }
-  }, [signedAccountId]);
+  }, [nearAccountId]);
 
   useEffect(() => {
-    if (!signedAccountId || !provider) {
+    if (!nearAccountId || !provider) {
       setNearBalance(null);
       return;
     }
@@ -132,7 +137,7 @@ export default function Profile() {
       try {
         const accountView = (await provider.query({
           request_type: "view_account",
-          account_id: signedAccountId,
+          account_id: nearAccountId,
           finality: "final",
         })) as unknown as AccountView;
         if (!cancelled) {
@@ -152,7 +157,7 @@ export default function Profile() {
     return () => {
       cancelled = true;
     };
-  }, [provider, signedAccountId]);
+  }, [provider, nearAccountId]);
 
   useEffect(() => {
     if (!discourseLink?.discourseUsername) {
@@ -183,7 +188,7 @@ export default function Profile() {
         setBadges(badgeNames);
         const user = data.user ?? {};
         const avatarUrl = user.avatar_template
-          ? `${servicesConfig.discourseBaseUrl}${user.avatar_template.replace(
+          ? `${servicesConfig.discourseUrl}${user.avatar_template.replace(
               "{size}",
               "120"
             )}`
@@ -218,16 +223,39 @@ export default function Profile() {
   }, [discourseLink?.discourseUsername]);
 
   useEffect(() => {
-    if (signedAccountId) {
+    if (nearAccountId) {
       loadProfile();
     }
-  }, [signedAccountId, loadProfile]);
+  }, [nearAccountId, loadProfile]);
 
   const getInitials = (accountId: string) => {
     return accountId.slice(0, 2).toUpperCase();
   };
 
-  if (!mounted || walletLoading) {
+  const handleUnlinkDiscourse = async () => {
+    if (!nearAccountId) return;
+    setUnlinking(true);
+    try {
+      await client.discourse.unlink({ nearAccount: nearAccountId });
+      setDiscourseLink(null);
+      setBadges([]);
+      setBadgesError("");
+      setDiscourseProfile(null);
+      clearDiscourseUserApiKey();
+      toast.success("Discourse account unlinked");
+    } catch (error) {
+      console.error("Failed to unlink Discourse:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to unlink Discourse right now."
+      );
+    } finally {
+      setUnlinking(false);
+    }
+  };
+
+  if (!mounted || isPending) {
     return (
       <div className="mx-auto max-w-5xl space-y-10 px-4 py-10">
         <Card>
@@ -243,7 +271,7 @@ export default function Profile() {
     );
   }
 
-  if (!signedAccountId) {
+  if (!user || !nearAccountId) {
     return (
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-10">
         <Card>
@@ -255,8 +283,8 @@ export default function Profile() {
           </CardHeader>
           <CardContent>
             <WalletStatus
-              signedAccountId={signedAccountId}
-              loading={walletLoading}
+              signedAccountId={nearAccountId ?? ""}
+              loading={isPending || walletLoading}
             />
           </CardContent>
         </Card>
@@ -277,12 +305,12 @@ export default function Profile() {
                     <AvatarImage src={discourseProfile.avatarUrl} alt="" />
                   )}
                   <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                    {getInitials(signedAccountId)}
+                    {getInitials(nearAccountId)}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <h1 className="text-3xl font-bold font-mono tracking-tight text-slate-900">
-                    {signedAccountId}
+                    {nearAccountId}
                   </h1>
                 </div>
               </div>
@@ -380,29 +408,42 @@ export default function Profile() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-white">
                   <CheckCircle2 className="h-6 w-6" />
                 </div>
-                <div>
+                <div
+                  title="Discourse Connected"
+                  aria-label="Discourse Connected"
+                >
                   <p className="text-lg font-semibold">Linked to Discourse</p>
                   <p className="text-sm text-emerald-900/80">
                     @{discourseLink.discourseUsername}
                   </p>
                 </div>
               </div>
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
-              >
-                <a
-                  href={`https://gov.near.org/u/${discourseLink.discourseUsername}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2"
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
                 >
-                  <ExternalLink className="h-4 w-4" />
-                  View Profile
-                </a>
-              </Button>
+                  <a
+                    href={`https://gov.near.org/u/${discourseLink.discourseUsername}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    View Profile
+                  </a>
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleUnlinkDiscourse}
+                  disabled={unlinking}
+                >
+                  {unlinking ? "Unlinking..." : "Unlink"}
+                </Button>
+              </div>
 
               <div className="border-t border-slate-100 pt-4">
                 <p className="text-sm font-semibold text-slate-900">
@@ -490,8 +531,6 @@ export default function Profile() {
             </>
           ) : (
             <DiscourseConnect
-              signedAccountId={signedAccountId}
-              wallet={wallet}
               onLinked={(result) => {
                 setDiscourseLink(result);
               }}

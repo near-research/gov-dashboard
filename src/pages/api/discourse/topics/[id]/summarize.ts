@@ -15,14 +15,12 @@ import type {
   DiscussionSummaryResponse,
   SummaryProof,
 } from "@/types/summaries";
-import {
-  extractVerificationMetadata,
-  normalizeVerificationPayload,
-} from "@/utils/verification";
+import { extractVerificationMetadata } from "@/verification/normalize";
+import { normalizeVerificationPayload } from "@/verification/server";
 import {
   registerVerificationSession,
   updateVerificationHashes,
-} from "@/server/verificationSessions";
+} from "@/verification/server";
 import { getModelExpectations } from "@/server/attestation-cache";
 import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
@@ -49,7 +47,7 @@ const ensureVerificationSession = (
 };
 
 const discussionLimiter = createRateLimiter(rateLimitConfig.discussionSummary);
-const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
+const DISCOURSE_URL = servicesConfig.discourseUrl;
 
 interface ReplyWithEngagement extends DiscoursePost {
   likeCount: number;
@@ -333,8 +331,7 @@ ${truncatedOriginal}
       .digest("hex");
     const summary: string = data.choices[0]?.message?.content ?? "";
     const rawVerification = extractVerificationMetadata(data);
-    const nearMessageId =
-      data?.id || generatedVerificationId;
+    const nearMessageId = data?.id || generatedVerificationId;
     const { verification, verificationId: normalizedVerificationId } =
       normalizeVerificationPayload(rawVerification, nearMessageId);
     const effectiveVerificationId =
@@ -387,8 +384,8 @@ ${truncatedOriginal}
         nonce: session.nonce,
         arch: expectations?.arch,
         deviceCertHash: expectations?.deviceCertHash,
-        rimHash: expectations?.rimHash,
-        ueid: expectations?.ueid,
+        rimHash: expectations?.rimHash ?? undefined,
+        ueid: expectations?.ueid ?? undefined,
         measurements: expectations?.measurements,
       },
     };

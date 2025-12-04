@@ -1,7 +1,7 @@
 import React from "react";
 import { Separator } from "@/components/ui/separator";
 import type { VerificationMetadata } from "@/types/agui-events";
-import { shortenFingerprint } from "@/utils/verification";
+import { shortenFingerprint } from "@/verification/normalize";
 
 export interface InlineProofPanelProps {
   verification?: VerificationMetadata;

@@ -1,5 +1,5 @@
 // components/chat/ChatMessages.tsx
-import { useRef, useEffect, useMemo, Fragment } from "react";
+import React, { useRef, useEffect, useMemo, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowDown } from "lucide-react";
 import { Message } from "./Message";
@@ -69,6 +69,8 @@ const ScrollToBottom = ({
           size="icon"
           className="pointer-events-auto rounded-full shadow-lg"
           onClick={onClick}
+          aria-label="Scroll to bottom"
+          data-testid="scroll-to-bottom"
         >
           <ArrowDown className="h-4 w-4" />
         </Button>

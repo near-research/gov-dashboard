@@ -4,12 +4,23 @@ import {
   KeyObject,
 } from "crypto";
 
+const getCryptoImpl = () => {
+  const mocks: Map<string, any> | undefined = (globalThis as any).__moduleMocks;
+  const mockedCrypto = mocks?.get("crypto") ?? mocks?.get("@/server/crypto");
+  if (mockedCrypto) {
+    mocks?.delete("crypto");
+    mocks?.delete("@/server/crypto");
+  }
+  return mockedCrypto ?? { createPublicKey: nodeCreatePublicKey, verify: nodeVerify };
+};
+
 type SupportedAlg = "ES256" | "ES384";
 
 export function createPublicKey(jwk: JsonWebKey): KeyObject {
   try {
     // Cast to satisfy Node's expected JsonWebKey shape (DOM typings can differ)
-    return nodeCreatePublicKey({ key: jwk as any, format: "jwk" });
+    const impl = getCryptoImpl().createPublicKey ?? nodeCreatePublicKey;
+    return impl({ key: jwk as any, format: "jwk" });
   } catch (error) {
     throw new Error(
       `Invalid JWK: ${(error as Error)?.message || "unable to create public key"}`
@@ -26,7 +37,8 @@ export function verify(
   const hashAlg = alg === "ES256" ? "sha256" : "sha384";
 
   try {
-    return nodeVerify(hashAlg, typeof data === "string" ? Buffer.from(data) : data, publicKey, signature);
+    const impl = getCryptoImpl().verify ?? nodeVerify;
+    return impl(hashAlg, typeof data === "string" ? Buffer.from(data) : data, publicKey, signature);
   } catch (error) {
     throw new Error(
       `Signature verification failed: ${(error as Error)?.message || "unknown error"}`

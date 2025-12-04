@@ -4,7 +4,7 @@ import {
   shortenFingerprint,
   extractVerificationMetadata,
   normalizeVerificationPayload,
-} from "@/utils/verification";
+} from "@/verification/normalize";
 
 describe("toVerificationStatus", () => {
   it("normalizes verified/valid", () => {

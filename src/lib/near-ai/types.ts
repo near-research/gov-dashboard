@@ -65,6 +65,11 @@ export interface ChatCompletionOptions {
    */
   timeout?: number;
   /**
+   * Optional unique request identifier (sent as X-Request-Id). When omitted, a
+   * random UUID will be generated per client request.
+   */
+  requestId?: string;
+  /**
    * Custom API base URL (default: https://cloud-api.near.ai)
    */
   baseUrl?: string;
@@ -80,5 +85,12 @@ export interface ChatCompletionOptions {
    * Nonce for request verification
    */
   verificationNonce?: string;
+  /**
+   * Number of retry attempts for transient errors (default: 0)
+   */
+  retryAttempts?: number;
+  /**
+   * Base delay in milliseconds for exponential backoff (default: 100)
+   */
+  retryBaseDelayMs?: number;
 }
-

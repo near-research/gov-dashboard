@@ -1,4 +1,5 @@
 // components/chat/Message.tsx
+import React from "react";
 import {
   VerificationProof,
   type RemoteProof,

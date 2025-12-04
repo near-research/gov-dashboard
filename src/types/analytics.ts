@@ -6,6 +6,7 @@ type TopicEventBase = {
 
 type FailureBase = {
   message: string;
+  code?: string | number | null;
 };
 
 export type GovernanceEvents = {
@@ -27,6 +28,13 @@ export type GovernanceEvents = {
     remaining: number | null;
     reset_seconds: number | null;
   };
+
+  // -------- Draft publish --------
+  draft_publish_clicked: {};
+  draft_publish_succeeded: {
+    topic_id: TopicId | null;
+  };
+  draft_publish_failed: FailureBase;
 
   // -------- Proposal page --------
   proposal_viewed: TopicEventBase & {

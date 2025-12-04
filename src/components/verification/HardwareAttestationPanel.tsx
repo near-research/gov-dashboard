@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { shortenFingerprint } from "@/utils/verification";
+import { shortenFingerprint } from "@/verification/normalize";
 import {
   ExternalLink,
   Loader2,

@@ -12,14 +12,12 @@ import type {
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
 import type { ReplySummaryResponse, SummaryProof } from "@/types/summaries";
-import {
-  extractVerificationMetadata,
-  normalizeVerificationPayload,
-} from "@/utils/verification";
+import { extractVerificationMetadata } from "@/verification/normalize";
+import { normalizeVerificationPayload } from "@/verification/server";
 import {
   registerVerificationSession,
   updateVerificationHashes,
-} from "@/server/verificationSessions";
+} from "@/verification/server";
 import { getModelExpectations } from "@/server/attestation-cache";
 import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
@@ -47,7 +45,7 @@ const ensureVerificationSession = (
 };
 
 const replyLimiter = createRateLimiter(rateLimitConfig.replySummary);
-const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
+const DISCOURSE_URL = servicesConfig.discourseUrl;
 
 /**
  * POST /api/discourse/replies/[id]/summarize
@@ -230,9 +228,8 @@ ${truncatedContent}`;
 
     // Get like count for engagement context
     const likeCount =
-      replyPost.actions_summary?.find(
-        (a: DiscourseActionSummary) => a.id === 2
-      )?.count || 0;
+      replyPost.actions_summary?.find((a: DiscourseActionSummary) => a.id === 2)
+        ?.count || 0;
 
     // Use the prompt builder function
     const prompt = buildReplySummaryPrompt(
@@ -268,7 +265,10 @@ ${truncatedContent}`;
     try {
       expectations = await getModelExpectations(model);
     } catch (err) {
-      console.error("[Reply Summary] Failed to fetch hardware expectations:", err);
+      console.error(
+        "[Reply Summary] Failed to fetch hardware expectations:",
+        err
+      );
     }
 
     const data = await client.chatCompletions(nearRequest, {
@@ -282,8 +282,7 @@ ${truncatedContent}`;
       .digest("hex");
     const summary: string = data.choices[0]?.message?.content ?? "";
     const rawVerification = extractVerificationMetadata(data);
-    const nearMessageId =
-      data?.id || generatedVerificationId;
+    const nearMessageId = data?.id || generatedVerificationId;
     const { verification, verificationId: normalizedVerificationId } =
       normalizeVerificationPayload(rawVerification, nearMessageId);
     const effectiveVerificationId =
@@ -342,8 +341,8 @@ ${truncatedContent}`;
         nonce: session.nonce,
         arch: expectations?.arch,
         deviceCertHash: expectations?.deviceCertHash,
-        rimHash: expectations?.rimHash,
-        ueid: expectations?.ueid,
+        rimHash: expectations?.rimHash ?? undefined,
+        ueid: expectations?.ueid ?? undefined,
         measurements: expectations?.measurements,
       },
     };

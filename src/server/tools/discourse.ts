@@ -3,7 +3,16 @@
  */
 
 import { servicesConfig } from "@/config/services";
-import type { DiscourseSearchResponse } from "@/types/discourse";
+import {
+  discourseLatestTopics,
+  discourseSearch,
+  discourseTopic,
+} from "@/server/plugins/discourse-client";
+import {
+  latestInputSchema,
+  searchInputSchema,
+} from "@/server/plugins/discourse-schemas";
+import { z } from "zod";
 
 // ============================================================================
 // Configuration
@@ -171,6 +180,35 @@ Always provide direct links:
 // Helper Functions
 // ============================================================================
 
+const validationError = (message: string) => ({ result: { error: message } });
+
+const SearchArgsSchema = searchInputSchema;
+
+const LatestArgsSchema = latestInputSchema.extend({
+  limit: z.number().int().positive().max(30).optional(),
+});
+
+const TopicIdSchema = z
+  .object({
+    topic_id: z
+      .union([z.string(), z.number()])
+      .transform((val) => Number(val))
+      .refine((val) => Number.isFinite(val) && val > 0, "Invalid topic_id"),
+  })
+  .strict();
+
+const SummarizeTopicSchema = z
+  .object({
+    topic_id: z.string().min(1),
+  })
+  .strict();
+
+const SummarizeReplySchema = z
+  .object({
+    post_id: z.string().min(1),
+  })
+  .strict();
+
 const stripHtml = (value: string) =>
   value
     .replace(/<br\s*\/?>/gi, "\n")
@@ -277,60 +315,123 @@ export interface DiscourseErrorResult {
 export async function handleSearchDiscourse(args: {
   query: string;
   limit?: number;
+  before?: string;
+  after?: string;
+  username?: string;
+  category?: string;
+  tags?: string[];
+  order?: "latest" | "likes" | "views" | "latest_topic";
+  status?:
+    | "open"
+    | "closed"
+    | "public"
+    | "archived"
+    | "noreplies"
+    | "solved"
+    | "unsolved";
+  in?:
+    | "title"
+    | "likes"
+    | "personal"
+    | "messages"
+    | "seen"
+    | "unseen"
+    | "posted"
+    | "created"
+    | "watching"
+    | "tracking"
+    | "bookmarks"
+    | "first"
+    | "pinned"
+    | "wiki";
+  page?: number;
+  userApiKey?: string;
 }): Promise<{ result: DiscourseSearchResult | DiscourseErrorResult }> {
-  const { query, limit: rawLimit } = args;
+  const parsed = SearchArgsSchema.safeParse(args);
 
-  if (!query?.trim()) {
-    return { result: { error: "Search query is required" } };
+  if (!parsed.success) {
+    const unknownKeys = parsed.error.issues
+      .filter((issue) => issue.code === "unrecognized_keys")
+      .flatMap((issue) => (issue as any).keys || []);
+    if (unknownKeys.length) {
+      return validationError(
+        `Unsupported parameter(s): ${unknownKeys.join(", ")}`
+      );
+    }
+    const queryIssue = parsed.error.issues.find(
+      (issue) => issue.path[0] === "query" && issue.code === "too_small"
+    );
+    if (queryIssue) {
+      return validationError("Search query is required");
+    }
+    const limitIssue = parsed.error.issues.find(
+      (issue) => issue.path[0] === "limit"
+    );
+    if (limitIssue?.code === "too_small") {
+      return validationError("Limit must be greater than or equal to 1");
+    }
+    if (limitIssue?.code === "too_big") {
+      return validationError("Limit must be less than or equal to 30");
+    }
+    return validationError(
+      parsed.error.issues.map((issue) => issue.message).join("; ")
+    );
   }
 
-  const limit = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 5);
-  const boundedLimit =
-    Number.isFinite(limit) && limit > 0 ? Math.min(limit, 10) : 5;
+  const { query, limit: rawLimit, userApiKey, ...searchParams } = parsed.data;
+
+  const limit = rawLimit ?? 5;
+  const boundedLimit = Math.min(Math.max(limit, 1), 30);
+  const renderLimit = Math.min(boundedLimit, 20);
 
   try {
-    const searchUrl = new URL(`${servicesConfig.discourseBaseUrl}/search.json`);
-    searchUrl.searchParams.set("q", query.trim());
-    searchUrl.searchParams.set("search_context[type]", "category");
-    searchUrl.searchParams.set(
-      "search_context[id]",
-      PROPOSALS_CATEGORY_ID.toString()
-    );
-
-    const response = await fetch(searchUrl.toString(), {
-      headers: { "Content-Type": "application/json" },
+    const { data, error, status } = await discourseSearch({
+      ...searchParams,
+      category: searchParams.category ?? PROPOSALS_CATEGORY_ID.toString(),
+      userApiKey,
+      query: query.trim(),
+      limit: boundedLimit,
     });
 
-    if (!response.ok) {
-      throw new Error(`Discourse API error: ${response.status}`);
+    if (!data || error) {
+      return {
+        result: {
+          error:
+            error ??
+            (status
+              ? `Discourse search failed (${status})`
+              : "Failed to search Discourse"),
+        },
+      };
     }
 
-    const data = (await response.json()) as DiscourseSearchResponse;
+    const topicsById = new Map(
+      (data.topics ?? []).map((topic) => [topic.id, topic])
+    );
     const posts = Array.isArray(data.posts)
       ? data.posts.slice(0, boundedLimit)
       : [];
 
-    const topics = posts.map((post) => ({
-      id: post.topic_id ?? post.id,
-      title: post.topic_title || `Post #${post.id}` || `Result ${post.id}`,
-      slug:
-        post.topic_slug ||
-        (post.topic_id ? `topic-${post.topic_id}` : `post-${post.id}`),
-      excerpt: stripHtml(post.cooked || "").slice(0, 400),
-      author: post.username,
-      created_at: post.created_at,
-      topic_id: post.topic_id ?? post.id,
-      topic_slug:
-        post.topic_slug ||
-        (post.topic_id ? `${post.topic_id}` : `post-${post.id}`),
-      reply_count:
-        post.reply_count ??
-        post.topic_posts_count ??
-        post.topic_reply_count ??
-        0,
-      views: post.topic_views ?? 0,
-      last_posted_at: post.topic_bumped_at ?? post.created_at,
-    }));
+    const topics = posts.map((post) => {
+      const topic = topicsById.get(post.topicId);
+      const slug = topic?.slug || `topic-${post.topicId}`;
+      const excerptSource = post.blurb || post.cooked || "";
+
+      return {
+        id: topic?.id ?? post.topicId ?? post.id,
+        title: topic?.title ?? post.topicTitle ?? `Post #${post.id}`,
+        slug,
+        excerpt: stripHtml(excerptSource).slice(0, 400),
+        author: post.username,
+        created_at: topic?.createdAt ?? post.createdAt ?? "",
+        topic_id: topic?.id ?? post.topicId ?? post.id,
+        topic_slug: slug,
+        reply_count: topic?.replyCount ?? post.replyCount ?? 0,
+        views: topic?.views ?? 0,
+        last_posted_at:
+          topic?.lastPostedAt ?? post.updatedAt ?? post.createdAt ?? "",
+      };
+    });
 
     return {
       result: {
@@ -338,10 +439,9 @@ export async function handleSearchDiscourse(args: {
         description: topics.length
           ? `Top ${topics.length} search results for "${query}".`
           : `No proposals found for "${query}".`,
-        topics,
-        total_count:
-          data.grouped_search_result?.post_ids?.length || posts.length,
-        query,
+        topics: topics.slice(0, renderLimit),
+        total_count: data.totalResults ?? posts.length,
+        query: query.trim(),
       },
     };
   } catch (error) {
@@ -357,43 +457,54 @@ export async function handleSearchDiscourse(args: {
 export async function handleGetDiscourseTopic(args: {
   topic_id: string;
 }): Promise<{ result: DiscourseTopicResult | DiscourseErrorResult }> {
-  const { topic_id } = args;
+  const parsed = TopicIdSchema.safeParse(args);
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues.map((i) => i.message).join("; ")
+    );
+  }
+
+  const topicId = parsed.data.topic_id;
 
   try {
-    const topicResponse = await fetch(
-      `${servicesConfig.discourseBaseUrl}/t/${topic_id}.json`
-    );
+    const { data, error } = await discourseTopic({ topicId });
 
-    if (!topicResponse.ok) {
-      throw new Error(`Failed to fetch topic: ${topicResponse.status}`);
+    if (!data || error) {
+      return {
+        result: {
+          error: error ?? "Failed to fetch topic",
+        },
+      };
     }
 
-    const topic = await topicResponse.json();
-    const posts = topic.post_stream?.posts || [];
+    const posts = data.posts ?? [];
+    const renderPosts = posts.slice(0, 20);
+    const participantCount = new Set(renderPosts.map((post) => post.username))
+      .size;
 
     return {
       result: {
-        id: topic.id,
-        title: topic.title,
-        slug: topic.slug,
-        posts_count: topic.posts_count,
-        views: topic.views,
-        like_count: topic.like_count,
-        participant_count: topic.participant_count,
-        created_at: topic.post_stream?.posts?.[0]?.created_at,
-        last_posted_at: topic.last_posted_at,
-        url: `${servicesConfig.discourseBaseUrl}/t/${topic.slug}/${topic.id}`,
-        posts: posts.slice(0, 20).map((post: any) => ({
+        id: data.topic.id,
+        title: data.topic.title,
+        slug: data.topic.slug,
+        posts_count: data.topic.postsCount,
+        views: data.topic.views,
+        like_count: data.topic.likeCount,
+        participant_count: participantCount,
+        created_at: renderPosts[0]?.createdAt ?? data.topic.createdAt ?? "",
+        last_posted_at:
+          data.topic.lastPostedAt ?? renderPosts[0]?.createdAt ?? "",
+        url: `${servicesConfig.discourseUrl}/t/${data.topic.slug}/${data.topic.id}`,
+        posts: renderPosts.map((post) => ({
           id: post.id,
-          post_number: post.post_number,
+          post_number: post.postNumber,
           username: post.username,
           content: stripHtml(post.cooked || "").slice(0, 800),
-          created_at: post.created_at,
-          like_count:
-            post.actions_summary?.find((a: any) => a.id === 2)?.count || 0,
-          reply_to_post_number: post.reply_to_post_number,
-          reply_to_user: post.reply_to_user?.username,
-          url: `${servicesConfig.discourseBaseUrl}/t/${topic.slug}/${topic.id}/${post.post_number}`,
+          created_at: post.createdAt ?? "",
+          like_count: post.likeCount ?? 0,
+          reply_to_post_number: post.replyToPostNumber ?? undefined,
+          reply_to_user: undefined,
+          url: `${servicesConfig.discourseUrl}/t/${data.topic.slug}/${data.topic.id}/${post.postNumber}`,
         })),
       },
     };
@@ -407,44 +518,68 @@ export async function handleGetDiscourseTopic(args: {
 }
 
 export async function handleGetLatestTopics(
-  args: { limit?: number },
-  runtimeBaseUrl: string
+  args: {
+    limit?: number;
+    page?: number;
+    order?: "default" | "created" | "activity" | "views" | "posts" | "likes";
+    categoryId?: number;
+  },
+  _runtimeBaseUrl: string
 ): Promise<{ result: LatestTopicsResult | DiscourseErrorResult }> {
-  const limit = typeof args.limit === "number" ? Math.min(args.limit, 30) : 10;
-
-  try {
-    const latestResponse = await fetch(
-      `${runtimeBaseUrl}/api/discourse/latest?per_page=${limit}`
-    );
-
-    if (!latestResponse.ok) {
-      throw new Error(
-        `Failed to fetch latest topics: ${latestResponse.status}`
+  const parsed = LatestArgsSchema.safeParse(args);
+  if (!parsed.success) {
+    const unknownKeys = parsed.error.issues
+      .filter((issue) => issue.code === "unrecognized_keys")
+      .flatMap((issue) => (issue as any).keys || []);
+    if (unknownKeys.length) {
+      return validationError(
+        `Unsupported parameter(s): ${unknownKeys.join(", ")}`
       );
     }
+    return validationError(
+      parsed.error.issues.map((issue) => issue.message).join("; ")
+    );
+  }
 
-    const data = await latestResponse.json();
+  const limit = parsed.data.limit ?? 10;
+  const boundedLimit = Math.min(Math.max(limit, 1), 30);
+  const renderLimit = Math.min(boundedLimit, 20);
+
+  try {
+    const { data, error } = await discourseLatestTopics({
+      categoryId: parsed.data.categoryId ?? PROPOSALS_CATEGORY_ID,
+      page: parsed.data.page ?? 0,
+      order: parsed.data.order ?? "default",
+    });
+
+    if (!data || error) {
+      return {
+        result: {
+          error: error ?? "Failed to fetch latest topics",
+        },
+      };
+    }
 
     return {
       result: {
         type: "proposal_list",
         description: `Latest ${limit} proposals by recent activity.`,
-        topics:
-          data.latest_posts?.slice(0, limit).map((topic: any) => ({
-            id: topic.topic_id,
-            title: topic.title,
-            slug: topic.topic_slug,
-            excerpt: topic.excerpt,
-            author: topic.username,
-            posts_count: topic.posts_count,
-            reply_count: topic.reply_count,
-            views: topic.views,
-            like_count: topic.like_count,
-            created_at: topic.created_at,
-            last_posted_at: topic.last_posted_at,
-            url: `${servicesConfig.discourseBaseUrl}/t/${topic.topic_slug}/${topic.topic_id}`,
-          })) || [],
-        total_count: data.latest_posts?.length || 0,
+          topics:
+            data.topics?.slice(0, renderLimit).map((topic) => ({
+              id: topic.id,
+              title: topic.title,
+              slug: topic.slug,
+              excerpt: stripHtml(topic.excerpt ?? "").slice(0, 400),
+              author: topic.username ?? "unknown",
+              posts_count: topic.postsCount,
+              reply_count: topic.replyCount,
+              views: topic.views,
+              like_count: topic.likeCount,
+              created_at: topic.createdAt ?? "",
+              last_posted_at: topic.lastPostedAt ?? "",
+              url: `${servicesConfig.discourseUrl}/t/${topic.slug}/${topic.id}`,
+            })) || [],
+        total_count: data.topics?.length || 0,
       },
     };
   } catch (error) {
@@ -463,23 +598,31 @@ export async function handleSummarizeDiscussion(
   args: { topic_id: string },
   runtimeBaseUrl: string
 ): Promise<{ result: SummarizeDiscussionResult | DiscourseErrorResult }> {
-  const { topic_id } = args;
+  const parsed = SummarizeTopicSchema.safeParse(args);
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues.map((issue) => issue.message).join("; ")
+    );
+  }
+
+  const { topic_id } = parsed.data;
 
   try {
-    const summaryResponse = await fetch(
-      `${runtimeBaseUrl}/api/discourse/topics/${topic_id}/summarize`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }
+    const summaryUrl = new URL(
+      `/api/discourse/topics/${encodeURIComponent(topic_id)}/summarize`,
+      runtimeBaseUrl
     );
+
+    const summaryResponse = await fetch(summaryUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
     if (!summaryResponse.ok) {
       throw new Error(
         `Failed to summarize discussion: ${summaryResponse.status}`
       );
     }
-
     const summaryData = await summaryResponse.json();
 
     return {
@@ -489,7 +632,7 @@ export async function handleSummarizeDiscussion(
         summary: summaryData.summary,
         reply_count: summaryData.replyCount,
         engagement: summaryData.engagement,
-        url: `${servicesConfig.discourseBaseUrl}/t/${topic_id}`,
+        url: `${servicesConfig.discourseUrl}/t/${topic_id}`,
       },
     };
   } catch (error) {
@@ -508,16 +651,25 @@ export async function handleSummarizeReply(
   args: { post_id: string },
   runtimeBaseUrl: string
 ): Promise<{ result: SummarizeReplyResult | DiscourseErrorResult }> {
-  const { post_id } = args;
+  const parsed = SummarizeReplySchema.safeParse(args);
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues.map((issue) => issue.message).join("; ")
+    );
+  }
+
+  const { post_id } = parsed.data;
 
   try {
-    const replyResponse = await fetch(
-      `${runtimeBaseUrl}/api/discourse/replies/${post_id}/summarize`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }
+    const replyUrl = new URL(
+      `/api/discourse/replies/${encodeURIComponent(post_id)}/summarize`,
+      runtimeBaseUrl
     );
+
+    const replyResponse = await fetch(replyUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
     if (!replyResponse.ok) {
       throw new Error(`Failed to summarize reply: ${replyResponse.status}`);

@@ -2,12 +2,13 @@ import "server-only";
 
 import { createPluginRuntime } from "every-plugin";
 import { protectedProcedure, publicProcedure } from "./procedures";
+import { ORPCError } from "@orpc/server";
 
 const runtime = createPluginRuntime({
   registry: {
     "discourse-plugin": {
       remoteUrl:
-        "https://jlwaugh-25-discourse-plugin-discourse-plugin-near-4ab5fc1da-ze.zephyrcloud.app/remoteEntry.js",
+        "https://jlwaugh-54-discourse-plugin-discourse-plugin-near-4c12399ef-ze.zephyrcloud.app/remoteEntry.js",
     },
   },
   secrets: {
@@ -19,11 +20,9 @@ const { router: discourseRouter } = await runtime.usePlugin(
   "discourse-plugin",
   {
     variables: {
-      discourseBaseUrl:
-        process.env.DISCOURSE_BASE_URL || "https://gov.near.org",
+      discourseUrl: process.env.DISCOURSE_URL || "https://gov.near.org",
       discourseApiUsername: process.env.DISCOURSE_API_USERNAME || "gov",
-      clientId: process.env.DISCOURSE_CLIENT_ID || "discourse-near-plugin",
-      recipient: process.env.DISCOURSE_RECIPIENT || "social.near",
+      clientId: process.env.DISCOURSE_CLIENT_ID || "discourse-plugin",
     },
     secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
   }
@@ -40,6 +39,31 @@ export const router = publicProcedure.router({
     }),
     ...protectedProcedure.router({
       createPost: discourseRouter.createPost,
+      unlink: protectedProcedure.handler(async ({ input, context }) => {
+        const nearAccount =
+          typeof input === "object" &&
+          input !== null &&
+          "nearAccount" in input &&
+          typeof (input as any).nearAccount === "string"
+            ? (input as any).nearAccount
+            : undefined;
+
+        if (!nearAccount) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "nearAccount is required to unlink Discourse account",
+          });
+        }
+
+        const unlinkFn = (discourseRouter as any).linkageStore?.unlink;
+        if (typeof unlinkFn !== "function") {
+          throw new ORPCError("NOT_FOUND", {
+            message: "Discourse unlink not supported by plugin",
+          });
+        }
+
+        await unlinkFn(nearAccount);
+        return { success: true };
+      }),
     }),
   },
 });

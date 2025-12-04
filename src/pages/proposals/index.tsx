@@ -6,9 +6,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
 import type { LatestPostsResponse } from "@/types/discourse";
 import { useGovernanceAnalytics } from "@/lib/analytics";
+import { getDiscourseUserApiKey } from "@/utils/discourse";
 
 type Post = LatestPostsResponse["latest_posts"][number] & {
   near_wallet?: string;
+};
+
+const sanitizeExcerpt = (html?: string) => {
+  if (!html) return "";
+  const withoutTags = html.replace(/<[^>]*>/g, " ");
+  const withoutEmojis = withoutTags.replace(/:[a-z_]+:/g, "");
+  return withoutEmojis.replace(/\s+/g, " ").trim();
 };
 
 export default function ProposalsPage() {
@@ -16,6 +24,8 @@ export default function ProposalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const track = useGovernanceAnalytics();
+  const perPage = 20;
+  const page = 0;
 
   useEffect(() => {
     fetchProposals();
@@ -30,14 +40,28 @@ export default function ProposalsPage() {
     track("home_latest_proposals_requested");
 
     try {
-      const response = await fetch("/api/discourse/latest");
+      const userApiKey = getDiscourseUserApiKey();
+      const params = new URLSearchParams({
+        per_page: String(perPage),
+        page: String(page),
+      });
+      if (userApiKey) {
+        params.set("userApiKey", userApiKey);
+      }
+
+      const response = await fetch(`/api/discourse/latest?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch proposals");
       }
 
       const data: LatestPostsResponse = await response.json();
-      const latestPosts = data.latest_posts || [];
+      const latestPosts = (data.latest_posts || [])
+        .slice(0, 20)
+        .map((post) => ({
+          ...post,
+          excerpt: sanitizeExcerpt(post.excerpt),
+        }));
       setPosts(latestPosts);
 
       // track success

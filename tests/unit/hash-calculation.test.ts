@@ -4,7 +4,8 @@ import {
   calculateResponseHash,
   calculateStreamingHash,
   validateHashPair,
-} from "@/utils/request-hash";
+} from "@/verification/hashes";
+import { computeRequestHash } from "@/verification/server";
 
 // Official NEAR AI example payloads
 const officialRequestBody = `{
@@ -56,6 +57,17 @@ describe("request/response hash calculation", () => {
     expect(validateHashPair(reqHash, resHash, `${resHash}:${reqHash}`)).toBe(false);
   });
 
+  it("rejects signature text with extra prefix/suffix", () => {
+    const reqHash = calculateRequestHash(officialRequestBody);
+    const resHash = officialResponseHash;
+    expect(validateHashPair(reqHash, resHash, `extra:${reqHash}:${resHash}`)).toBe(
+      false
+    );
+    expect(validateHashPair(reqHash, resHash, `${reqHash}:${resHash}:extra`)).toBe(
+      false
+    );
+  });
+
   it("preserves trailing newline for streaming hashes", () => {
     const sseWithTrailing = sseLines.join("\n") + "\n";
     const hash = calculateStreamingHash(sseWithTrailing);
@@ -75,9 +87,24 @@ describe("request/response hash calculation", () => {
     expect(hash).not.toBe(calculateRequestHash(body + " "));
   });
 
+  it("treats formatting differences as distinct bodies", () => {
+    const compact = '{"foo":"bar","baz":[1,2]}';
+    const pretty = '{\n  "foo": "bar",\n  "baz": [1, 2]\n}';
+    expect(calculateRequestHash(compact)).not.toBe(calculateRequestHash(pretty));
+  });
+
   it("returns valid hash for empty body", () => {
     const emptyHash = calculateRequestHash("");
     expect(emptyHash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     expect(validateHashPair(emptyHash, officialResponseHash, `${emptyHash}:${officialResponseHash}`)).toBe(true);
+  });
+
+  it("rejects non-string request bodies", () => {
+    expect(() => calculateRequestHash({ foo: "bar" } as any)).toThrow(
+      /exact serialized request string/
+    );
+    expect(() => computeRequestHash({ foo: "bar" } as any)).toThrow(
+      /exact serialized request string/
+    );
   });
 });

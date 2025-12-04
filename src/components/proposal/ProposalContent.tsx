@@ -61,6 +61,7 @@ interface ProposalContentProps {
   revisionSummaryLoading?: boolean;
   revisionSummaryError?: string;
   onHideRevisionSummary?: () => void;
+  minimal?: boolean;
 }
 
 export default function ProposalContent({
@@ -89,6 +90,7 @@ export default function ProposalContent({
   revisionSummaryLoading,
   revisionSummaryError,
   onHideRevisionSummary,
+  minimal = false,
 }: ProposalContentProps) {
   const renderedContent = useMemo(() => {
     if (showDiffHighlights && versionDiffHtml) {
@@ -157,12 +159,19 @@ export default function ProposalContent({
           text-decoration: line-through !important;
         }
       `}</style>
-      <div className="sticky top-16 z-30">
-        <div className="bg-card rounded-t-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
-          <CardHeader className="pb-5">
+      <div className={minimal ? "" : "sticky top-16 z-30"}>
+        <div
+          className={
+            minimal
+              ? ""
+              : "bg-card rounded-t-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
+          }
+          style={minimal ? { background: "transparent", boxShadow: "none" } : undefined}
+        >
+          <CardHeader className="pb-5" style={minimal ? { paddingLeft: 0, paddingRight: 0 } : undefined}>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3 min-h-[40px]">
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2" style={minimal ? { paddingLeft: 0 } : undefined}>
                   <FileText className="h-5 w-5" />
                   Proposal
                 </CardTitle>
@@ -243,7 +252,11 @@ export default function ProposalContent({
         </div>
       )}
 
-      <CardContent className="space-y-4 pt-8 rounded-b-2xl">
+      <CardContent
+        className={`space-y-4 pt-8 rounded-b-2xl ${
+          minimal ? "bg-transparent p-0 pt-4" : ""
+        }`}
+      >
         {/* AI Summary */}
         {proposalSummary && (
           <>

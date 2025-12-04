@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { cn } from "@/utils/tailwind";
 import { VerificationProof } from "@/components/verification/VerificationProof";
+import { Button } from "@/components/ui/button";
 
 interface EvaluationSummaryProps {
   evaluation: Evaluation;
@@ -18,6 +19,40 @@ export function EvaluationSummary({
   verificationId,
 }: EvaluationSummaryProps) {
   const isPassing = evaluation.overallPass;
+
+  const improvementPrompt = (() => {
+    const lines: string[] = [];
+    const crits: Array<[string, string, boolean]> = [
+      ["Complete", evaluation.complete.reason, evaluation.complete.pass],
+      ["Legible", evaluation.legible.reason, evaluation.legible.pass],
+      ["Consistent", evaluation.consistent.reason, evaluation.consistent.pass],
+      ["Compliant", evaluation.compliant.reason, evaluation.compliant.pass],
+      ["Justified", evaluation.justified.reason, evaluation.justified.pass],
+      ["Measurable", evaluation.measurable.reason, evaluation.measurable.pass],
+    ];
+    crits.forEach(([label, reason, pass]) => {
+      if (!pass && reason) {
+        lines.push(`- ${label}: ${reason}`);
+      }
+    });
+    if (evaluation.relevant.score !== "high") {
+      lines.push(`- Relevant: ${evaluation.relevant.reason}`);
+    }
+    if (evaluation.material.score !== "high") {
+      lines.push(`- Material: ${evaluation.material.reason}`);
+    }
+    const summary = evaluation.summary ? `Summary: ${evaluation.summary}` : "";
+    const body = lines.length ? lines.join("\n") : "N/A";
+    return `Help me revise this proposal so it passes screening.\n${summary}\nFix these issues:\n${body}`;
+  })();
+
+  const handleCopyPrompt = () => {
+    try {
+      navigator.clipboard.writeText(improvementPrompt);
+    } catch (e) {
+      console.error("Copy failed:", e);
+    }
+  };
 
   return (
     <Alert
@@ -48,6 +83,19 @@ export function EvaluationSummary({
           model={evaluation.model ?? undefined}
           className="mt-3"
         />
+      )}
+      {!isPassing && (
+        <div className="mt-3 space-y-2 border-t pt-3">
+          <div className="flex items-center justify-between text-xs font-semibold text-foreground/80">
+            <span>Copy prompt to fix issues</span>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handleCopyPrompt}>
+              Copy
+            </Button>
+          </div>
+          <pre className="whitespace-pre-wrap text-xs bg-muted rounded-md p-3 border">
+            {improvementPrompt}
+          </pre>
+        </div>
       )}
     </Alert>
   );

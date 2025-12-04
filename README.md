@@ -61,10 +61,10 @@ Results based on **6 Quality Criteria** and **2 Attention Scores**:
 
 ```bash
 # Download code from repository
-git clone https://github.com/near-research/gov.git
+git clone https://github.com/near-research/gov-dashboard.git
 
 # Change directory
-cd gov
+cd gov-dashboard
 
 # Dependencies
 bun install
@@ -177,6 +177,11 @@ Primary table for storing proposal evaluations.
 ```
 
 ## API Endpoints
+
+### Plugins
+
+- **Discourse plugin** – loaded via `every-plugin` Module Federation runtime with `DISCOURSE_API_KEY` secret and `DISCOURSE_URL`/`DISCOURSE_API_USERNAME`/`DISCOURSE_CLIENT_ID` variables. Runtime setup lives in `src/lib/router.ts` and `src/server/plugins/discourse-config.ts` using `createPluginRuntime` per the “Using Plugins” guide. Types are augmented in `src/types/every-plugin.d.ts` to keep `usePlugin("discourse-plugin")` strongly typed.
+- **`every-plugin` framework** – The runtime loads and executes Discourse API calls using Module Federation. See the typed contract in `discourse-plugin/index.d.ts`, runtime wiring in `src/lib/router.ts` and `src/server/plugins/discourse-config.ts`, and override the remote with `DISCOURSE_PLUGIN_URL` if you host your own build.
 
 ### Proposal Management
 
@@ -322,4 +327,4 @@ Your help would be much appreciated!
 
 ## Support
 
-- [GitHub Issues](https://github.com/near-research/gov/issues)
+- [GitHub Issues](https://github.com/near-research/gov-dashboard/issues)

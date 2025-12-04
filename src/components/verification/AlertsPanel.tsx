@@ -1,7 +1,10 @@
 import React from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
-import type { VerificationProofResponse } from "@/types/verification";
+import type {
+  SignatureFetchError,
+  VerificationProofResponse,
+} from "@/types/verification";
 
 export interface AlertsPanelProps {
   missingExpectations: string[];
@@ -10,6 +13,7 @@ export interface AlertsPanelProps {
   verificationId?: string;
   loading: boolean;
   fetchError: string | null;
+  signatureError: SignatureFetchError | null;
   hashMismatch?: boolean;
   attestedRequestHash?: string | null;
   attestedResponseHash?: string | null;
@@ -24,6 +28,7 @@ export function AlertsPanel({
   verificationId,
   loading,
   fetchError,
+  signatureError,
   hashMismatch = false,
   attestedRequestHash,
   attestedResponseHash,
@@ -101,6 +106,30 @@ export function AlertsPanel({
           <AlertDescription className="whitespace-pre-wrap">
             {fetchError}
           </AlertDescription>
+        </Alert>
+      )}
+
+      {signatureError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <div className="space-y-1 text-xs text-amber-900">
+            <AlertTitle>Signature fetch failed</AlertTitle>
+            <AlertDescription className="whitespace-pre-wrap text-muted-foreground">
+              {signatureError.message}
+              {signatureError.status && (
+                <span>
+                  {" "}
+                  (HTTP {signatureError.status}
+                  {signatureError.statusText ? ` ${signatureError.statusText}` : ""})
+                </span>
+              )}
+            </AlertDescription>
+            {signatureError.url && (
+              <div className="text-[11px] font-mono text-muted-foreground break-all">
+                Requested: {signatureError.url}
+              </div>
+            )}
+          </div>
         </Alert>
       )}
     </>

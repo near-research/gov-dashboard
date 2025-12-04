@@ -1,5 +1,5 @@
 // components/chat/ChatInput.tsx
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
+import React, { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Send, Trash2 } from "lucide-react";
@@ -135,6 +135,7 @@ export const ChatInput = ({
             disabled={isLoading || !inputValue.trim() || disabled}
             size="icon"
             className="shadow-sm"
+            aria-label="Send message"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -148,6 +149,7 @@ export const ChatInput = ({
             onClick={onClear}
             disabled={isLoading || !canClear}
             className="shadow-sm"
+            aria-label="Clear conversation"
           >
             <Trash2 className="h-4 w-4" />
           </Button>

@@ -22,9 +22,9 @@ import {
   type MessageProof,
 } from "@/types/agent-ui";
 import type { RemoteProof } from "@/components/verification/VerificationProof";
-import { AGENT_MODEL, buildAgentRequest } from "@/server/tools";
-import { normalizeSignaturePayload } from "@/utils/verification";
-import { extractHashesFromSignedText } from "@/utils/request-hash";
+import { AGENT_MODEL } from "@/agent/contract";
+import { normalizeSignaturePayload } from "@/verification/normalize";
+import { extractHashesFromSignedText } from "@/verification/hash-utils";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 
 type AgentRole = "user" | "assistant" | "system";
@@ -44,6 +44,8 @@ const generateEventId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const SESSION_STORAGE_KEY = "agent_chat_session_v1";
+const MAX_PERSISTED_EVENTS = 200;
+const MAX_PERSISTED_BYTES = 50_000;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -218,6 +220,19 @@ const deriveEventsAndHistory = (
   };
 };
 
+export const prepareEventsForPersistence = (
+  events: AgentUIEvent[]
+): AgentUIEvent[] => {
+  let trimmed = events.slice(-MAX_PERSISTED_EVENTS);
+  while (
+    trimmed.length > 0 &&
+    JSON.stringify({ events: trimmed }).length > MAX_PERSISTED_BYTES
+  ) {
+    trimmed = trimmed.slice(1);
+  }
+  return trimmed;
+};
+
 export const Chat = ({
   model = AGENT_MODEL,
   className = "",
@@ -291,10 +306,11 @@ export const Chat = ({
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      const eventsToPersist = prepareEventsForPersistence(events);
       sessionStorage.setItem(
         SESSION_STORAGE_KEY,
         JSON.stringify({
-          events,
+          events: eventsToPersist,
         })
       );
     } catch (persistError) {
@@ -568,14 +584,6 @@ export const Chat = ({
         throw new Error("Failed to register verification session");
       }
       const { nonce } = await sessionResp.json();
-
-      const { requestBody } = buildAgentRequest({
-        messages: conversationHistory,
-        state: agentStateRef.current,
-        model,
-      });
-      const requestBodyString = JSON.stringify(requestBody);
-      void requestBodyString; // avoid unused var if not used elsewhere
 
       initialProofData.nonce = nonce;
       initialProofData.verificationId = verificationId;

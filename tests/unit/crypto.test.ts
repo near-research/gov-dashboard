@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   createPublicKey as createPubFromJwk,
   verify as verifySignature,
@@ -32,6 +32,10 @@ const signData = (
 };
 
 describe("crypto utils", () => {
+  beforeEach(() => {
+    (globalThis as any).__moduleMocks?.clear?.();
+  });
+
   it("creates public key from ES256 JWK (P-256 curve)", () => {
     const { jwk } = genKeyPair("P-256");
     const pub = createPubFromJwk(jwk);

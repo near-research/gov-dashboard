@@ -1,6 +1,6 @@
 import React from "react";
 import { Separator } from "@/components/ui/separator";
-import { shortenFingerprint } from "@/utils/verification";
+import { shortenFingerprint } from "@/verification/normalize";
 
 export interface AttestationDetailsPanelProps {
   attestationPayload: {

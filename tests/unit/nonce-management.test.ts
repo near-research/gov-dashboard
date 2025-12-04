@@ -5,14 +5,22 @@ import {
   updateVerificationHashes,
   clearVerificationSession,
   cleanupExpiredSessions,
+  syncVerificationNonce,
   TTL_MS,
-} from "@/server/verificationSessions";
+} from "@/verification/server";
 
 const makeId = (i: number) => `ver-${i}`;
 
 describe("verificationSessions", () => {
+  let now = 0;
+  let nowSpy: ReturnType<typeof vi.spyOn> | null = null;
+  const advance = (ms: number) => {
+    now += ms;
+  };
+
   beforeEach(() => {
-    vi.useFakeTimers();
+    now = 0;
+    nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
   });
 
   afterEach(() => {
@@ -21,7 +29,8 @@ describe("verificationSessions", () => {
       clearVerificationSession(makeId(i));
     }
     clearVerificationSession("custom");
-    vi.useRealTimers();
+    nowSpy?.mockRestore();
+    nowSpy = null;
   });
 
   it("generates 64-character hex nonce", () => {
@@ -29,9 +38,10 @@ describe("verificationSessions", () => {
     expect(session.nonce).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("accepts custom nonce for testing", () => {
-    const session = registerVerificationSession("custom", "test123");
-    expect(session.nonce).toBe("test123");
+  it("rejects weak custom nonce and generates random", () => {
+    const session = registerVerificationSession("custom", "short");
+    expect(session.nonce).toMatch(/^[0-9a-f]{64}$/);
+    expect(session.nonce).not.toBe("short");
   });
 
   it("generates unique nonces for different sessions", () => {
@@ -50,7 +60,7 @@ describe("verificationSessions", () => {
 
   it("returns null for expired session", () => {
     registerVerificationSession("id-expire");
-    vi.advanceTimersByTime(TTL_MS + 1000);
+    advance(TTL_MS + 1000);
     expect(getVerificationSession("id-expire")).toBeNull();
   });
 
@@ -75,9 +85,9 @@ describe("verificationSessions", () => {
 
   it("does not extend TTL on hash update", () => {
     registerVerificationSession("id-ttl");
-    vi.advanceTimersByTime(TTL_MS - 60_000); // advance close to TTL
+    advance(TTL_MS - 60_000); // advance close to TTL
     updateVerificationHashes("id-ttl", { requestHash: "r1" });
-    vi.advanceTimersByTime(120_000); // push past TTL
+    advance(120_000); // push past TTL
     expect(getVerificationSession("id-ttl")).toBeNull();
   });
 
@@ -89,9 +99,9 @@ describe("verificationSessions", () => {
 
   it("cleanupExpiredSessions removes only expired", () => {
     registerVerificationSession(makeId(1));
-    vi.advanceTimersByTime(30_000);
+    advance(30_000);
     registerVerificationSession(makeId(2));
-    vi.advanceTimersByTime(TTL_MS); // first should expire
+    advance(TTL_MS); // first should expire
     cleanupExpiredSessions();
     expect(getVerificationSession(makeId(1))).toBeNull();
     expect(getVerificationSession(makeId(2))).not.toBeNull();
@@ -109,5 +119,17 @@ describe("verificationSessions", () => {
     const second = registerVerificationSession("id-concurrent");
     expect(first.nonce).toBe(second.nonce);
     expect(getVerificationSession("id-concurrent")?.nonce).toBe(first.nonce);
+  });
+
+  it("rejects nonce override attempt with different value", () => {
+    const original = registerVerificationSession("id-override");
+    const result = syncVerificationNonce("id-override", "b".repeat(64));
+    expect(result?.nonce).toBe(original.nonce);
+  });
+
+  it("rejects invalid nonce override formats", () => {
+    registerVerificationSession("id-override-invalid");
+    const result = syncVerificationNonce("id-override-invalid", "not-hex");
+    expect(result?.nonce).toMatch(/^[0-9a-f]{64}$/);
   });
 });

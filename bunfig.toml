@@ -1,0 +1,4 @@
+[test]
+# Ensure Bun's test runner loads our shared setup (JSDOM, globals, mocks)
+preload = ["./test-setup.ts"]
+environment = "jsdom"

@@ -4,7 +4,7 @@ import {
   calculateResponseHash,
   calculateStreamingHash,
   validateHashPair,
-} from "@/utils/request-hash";
+} from "@/verification/hashes";
 
 describe("request-hash", () => {
   it("calculates request hash for NEAR AI example", () => {

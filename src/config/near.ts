@@ -30,8 +30,31 @@ const evmWalletChains = {
   },
 } as const;
 
+const envNetwork = (process.env.NEXT_PUBLIC_NEAR_NETWORK || "").toLowerCase();
 const runtimeNetworkId: NetworkId =
-  process.env.NODE_ENV === "production" ? "mainnet" : "testnet";
+  envNetwork === "mainnet" || envNetwork === "testnet"
+    ? (envNetwork as NetworkId)
+    : process.env.NODE_ENV === "production"
+      ? "mainnet"
+      : "testnet";
+
+const isDomainMainnet = () => {
+  const domain = process.env.NEXT_PUBLIC_NEAR_DOMAIN || "";
+  return domain.includes("near.org") && !domain.includes("testnet");
+};
+
+if (typeof console !== "undefined") {
+  if (runtimeNetworkId === "testnet" && isDomainMainnet()) {
+    console.warn(
+      "[nearConfig] Network is testnet but domain looks mainnet. Check NEXT_PUBLIC_NEAR_NETWORK / NEXT_PUBLIC_NEAR_DOMAIN."
+    );
+  }
+  if (runtimeNetworkId === "mainnet" && envNetwork === "testnet") {
+    console.warn(
+      "[nearConfig] Network forced to mainnet due to env mismatch fallback."
+    );
+  }
+}
 
 export const nearConfig = {
   networkId: runtimeNetworkId,

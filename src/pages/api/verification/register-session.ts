@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { registerVerificationSession } from "@/server/verificationSessions";
+import { registerVerificationSession } from "@/verification/server";
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {

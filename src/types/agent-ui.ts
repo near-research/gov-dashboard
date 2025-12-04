@@ -4,7 +4,7 @@ import {
   type MessageRole,
   type VerificationMetadata,
 } from "@/types/agui-events";
-import type { PartialExpectations } from "@/utils/attestation-expectations";
+import type { PartialExpectations } from "@/utils/attestation/expectations";
 import type { RemoteProof } from "@/components/verification/VerificationProof";
 
 export type ToolCallStatus = "pending" | "running" | "completed" | "failed";

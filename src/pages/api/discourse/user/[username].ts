@@ -29,9 +29,7 @@ export default async function handler(
 
   try {
     const remoteResponse = await fetch(
-      `${servicesConfig.discourseBaseUrl}/u/${encodeURIComponent(
-        username
-      )}.json`,
+      `${servicesConfig.discourseUrl}/u/${encodeURIComponent(username)}.json`,
       {
         headers: {
           Accept: "application/json",

@@ -1,10 +1,8 @@
 import type { NextApiResponse } from "next";
 import type { Evaluation } from "@/types/evaluation";
 import type { VerificationMetadata } from "@/types/agui-events";
-import {
-  extractVerificationMetadata,
-  normalizeVerificationPayload,
-} from "@/utils/verification";
+import { extractVerificationMetadata } from "@/verification/normalize";
+import { normalizeVerificationPayload } from "@/verification/server";
 import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
 import { createHash, randomBytes } from "crypto";
 import {
@@ -14,7 +12,8 @@ import {
 } from "near-sign-verify";
 import { getNearAIClient } from "@/lib/near-ai/client";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-import { registerVerificationSession } from "@/server/verificationSessions";
+import { registerVerificationSession } from "@/verification/server";
+import { z } from "zod";
 
 type ScreeningErrorDetails = {
   code?: string;
@@ -47,6 +46,55 @@ const PROMPT_CONTENT_LIMIT = MAX_CONTENT_LENGTH;
 
 const CONTROL_CHAR_REGEX = /[\x00-\x1F\x7F]/g;
 
+const evaluationSchema = z.object({
+  complete: z.object({ pass: z.boolean(), reason: z.string() }),
+  legible: z.object({ pass: z.boolean(), reason: z.string() }),
+  consistent: z.object({ pass: z.boolean(), reason: z.string() }),
+  compliant: z.object({ pass: z.boolean(), reason: z.string() }),
+  justified: z.object({ pass: z.boolean(), reason: z.string() }),
+  measurable: z.object({ pass: z.boolean(), reason: z.string() }),
+  relevant: z.object({
+    score: z.enum(["high", "medium", "low"]),
+    reason: z.string(),
+  }),
+  material: z.object({
+    score: z.enum(["high", "medium", "low"]),
+    reason: z.string(),
+  }),
+  qualityScore: z.number(),
+  attentionScore: z.number(),
+  overallPass: z.boolean(),
+  summary: z.string(),
+  model: z.string().optional(),
+});
+
+const parseEvaluation = (raw: string): Evaluation => {
+  const candidates = new Set<string>();
+  const trimmed = (raw || "").trim();
+  if (trimmed) {
+    candidates.add(trimmed);
+    const jsonStart = trimmed.indexOf("{");
+    const jsonEnd = trimmed.lastIndexOf("}");
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      candidates.add(trimmed.slice(jsonStart, jsonEnd + 1));
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const validated = evaluationSchema.safeParse(parsed);
+      if (validated.success) {
+        return validated.data as Evaluation;
+      }
+    } catch {
+      // continue to next candidate
+    }
+  }
+
+  throw new ScreeningError(500, "Could not parse evaluation response");
+};
+
 export function sanitizeProposalInput(
   title?: string,
   content?: string
@@ -63,13 +111,6 @@ export function sanitizeProposalInput(
     throw new ScreeningError(
       400,
       `Title too long (max ${MAX_TITLE_LENGTH} characters)`
-    );
-  }
-
-  if (content.length > MAX_CONTENT_LENGTH) {
-    throw new ScreeningError(
-      400,
-      `Proposal too long (max ${MAX_CONTENT_LENGTH} characters)`
     );
   }
 
@@ -165,24 +206,7 @@ export async function requestEvaluation(
       throw new ScreeningError(500, "Empty response from AI");
     }
 
-    const jsonMatch = contentText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new ScreeningError(500, "Could not parse evaluation response");
-    }
-
-    const evaluation: Evaluation = JSON.parse(jsonMatch[0]);
-
-    if (
-      evaluation.overallPass === undefined ||
-      evaluation.qualityScore === undefined ||
-      evaluation.attentionScore === undefined
-    ) {
-      throw new ScreeningError(
-        500,
-        "Invalid evaluation structure returned by AI"
-      );
-    }
-
+    const evaluation = parseEvaluation(contentText);
     evaluation.model = model;
 
     const verificationRaw = extractVerificationMetadata(data);
@@ -205,11 +229,16 @@ export async function requestEvaluation(
       );
     }
 
-    const verificationWithNonce = verification
-      ? { ...verification, nonce: verification?.nonce ?? sessionNonce }
+    const verificationWithNonce: VerificationMetadata | undefined = verification
+      ? { ...verification, nonce: verification.nonce ?? sessionNonce }
       : sessionNonce
-      ? { nonce: sessionNonce, messageId: sessionVerificationId ?? undefined }
-      : verification ?? undefined;
+      ? {
+          source: "near-ai-cloud",
+          status: "pending",
+          nonce: sessionNonce,
+          messageId: sessionVerificationId ?? undefined,
+        }
+      : undefined;
 
     return {
       evaluation,
@@ -218,10 +247,15 @@ export async function requestEvaluation(
       model,
     };
   } catch (error) {
+    // Re-throw ScreeningError as-is
+    if (error instanceof ScreeningError) {
+      throw error;
+    }
+
     // Handle NEAR AI client errors
     if (error instanceof Error) {
       console.error("[Screening] NEAR AI API error:", error.message);
-      
+
       const statusCategory =
         error.message.includes("timeout") || error.message.includes("504")
           ? "NEAR AI timed out while evaluating the proposal. Please try again or shorten the content."
@@ -231,11 +265,6 @@ export async function requestEvaluation(
         message: error.message,
         details: error.message,
       });
-    }
-
-    // Re-throw ScreeningError as-is
-    if (error instanceof ScreeningError) {
-      throw error;
     }
 
     // Unknown error

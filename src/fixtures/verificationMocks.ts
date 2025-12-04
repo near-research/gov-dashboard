@@ -1,6 +1,6 @@
 import type { VerificationProofResponse } from "@/types/verification";
 
-export const mockNonce = "mock-nonce";
+export const mockNonce = "a".repeat(64);
 export const mockAddress = "0x856039d8a60613528d1DBEc3dc920f5FE96a31A0";
 export const mockSignature =
   "0x77e4db99019046762da28e669d8fce369fca67361592efd7b90ce5b225d7d6450cc4e7ee5f5a6fff8c7ab892f1caabb3d5625ba61f0dd79f97a5344fbbfa468d1c";
@@ -8,7 +8,9 @@ export const mockSignedText = "req:res";
 
 export const verifiedProofMock: VerificationProofResponse = {
   attestation: {
+    request_nonce: mockNonce,
     gateway_attestation: {
+      request_nonce: mockNonce,
       signing_address: mockAddress,
       signing_algo: "ecdsa",
       nvidia_payload: {
@@ -149,8 +151,16 @@ export const multiGpuProofMock: VerificationProofResponse = {
   attestation: {
     ...verifiedProofMock.attestation,
     model_attestations: [
-      { signing_address: "0xGPU1", nvidia_payload: "{...}" },
-      { signing_address: "0xGPU2", nvidia_payload: "{...}" },
+      {
+        request_nonce: mockNonce,
+        signing_address: "0xGPU1",
+        nvidia_payload: JSON.stringify({ eat_nonce: "wrong-nonce" }),
+      },
+      {
+        request_nonce: mockNonce,
+        signing_address: "0xGPU2",
+        nvidia_payload: JSON.stringify({ eat_nonce: mockNonce }),
+      },
     ],
   },
 };

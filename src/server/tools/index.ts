@@ -14,6 +14,7 @@ import {
 import { DISCOURSE_TOOLS, buildDiscourseSystemPrompt } from "./discourse";
 
 import { DOCS_TOOLS, buildDocsSystemPrompt } from "./docs";
+import { AGENT_MODEL as AGENT_MODEL_BASE } from "@/agent/contract";
 
 // ============================================================================
 // Combined Tools
@@ -29,7 +30,7 @@ export const AGENT_TOOLS = [
 // Model Configuration
 // ============================================================================
 
-export const AGENT_MODEL = "openai/gpt-oss-120b";
+export const AGENT_MODEL = AGENT_MODEL_BASE;
 
 // ============================================================================
 // Request Builder

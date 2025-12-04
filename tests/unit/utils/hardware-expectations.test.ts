@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   fetchHardwareExpectations,
   clearHardwareExpectationsCache,
-} from "@/utils/hardware-expectations";
+} from "@/utils/attestation/hardware";
 
 const mockPayload = {
   nonce: "n1",
@@ -80,5 +80,27 @@ describe("hardware-expectations", () => {
     global.fetch = fetchMock;
 
     await expect(fetchHardwareExpectations("bad-model")).rejects.toThrow(/Missing expected/);
+  });
+
+  it("does not cache failed fetches", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ nvidia_payload: { arch: "HOPPER" } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          nvidia_payload: mockPayload,
+        }),
+      });
+    // @ts-ignore
+    global.fetch = fetchMock;
+
+    await expect(fetchHardwareExpectations("modelC")).rejects.toThrow();
+    const result = await fetchHardwareExpectations("modelC");
+    expect(result.nonce).toBe("n1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

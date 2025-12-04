@@ -7,6 +7,22 @@
 // ============================================================================
 
 const DOCS_BASE = "https://houseofstake.org/docs";
+const docsToolDebugEnabled = process.env.DOCS_TOOL_DEBUG === "true";
+const docsLog = (...args: any[]) => {
+  if (docsToolDebugEnabled) {
+    console.log(...args);
+  }
+};
+const docsWarn = (...args: any[]) => {
+  if (docsToolDebugEnabled) {
+    console.warn(...args);
+  }
+};
+const docsError = (...args: any[]) => {
+  if (docsToolDebugEnabled) {
+    console.error(...args);
+  }
+};
 
 export const DOC_PATHS = {
   // Overview Section
@@ -186,14 +202,14 @@ async function fetchDocContent(docPath: string): Promise<string | null> {
     });
 
     if (!response.ok) {
-      console.warn(`[HoS Docs] Failed to fetch ${url}: ${response.status}`);
+      docsWarn(`[HoS Docs] Failed to fetch ${url}: ${response.status}`);
       return null;
     }
 
     const html = await response.text();
     return cleanHtmlContent(html);
   } catch (error) {
-    console.error(`[HoS Docs] Error fetching ${url}:`, error);
+    docsError(`[HoS Docs] Error fetching ${url}:`, error);
     return null;
   }
 }
@@ -275,7 +291,7 @@ export async function handleGetDoc(args: {
   // Check cache first
   const cached = getCachedDoc(key);
   if (cached) {
-    console.log(`[HoS Docs] Cache hit for ${key}`);
+    docsLog(`[HoS Docs] Cache hit for ${key}`);
     return {
       result: {
         success: true,
@@ -288,7 +304,7 @@ export async function handleGetDoc(args: {
   }
 
   // Fetch fresh content
-  console.log(`[HoS Docs] Fetching ${key} from ${url}`);
+  docsLog(`[HoS Docs] Fetching ${key} from ${url}`);
   const content = await fetchDocContent(docInfo.path);
 
   if (!content) {
@@ -412,7 +428,7 @@ export async function handleSearchDocs(args: {
   const topic = args.topic || "overview";
   const relevantKeys = findRelevantDocs(topic);
 
-  console.log(`[HoS Docs] Searching for "${topic}", found keys:`, relevantKeys);
+  docsLog(`[HoS Docs] Searching for "${topic}", found keys:`, relevantKeys);
 
   const results = await Promise.all(
     relevantKeys.map(async (key) => {

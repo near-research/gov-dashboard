@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { calculateRequestHash, calculateResponseHash } from "@/utils/request-hash";
+import {
+  calculateRequestHash,
+  calculateResponseHash,
+} from "@/verification/hashes-browser";
 import type { VerificationProofResponse } from "@/types/verification";
 import { deriveVerificationState } from "@/utils/attestation";
 
@@ -38,27 +41,70 @@ export function useVerification({
   const [stepLoading, setStepLoading] = useState<StepLoading>(initialStepLoading);
   const abortRef = useRef<AbortController | null>(null);
 
-  const requestHash = useMemo(() => {
-    if (requestBody === undefined) return null;
-    try {
-      return calculateRequestHash(requestBody);
-    } catch (err) {
-      console.error("Request hash failed:", err);
-      return null;
-    }
+  const [requestHash, setRequestHash] = useState<string | null>(null);
+  const [responseHash, setResponseHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const compute = async () => {
+      if (requestBody === undefined) {
+        setRequestHash(null);
+        return;
+      }
+      try {
+        const hash = await calculateRequestHash(requestBody);
+        if (!cancelled) setRequestHash(hash);
+      } catch (err) {
+        console.error("Request hash failed:", err);
+        if (!cancelled) setRequestHash(null);
+      }
+    };
+    void compute();
+    return () => {
+      cancelled = true;
+    };
   }, [requestBody]);
 
-  const responseHash = useMemo(() => {
-    if (responseBody === undefined || responseBody === null) return null;
-    try {
-      return calculateResponseHash(responseBody);
-    } catch (err) {
-      console.error("Response hash failed:", err);
-      return null;
-    }
+  useEffect(() => {
+    let cancelled = false;
+    const compute = async () => {
+      if (responseBody === undefined || responseBody === null) {
+        setResponseHash(null);
+        return;
+      }
+      try {
+        const hash = await calculateResponseHash(responseBody);
+        if (!cancelled) setResponseHash(hash);
+      } catch (err) {
+        console.error("Response hash failed:", err);
+        if (!cancelled) setResponseHash(null);
+      }
+    };
+    void compute();
+    return () => {
+      cancelled = true;
+    };
   }, [responseBody]);
 
   const verificationState = useMemo(() => {
+    const attestation = proof?.attestation as any;
+    const intelQuotePresent = (() => {
+      if (!attestation) return false;
+      if (attestation.intel_quote) return true;
+      if (attestation.gateway_attestation?.intel_quote) return true;
+      if (
+        Array.isArray(attestation.model_attestations) &&
+        attestation.model_attestations.some((node: any) => node?.intel_quote)
+      )
+        return true;
+      if (
+        Array.isArray(attestation.all_attestations) &&
+        attestation.all_attestations.some((node: any) => node?.intel_quote)
+      )
+        return true;
+      return false;
+    })();
+
     return deriveVerificationState({
       proof,
       requestHash,
@@ -75,11 +121,7 @@ export function useVerification({
       nrasReasons: proof?.nras?.reasons,
       intelVerified: proof?.intel?.verified,
       nonceCheck: proof?.nonceCheck ?? null,
-      intelRequired: Boolean(
-        (proof?.attestation as any)?.intel_quote ||
-          (proof?.attestation as any)?.gateway_attestation?.intel_quote ||
-          (proof?.attestation as any)?.model_attestations?.[0]?.intel_quote
-      ),
+      intelRequired: intelQuotePresent,
     });
   }, [proof, requestHash, responseHash]);
 

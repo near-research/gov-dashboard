@@ -1,3 +1,4 @@
+import eslintPlugin from "@typescript-eslint/eslint-plugin";
 import { FlatCompat } from "@eslint/eslintrc";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
@@ -13,6 +14,9 @@ const compat = new FlatCompat({
 const config = [
   {
     ignores: ["**/.next/**", "node_modules/**", "dist/**", "coverage/**"],
+    plugins: {
+      "@typescript-eslint": eslintPlugin,
+    },
   },
   ...compat.extends("next/core-web-vitals"),
 ];

@@ -1,4 +1,5 @@
 // components/chat/AgentMessage.tsx
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 
 type AgentPhase = "spawned" | "running" | "completed" | "failed";

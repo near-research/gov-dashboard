@@ -6,22 +6,26 @@ export const signatureResponse = {
   signing_algo: "ecdsa",
 };
 
+const attestationNonce = "b".repeat(64);
+
 export const attestationResponse = {
+  request_nonce: attestationNonce,
   signing_address: signatureResponse.signing_address,
   nvidia_payload: JSON.stringify({
-    eat_nonce: "nonce123",
+    eat_nonce: attestationNonce,
     arch: "HOPPER",
     evidence_list: [],
   }),
-  intel_quote: JSON.stringify({ eat_nonce: "nonce123" }),
+  intel_quote: JSON.stringify({ eat_nonce: attestationNonce }),
   model_attestations: [
     {
+      request_nonce: attestationNonce,
       nvidia_payload: JSON.stringify({
-        eat_nonce: "nonce123",
+        eat_nonce: attestationNonce,
         arch: "HOPPER",
         evidence_list: [],
       }),
-      intel_quote: JSON.stringify({ eat_nonce: "nonce123" }),
+      intel_quote: JSON.stringify({ eat_nonce: attestationNonce }),
     },
   ],
 };
@@ -47,20 +51,20 @@ export const proofPayload = {
       "x-nvidia-overall-att-result": true,
       "x-nvidia-gpu-driver-version": "570.123",
       "x-nvidia-gpu-vbios-version": "96.00",
-      "x-nvidia-eat-nonce": "nonce123",
+      "x-nvidia-eat-nonce": attestationNonce,
       hwmodel: "GH100",
     },
     reasons: [],
   },
   nonceCheck: {
-    expected: "nonce123",
-    attested: "nonce123",
-    nras: "nonce123",
+    expected: attestationNonce,
+    attested: attestationNonce,
+    nras: attestationNonce,
     valid: true,
   },
   intel: {
     verified: true,
-    raw: { nonce: "nonce123" },
+    raw: { nonce: attestationNonce },
   },
   results: {
     verified: true,

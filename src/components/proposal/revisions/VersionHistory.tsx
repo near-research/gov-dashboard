@@ -4,8 +4,8 @@ import type { ProposalRevision } from "@/types/proposals";
 import type { DiscourseRevisionResponse } from "@/types/discourse";
 import type { VerificationMetadata } from "@/types/agui-events";
 import { ScreeningBadge } from "@/components/proposal/screening/ScreeningBadge";
-import { reconstructRevisionContent } from "@/utils/revisionContentUtils";
-import { sanitizeHtml, stripHtml } from "@/utils/html-utils";
+import { reconstructRevisionContent } from "@/utils/ui/revision-content";
+import { sanitizeHtml, stripHtml } from "@/utils/ui/html";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 import {
   Card,

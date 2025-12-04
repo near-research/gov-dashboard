@@ -1,7 +1,23 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import "../../vi-compat";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import * as crypto from "@/server/crypto";
 import handler, { resetJwksCache } from "@/pages/api/verification/nras";
 import type { NextApiRequest, NextApiResponse } from "next";
+
+const compatVi = vi as any;
+if (!compatVi.stubGlobal) {
+  compatVi.stubGlobal = (name: string, value: any) => {
+    const previous = (globalThis as any)[name];
+    (globalThis as any)[name] = value;
+    return { restore: () => (previous === undefined ? delete (globalThis as any)[name] : (globalThis as any)[name] = previous) };
+  };
+}
+if (!compatVi.resetModules) {
+  compatVi.resetModules = () => {
+    vi.resetAllMocks();
+    vi.clearAllMocks();
+  };
+}
 
 function mockReqRes(body: any) {
   const req = { method: "POST", body } as unknown as NextApiRequest;

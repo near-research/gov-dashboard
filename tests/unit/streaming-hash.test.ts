@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateStreamingHash } from "@/utils/request-hash";
+import { calculateStreamingHash } from "@/verification/hashes";
 
 describe("Streaming hash compliance with trailing newlines", () => {
   const sseLines = [

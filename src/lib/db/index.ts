@@ -3,15 +3,72 @@ import postgres from "postgres";
 import * as schema from "./schema";
 import { postgresConfig } from "@/config/postgres";
 
-const client = postgres(postgresConfig.url, {
-  max: 1, // Single connection for serverless
-  idle_timeout: 20, // Close idle connections after 20 seconds
-  connect_timeout: 10, // Timeout connection attempts after 10 seconds
-  prepare: false, // Disable prepared statements (better for serverless)
+const MAX_CONNECTIONS = Math.max(
+  1,
+  Number(process.env.POSTGRES_MAX_CONNECTIONS ?? 6)
+);
+const RETRY_LIMIT = Math.max(
+  1,
+  Number(process.env.POSTGRES_CONNECT_RETRIES ?? 3)
+);
+const BACKOFF_BASE_MS = Math.max(
+  50,
+  Number(process.env.POSTGRES_BACKOFF_BASE_MS ?? 200)
+);
+const BACKOFF_MAX_MS = Math.max(
+  BACKOFF_BASE_MS,
+  Number(process.env.POSTGRES_BACKOFF_MAX_MS ?? 2000)
+);
+
+const postgresOptions = {
+  max: MAX_CONNECTIONS,
+  idle_timeout: 20,
+  connect_timeout: 10,
+  prepare: false,
+};
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function createClientWithRetry() {
+  let attempt = 0;
+  let lastError: unknown;
+
+  while (attempt < RETRY_LIMIT) {
+    attempt += 1;
+    const client = postgres(postgresConfig.url, postgresOptions);
+
+    try {
+      await client`SELECT 1`;
+      return client;
+    } catch (error) {
+      lastError = error;
+      if (typeof client.end === "function") {
+        try {
+          await client.end();
+        } catch {
+          // ignore close errors
+        }
+      }
+
+      if (attempt >= RETRY_LIMIT) {
+        break;
+      }
+
+      const backoff = Math.min(
+        BACKOFF_BASE_MS * 2 ** (attempt - 1),
+        BACKOFF_MAX_MS
+      );
+      await sleep(backoff);
+    }
+  }
+
+  throw lastError;
+}
+
+const client = await createClientWithRetry();
+export const db = drizzle(client, {
+  schema: { ...schema },
 });
 
-// Create drizzle instance
-export const db = drizzle(client, { schema });
-
-// Export for convenience
 export { schema };

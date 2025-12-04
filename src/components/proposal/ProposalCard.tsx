@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Card,
   CardContent,
@@ -54,7 +55,7 @@ export default function ProposalCard({
     e.stopPropagation();
     e.preventDefault();
     window.open(
-      `${servicesConfig.discourseBaseUrl}/t/${topic_slug}/${topic_id}`,
+      `${servicesConfig.discourseUrl}/t/${topic_slug}/${topic_id}`,
       "_blank",
       "noopener,noreferrer"
     );
@@ -64,71 +65,69 @@ export default function ProposalCard({
 
   return (
     <Link href={`/proposals/${topic_id}`} className="block">
-      <Card
-        className="cursor-pointer transition-all hover:shadow-md border-l-4 border-l-border hover:border-l-primary group"
-      >
-      <CardHeader>
-        <div className="flex items-start justify-between gap-4">
-          <h3 className="text-lg font-semibold group-hover:text-primary transition-colors flex-1">
-            {title}
-          </h3>
-          {daysSinceActivity !== null && (
-            <Badge variant="secondary" className="shrink-0">
-              {daysSinceActivity}d ago
-            </Badge>
-          )}
-        </div>
-
-        <CardDescription className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="flex items-center gap-1">
-            <User className="h-3 w-3" />
-            <strong>@{username}</strong>
-          </span>
-          {near_wallet && (
-            <>
-              <span>•</span>
-              <span>{near_wallet}</span>
-            </>
-          )}
-          <span>•</span>
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {new Date(created_at).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </span>
-        </CardDescription>
-      </CardHeader>
-
-      {excerpt && (
-        <CardContent className="pb-4">
-          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
-            {excerpt}
-          </p>
-        </CardContent>
-      )}
-
-      <CardContent className="pt-0">
-        <div className="flex items-center justify-between gap-4">
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 gap-1"
-            onClick={handleDiscourseClick}
-          >
-            View on Discourse
-            <ExternalLink className="h-3 w-3" />
-          </Button>
-
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <MessageSquare className="h-3 w-3" />
-            <span>{formatNumber(reply_count)}</span>
+      <Card className="cursor-pointer transition-all hover:shadow-md border-l-4 border-l-border hover:border-l-primary group">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <h3 className="text-lg font-semibold group-hover:text-primary transition-colors flex-1">
+              {title}
+            </h3>
+            {daysSinceActivity !== null && (
+              <Badge variant="secondary" className="shrink-0">
+                {daysSinceActivity}d ago
+              </Badge>
+            )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+
+          <CardDescription className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="flex items-center gap-1">
+              <User className="h-3 w-3" />
+              <strong>@{username}</strong>
+            </span>
+            {near_wallet && (
+              <>
+                <span>•</span>
+                <span>{near_wallet}</span>
+              </>
+            )}
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {new Date(created_at).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+          </CardDescription>
+        </CardHeader>
+
+        {excerpt && (
+          <CardContent className="pb-4">
+            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
+              {excerpt}
+            </p>
+          </CardContent>
+        )}
+
+        <CardContent className="pt-0">
+          <div className="flex items-center justify-between gap-4">
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 gap-1"
+              onClick={handleDiscourseClick}
+            >
+              View on Discourse
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <MessageSquare className="h-3 w-3" />
+              <span>{formatNumber(reply_count)}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </Link>
   );
 }

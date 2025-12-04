@@ -30,6 +30,7 @@ playwright-report/
 blob-report/
 trace.zip
 
+tmp-*.log
 # Vitest
 *.snap
 .vitest/

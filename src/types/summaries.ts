@@ -1,5 +1,5 @@
 import type { VerificationMetadata } from "@/types/agui-events";
-import type { PartialExpectations } from "@/utils/attestation-expectations";
+import type { PartialExpectations } from "@/utils/attestation/expectations";
 import type { VerificationProofResponse } from "@/types/verification";
 
 export interface SummaryProof extends PartialExpectations {

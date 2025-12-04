@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ExternalLink,
   Loader2,
@@ -6,7 +6,8 @@ import {
   CheckCircle2,
   ClipboardPaste,
 } from "lucide-react";
-
+import { sign } from "near-sign-verify";
+import { useAuth } from "@/components/providers/auth-provider";
 import { client } from "@/lib/orpc";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,13 +20,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
+import { saveDiscourseUserApiKey } from "@/utils/discourse";
 
 interface DiscourseConnectProps {
-  signedAccountId: string;
-  wallet: any;
   onLinked: (result: {
-    nearAccount: string;
     discourseUsername: string;
+    userApiKey?: string;
+    nearAccount?: string;
   }) => void;
   onError: (error: string) => void;
 }
@@ -37,28 +39,44 @@ const steps = [
 ];
 
 export const DiscourseConnect = ({
-  signedAccountId,
-  wallet,
   onLinked,
   onError,
 }: DiscourseConnectProps) => {
-  const [step, setStep] = useState<"idle" | "authorizing" | "completing">(
-    "idle"
-  );
+  const { wallet, nearAccountId } = useAuth();
+
+  const [step, setStep] = useState<
+    "idle" | "authorizing" | "signing" | "completing"
+  >("idle");
   const [authUrl, setAuthUrl] = useState("");
   const [nonce, setNonce] = useState("");
   const [payload, setPayload] = useState("");
   const [localError, setLocalError] = useState("");
+  const popupRef = useRef<Window | null>(null);
+  const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleError = (message: string) => {
     setLocalError(message);
     onError(message);
+    toast.error(message);
   };
 
   const clearErrors = () => {
     setLocalError("");
-    onError("");
   };
+
+  const stopPopupWatcher = () => {
+    if (popupCheckRef.current) {
+      clearInterval(popupCheckRef.current);
+      popupCheckRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopPopupWatcher();
+      popupRef.current?.close();
+    };
+  }, []);
 
   const handlePaste = async () => {
     try {
@@ -71,17 +89,39 @@ export const DiscourseConnect = ({
   };
 
   const startLinking = async () => {
+    if (!wallet || !nearAccountId) {
+      handleError("Please connect your wallet first.");
+      return;
+    }
+
     setStep("authorizing");
     clearErrors();
 
     try {
       const data = await client.discourse.getUserApiAuthUrl({
-        clientId: "discourse-near-plugin",
+        clientId: "discourse-plugin",
         applicationName: "NEAR Gov",
       });
       setAuthUrl(data.authUrl);
       setNonce(data.nonce);
-      window.open(data.authUrl, "_blank");
+      stopPopupWatcher();
+      const popup = window.open(data.authUrl, "_blank");
+      popupRef.current = popup;
+      if (!popup || popup.closed) {
+        handleError("Popup blocked. Please allow popups to continue linking.");
+        setStep("idle");
+        return;
+      }
+      popupCheckRef.current = setInterval(() => {
+        if (popupRef.current && popupRef.current.closed) {
+          stopPopupWatcher();
+          popupRef.current = null;
+          handleError(
+            "Discourse window closed before authorization completed."
+          );
+          setStep("idle");
+        }
+      }, 500);
     } catch (err: any) {
       handleError(err?.message || "Failed to start linking");
       setStep("idle");
@@ -94,32 +134,56 @@ export const DiscourseConnect = ({
       return;
     }
 
-    setStep("completing");
+    if (!wallet) {
+      handleError("Wallet not connected. Please reconnect.");
+      setStep("idle");
+      return;
+    }
+
+    if (!nonce) {
+      handleError("Session expired. Please restart the linking flow.");
+      setStep("idle");
+      return;
+    }
+
+    setStep("signing");
     clearErrors();
 
     try {
-      const { sign } = await import("near-sign-verify");
-
+      // Sign message using near-sign-verify with the useNear wallet
       const authToken = await sign("Link my NEAR account to Discourse", {
         signer: wallet,
         recipient: "social.near",
       });
 
+      setStep("completing");
+
+      // Complete the link via oRPC
       const data = await client.discourse.completeLink({
         payload: payload.trim(),
         nonce,
         authToken,
       });
+
+      stopPopupWatcher();
+      popupRef.current?.close();
+      popupRef.current = null;
+      setStep("idle");
+      setPayload("");
+      setNonce("");
+      setAuthUrl("");
+      saveDiscourseUserApiKey(data.userApiKey);
+      toast.success(`Linked to @${data.discourseUsername}`);
       onLinked(data);
     } catch (err: any) {
-      handleError(err?.message || "Failed to complete link");
+      console.error("Discourse link error:", err);
+      handleError(err?.message || "Failed to complete link. Please try again.");
       setStep("authorizing");
     }
   };
 
   const renderStepIndicator = () => {
-    const activeIndex =
-      step === "idle" ? 1 : step === "authorizing" ? 2 : 3;
+    const activeIndex = step === "idle" ? 1 : step === "authorizing" ? 2 : 3;
 
     return (
       <div className="mb-6 flex flex-col gap-4">
@@ -136,11 +200,15 @@ export const DiscourseConnect = ({
                     isCompleted
                       ? "border-green-500 bg-green-500 text-white"
                       : isActive
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-muted-foreground/40 text-muted-foreground"
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-muted-foreground/40 text-muted-foreground"
                   }`}
                 >
-                  {isCompleted ? <CheckCircle2 className="h-5 w-5" /> : displayIndex}
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-5 w-5" />
+                  ) : (
+                    displayIndex
+                  )}
                 </div>
                 {idx < steps.length - 1 && (
                   <div
@@ -167,6 +235,16 @@ export const DiscourseConnect = ({
     );
   };
 
+  if (!nearAccountId) {
+    return (
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <p className="text-slate-600">
+          Connect your NEAR wallet to link Discourse.
+        </p>
+      </div>
+    );
+  }
+
   if (step === "idle") {
     return (
       <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
@@ -188,103 +266,106 @@ export const DiscourseConnect = ({
     );
   }
 
-  if (step === "authorizing" || step === "completing") {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Complete Discourse Linking</CardTitle>
-          <CardDescription>
-            Follow the steps below to verify your Discourse account for{" "}
-            <strong>{signedAccountId}</strong>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {renderStepIndicator()}
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Complete Discourse Linking</CardTitle>
+        <CardDescription>
+          Follow the steps below to verify your Discourse account for{" "}
+          <strong>{nearAccountId}</strong>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {renderStepIndicator()}
 
-          <Alert className="border-blue-200 bg-blue-50">
-            <AlertDescription>
-              <ol className="list-decimal space-y-2 pl-5 text-sm text-blue-900">
-                <li>Authorize the connection in the newly opened Discourse tab.</li>
-                <li>Copy the User API key Discourse provides.</li>
-                <li>Paste the key below and complete the verification.</li>
-              </ol>
-            </AlertDescription>
-          </Alert>
+        <Alert className="border-blue-200 bg-blue-50">
+          <AlertDescription>
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-blue-900">
+              <li>
+                Authorize the connection in the newly opened Discourse tab.
+              </li>
+              <li>Copy the User API key Discourse provides.</li>
+              <li>Paste the key below and complete the verification.</li>
+            </ol>
+          </AlertDescription>
+        </Alert>
 
-          {authUrl && (
+        {authUrl && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full justify-start"
+            onClick={() => window.open(authUrl, "_blank")}
+          >
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Reopen Discourse authorization
+          </Button>
+        )}
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="discourse-key">Discourse User API Key</Label>
             <Button
               type="button"
+              size="sm"
               variant="ghost"
-              className="w-full justify-start"
-              onClick={() => window.open(authUrl, "_blank")}
+              onClick={handlePaste}
+              className="gap-2"
             >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Reopen Discourse authorization
+              <ClipboardPaste className="h-4 w-4" />
+              Paste from clipboard
             </Button>
-          )}
+          </div>
+          <Textarea
+            id="discourse-key"
+            value={payload}
+            onChange={(e) => setPayload(e.target.value)}
+            placeholder="Paste the User API key from Discourse..."
+            rows={6}
+            className="font-mono"
+          />
+          {localError && <p className="text-sm text-red-600">{localError}</p>}
+        </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="discourse-key">Discourse User API Key</Label>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={handlePaste}
-                className="gap-2"
-              >
-                <ClipboardPaste className="h-4 w-4" />
-                Paste from clipboard
-              </Button>
-            </div>
-            <Textarea
-              id="discourse-key"
-              value={payload}
-              onChange={(e) => setPayload(e.target.value)}
-              placeholder="Paste the User API key from Discourse..."
-              rows={6}
-              className="font-mono"
-            />
-            {localError && (
-              <p className="text-sm text-red-600">{localError}</p>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => {
+              setStep("idle");
+              clearErrors();
+              setPayload("");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={completeLink}
+            disabled={
+              step === "signing" || step === "completing" || !payload.trim()
+            }
+            className="w-full sm:w-auto"
+          >
+            {step === "signing" ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sign in wallet...
+              </>
+            ) : step === "completing" ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Completing...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                Complete Link
+              </>
             )}
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={() => {
-                setStep("idle");
-                clearErrors();
-                setPayload("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={completeLink}
-              disabled={step === "completing" || !payload.trim()}
-              className="w-full sm:w-auto"
-            >
-              {step === "completing" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Linking...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Complete Link
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return null;
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 };

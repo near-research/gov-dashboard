@@ -8,14 +8,12 @@ import { rateLimitConfig } from "@/config/rateLimit";
 import { servicesConfig } from "@/config/services";
 import type { ApiErrorResponse } from "@/types/api";
 import type { ProposalSummaryResponse, SummaryProof } from "@/types/summaries";
-import {
-  extractVerificationMetadata,
-  normalizeVerificationPayload,
-} from "@/utils/verification";
+import { extractVerificationMetadata } from "@/verification/normalize";
+import { normalizeVerificationPayload } from "@/verification/server";
 import {
   registerVerificationSession,
   updateVerificationHashes,
-} from "@/server/verificationSessions";
+} from "@/verification/server";
 import { getModelExpectations } from "@/server/attestation-cache";
 import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
@@ -35,14 +33,17 @@ const ensureVerificationSession = (
       proof.responseHash || null
     );
   } catch (err) {
-    console.error("[proposal summary] Failed to ensure verification session:", err);
+    console.error(
+      "[proposal summary] Failed to ensure verification session:",
+      err
+    );
   }
 };
 
 const proposalSummarizeLimiter = createRateLimiter(
   rateLimitConfig.proposalSummary
 );
-const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
+const DISCOURSE_URL = servicesConfig.discourseUrl;
 
 /**
  * POST /api/proposals/[id]/summarize
@@ -160,9 +161,9 @@ export default async function handler(
           ""
         );
       }
-  } catch (err) {
-    console.warn(`[Proposal Summary] Could not fetch raw content:`, err);
-  }
+    } catch (err) {
+      console.warn(`[Proposal Summary] Could not fetch raw content:`, err);
+    }
 
     // Use raw if available, fallback to cooked
     const content = rawContent || proposalPost.cooked;
@@ -212,7 +213,10 @@ export default async function handler(
     try {
       expectations = await getModelExpectations(model);
     } catch (err) {
-      console.error("[Proposal Summary] Failed to fetch hardware expectations:", err);
+      console.error(
+        "[Proposal Summary] Failed to fetch hardware expectations:",
+        err
+      );
     }
 
     const data = await client.chatCompletions(nearRequest, {
@@ -226,8 +230,7 @@ export default async function handler(
       .digest("hex");
     const summary: string = data.choices[0]?.message?.content ?? "";
     const rawVerification = extractVerificationMetadata(data);
-    const nearMessageId =
-      data?.id || generatedVerificationId;
+    const nearMessageId = data?.id || generatedVerificationId;
     const { verification, verificationId: normalizedVerificationId } =
       normalizeVerificationPayload(rawVerification, nearMessageId);
     const effectiveVerificationId =
@@ -276,8 +279,8 @@ export default async function handler(
         nonce: session.nonce,
         arch: expectations?.arch,
         deviceCertHash: expectations?.deviceCertHash,
-        rimHash: expectations?.rimHash,
-        ueid: expectations?.ueid,
+        rimHash: expectations?.rimHash ?? undefined,
+        ueid: expectations?.ueid ?? undefined,
         measurements: expectations?.measurements,
       },
     };

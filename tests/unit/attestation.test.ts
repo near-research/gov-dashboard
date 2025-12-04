@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { deriveVerificationState } from "../../src/utils/attestation";
 import {
   verifiedProofMock,
@@ -7,9 +7,28 @@ import {
   invalidSignatureMock,
   nonceReplayAttackMock,
   partialProofMock,
+  multiGpuProofMock,
 } from "../../src/fixtures/verificationMocks";
+import { verifyMessage, type SignatureLike } from "ethers";
+
+vi.mock("ethers", () => ({
+  verifyMessage: vi.fn(),
+}));
+
+const verifyMessageMock = vi.mocked(verifyMessage);
 
 describe("deriveVerificationState", () => {
+  beforeEach(() => {
+    verifyMessageMock.mockReset();
+    verifyMessageMock.mockImplementation(
+      (_: string | Uint8Array | ArrayBufferLike, signature: SignatureLike) => {
+        if (typeof signature === "string" && /^0x0+$/i.test(signature.slice(2))) {
+        throw new Error("Invalid signature");
+      }
+      return verifiedProofMock.signature?.signing_address?.toLowerCase() ?? "0xverified";
+    });
+  });
+
   it("returns verified when all checks pass", () => {
     const state = deriveVerificationState({
       proof: verifiedProofMock,
@@ -133,7 +152,33 @@ describe("deriveVerificationState", () => {
     expect(state.reasons).toContain("Hash mismatch");
   });
 
+  it("fails when signature text wraps correct hashes", () => {
+    const requestHash = "abc";
+    const responseHash = "def";
+    const wrapped = `nonce:${requestHash}:${responseHash}`;
+    const state = deriveVerificationState({
+      proof: verifiedProofMock,
+      requestHash,
+      responseHash,
+      signatureText: wrapped,
+      signature: verifiedProofMock.signature?.signature || null,
+      signatureAddress: verifiedProofMock.signature?.signing_address || null,
+      attestedAddress:
+        verifiedProofMock.attestation?.gateway_attestation?.signing_address || null,
+      attestationResult: "Pass",
+      nrasVerified: true,
+      intelVerified: true,
+      nonceCheck: verifiedProofMock.nonceCheck || null,
+      intelRequired: true,
+    });
+    expect(state.steps.hash.status).toBe("error");
+    expect(state.reasons).toContain("Hash mismatch");
+  });
+
   it("fails when signature verification fails", () => {
+    verifyMessageMock.mockImplementationOnce(() => {
+      throw new Error("invalid sig");
+    });
     const state = deriveVerificationState({
       proof: invalidSignatureMock,
       requestHash: "req",
@@ -196,6 +241,107 @@ describe("deriveVerificationState", () => {
     if (state.steps.signature.status === "success") {
       expect(state.steps.address.status).toBe("success");
     }
+  });
+
+  it("fails when recovered signature address is not attested", () => {
+    const unattestedProof = {
+      ...verifiedProofMock,
+      attestation: {
+        signing_address: "0x0000000000000000000000000000000000000001",
+        gateway_attestation: {
+          signing_address: "0x0000000000000000000000000000000000000002",
+        },
+        model_attestations: [
+          { signing_address: "0x0000000000000000000000000000000000000003" },
+        ],
+        all_attestations: [
+          { signing_address: "0x0000000000000000000000000000000000000004" },
+        ],
+      },
+    };
+
+    const state = deriveVerificationState({
+      proof: unattestedProof,
+      requestHash: "req",
+      responseHash: "res",
+      signatureText: unattestedProof.signature?.text || null,
+      signature: unattestedProof.signature?.signature || null,
+      signatureAddress: unattestedProof.signature?.signing_address || null,
+      attestedAddress: null,
+      attestationResult: "Pass",
+      nrasVerified: true,
+      intelVerified: true,
+      nonceCheck: unattestedProof.nonceCheck || null,
+      intelRequired: false,
+    });
+
+    expect(state.steps.signature.status).toBe("success");
+    expect(state.steps.address.status).toBe("error");
+    expect(state.reasons).toContain("Signer does not match any TEE nodes");
+  });
+
+  it("verifies when one attestation node matches among many", () => {
+    verifyMessageMock.mockReturnValueOnce("0xgpu2");
+    const proof = {
+      ...multiGpuProofMock,
+      attestation: {
+        ...multiGpuProofMock.attestation,
+        gateway_attestation: {
+          signing_address: "0x0000000000000000000000000000000000000001",
+        },
+        model_attestations: [
+          { signing_address: "0xgpu1" },
+          { signing_address: "0xgpu2" },
+        ],
+      },
+    };
+    const state = deriveVerificationState({
+      proof,
+      requestHash: "req",
+      responseHash: "res",
+      signatureText: proof.signature?.text || null,
+      signature: proof.signature?.signature || null,
+      signatureAddress: proof.signature?.signing_address || null,
+      attestedAddress: null,
+      attestationResult: "Pass",
+      nrasVerified: true,
+      intelVerified: true,
+      nonceCheck: { expected: mockNonce, attested: mockNonce, nras: mockNonce, valid: true },
+      intelRequired: false,
+    });
+    expect(state.steps.address.status).toBe("success");
+  });
+
+  it("fails when no attestation nodes match recovered address", () => {
+    verifyMessageMock.mockReturnValueOnce("0xdeadbeef");
+    const proof = {
+      ...multiGpuProofMock,
+      attestation: {
+        ...multiGpuProofMock.attestation,
+        gateway_attestation: { signing_address: "0x1111" },
+        model_attestations: [
+          { signing_address: "0x2222", nvidia_payload: JSON.stringify({ eat_nonce: mockNonce }) },
+          { signing_address: "0x3333", nvidia_payload: JSON.stringify({ eat_nonce: "other" }) },
+        ],
+        all_attestations: [{ signing_address: "0x4444" }],
+      },
+    };
+    const state = deriveVerificationState({
+      proof,
+      requestHash: "req",
+      responseHash: "res",
+      signatureText: proof.signature?.text || null,
+      signature: proof.signature?.signature || null,
+      signatureAddress: proof.signature?.signing_address || null,
+      attestedAddress: null,
+      attestationResult: "Pass",
+      nrasVerified: true,
+      intelVerified: true,
+      nonceCheck: { expected: mockNonce, attested: mockNonce, nras: mockNonce, valid: true },
+      intelRequired: false,
+    });
+    expect(state.steps.address.status).toBe("error");
+    expect(state.reasons).toContain("Signer does not match any TEE nodes");
   });
 
   it("fails when Intel required but not verified", () => {

@@ -3,7 +3,7 @@ import {
   registerVerificationSession,
   getVerificationSession,
   syncVerificationNonce,
-} from "@/server/verificationSessions";
+} from "@/verification/server";
 
 type SessionResponse = {
   verificationId: string;
@@ -32,8 +32,9 @@ export default function handler(
     getVerificationSession(verificationId) ||
     registerVerificationSession(verificationId, nonce, requestHash, responseHash);
 
-  if (attestedNonce && attestedNonce !== session.nonce) {
-    session = syncVerificationNonce(verificationId, attestedNonce, requestHash, responseHash);
+  if (attestedNonce && attestedNonce !== session?.nonce) {
+    session =
+      syncVerificationNonce(verificationId, attestedNonce, requestHash, responseHash) || session;
   }
 
   return res.status(200).json({

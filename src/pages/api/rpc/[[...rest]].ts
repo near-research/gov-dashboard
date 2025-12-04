@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { RPCHandler } from "@orpc/server/node";
 import { router } from "@/lib/router";
+import { createContext } from "@/lib/context";
 
 export const config = {
   api: {
@@ -16,14 +17,12 @@ export default async function handler(
     // Create handler with the router
     const handler = new RPCHandler(router);
 
+    const context = await createContext(req);
+
     // Handle the request
     const { matched } = await handler.handle(req, res, {
       prefix: "/api/rpc",
-      context: {
-        session: {
-          user: { data: "logged in user" },
-        },
-      },
+      context,
     });
 
     if (matched) {

@@ -1,12 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import {
   extractVerificationMetadata,
-  normalizeVerificationPayload,
-} from "@/utils/verification";
-import { createHash } from "crypto";
-import { registerVerificationSession, updateVerificationHashes } from "@/server/verificationSessions";
+} from "@/verification/normalize";
+import { normalizeVerificationPayload } from "@/verification/server";
+import { createHash, randomUUID } from "crypto";
+import { registerVerificationSession } from "@/verification/server";
 import { getNearAIClient } from "@/lib/near-ai/client";
-import type { ChatCompletionRequest } from "@/lib/near-ai/types";
+import type { ChatCompletionRequest, ToolChoice } from "@/lib/near-ai/types";
+import { z } from "zod";
 
 type ChatMessage = {
   role: string;
@@ -20,6 +21,7 @@ type ChatCompletionRequestPayload = {
   messages: ChatMessage[];
   stream: boolean;
   verification?: { id: string; nonce: string };
+  timeout?: number;
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
@@ -28,6 +30,34 @@ type ChatCompletionRequestPayload = {
   tools?: unknown;
   tool_choice?: unknown;
 };
+
+const MAX_REQUEST_BYTES = 200_000; // ~200KB guardrail
+const STREAM_LOG_BUFFER_CAP = 50_000; // avoid unbounded in-memory logs
+const shouldLogVerification = process.env.NODE_ENV === "development";
+
+const chatRequestSchema = z.object({
+  model: z.string().min(1),
+  messages: z
+    .array(
+      z.object({
+        role: z.string().min(1),
+        content: z.union([z.string(), z.null()]).optional(),
+        tool_calls: z.unknown().optional(),
+      })
+    )
+    .min(1),
+  stream: z.boolean().optional(),
+  verificationId: z.string().optional(),
+  verificationNonce: z.string().optional(),
+  temperature: z.number().optional(),
+  max_tokens: z.number().optional(),
+  top_p: z.number().optional(),
+  frequency_penalty: z.number().optional(),
+  presence_penalty: z.number().optional(),
+  tools: z.unknown().optional(),
+  tool_choice: z.unknown().optional(),
+  timeout: z.number().optional(),
+});
 
 /**
  * POST /api/chat/completions
@@ -74,6 +104,23 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  // Basic payload size guardrail (after Next.js JSON parsing)
+  const rawBody = JSON.stringify(req.body ?? {});
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_REQUEST_BYTES) {
+    return res.status(413).json({
+      error: "Request too large",
+      message: "Request body exceeds maximum size",
+    });
+  }
+
+  const parsedBody = chatRequestSchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    return res.status(400).json({
+      error: "Invalid request body",
+      message: parsedBody.error.issues.map((i) => i.message).join("; "),
+    });
+  }
+
   // Initialize client (will throw if API key not configured)
   let client;
   try {
@@ -99,26 +146,7 @@ export default async function handler(
     presence_penalty,
     tools,
     tool_choice,
-  } = req.body;
-
-  // Validate required fields
-  if (!model || !messages || !Array.isArray(messages)) {
-    return res.status(400).json({
-      error: "Invalid request body",
-      message: "Required fields: model (string), messages (array)",
-    });
-  }
-
-  // Validate messages format
-  for (const msg of messages) {
-    if (!msg.role || (msg.content === undefined && !msg.tool_calls)) {
-      return res.status(400).json({
-        error: "Invalid message format",
-        message:
-          "Each message must have 'role' and 'content' fields (or 'tool_calls' for assistant)",
-      });
-    }
-  }
+  } = parsedBody.data;
 
   try {
     // Build request body with optional parameters
@@ -137,24 +165,22 @@ export default async function handler(
     if (presence_penalty !== undefined)
       requestBody.presence_penalty = presence_penalty;
     if (tools !== undefined) requestBody.tools = tools;
-    if (tool_choice !== undefined) requestBody.tool_choice = tool_choice;
+    if (tool_choice !== undefined && tool_choice !== null) {
+      requestBody.tool_choice = tool_choice as ToolChoice;
+    }
 
     // Hash body BEFORE adding verification (headers carry verification)
     const requestBodyString = JSON.stringify(requestBody);
     const requestHash = createHash("sha256").update(requestBodyString).digest("hex");
 
-    const localVerificationData =
-      verificationId && verificationNonce
-        ? { id: verificationId, nonce: verificationNonce }
-        : undefined;
-
-    console.log("[verification] Pre-request:", {
-      verificationId: verificationId || null,
-      nonce: verificationNonce || null,
-      requestHash,
-      requestBodyLength: requestBodyString.length,
-      requestBodyPreview: requestBodyString.substring(0, 100),
-    });
+    if (shouldLogVerification) {
+      console.log("[verification] Pre-request:", {
+        verificationId: verificationId || null,
+        nonce: verificationNonce || null,
+        requestHash,
+        requestBodyLength: requestBodyString.length,
+      });
+    }
 
     // If streaming, use streaming method
     if (stream) {
@@ -182,14 +208,47 @@ export default async function handler(
         });
       }
 
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache, no-transform");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
+      const upstreamContentType = response.headers.get("content-type") ?? "";
+      const isEventStream = upstreamContentType.includes("text/event-stream");
+
+      if (isEventStream) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
+      } else {
+        if (upstreamContentType) {
+          res.setHeader("Content-Type", upstreamContentType);
+        }
+        const cacheControl = response.headers.get("cache-control");
+        if (cacheControl) {
+          res.setHeader("Cache-Control", cacheControl);
+        }
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      const hash = verificationId ? createHash("sha256") : null;
       let rawResponseBuffer = "";
+      let loggedLength = 0;
+      let totalBytes = 0;
+      let aborted = false;
+
+      const abortReader = async () => {
+        aborted = true;
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore cancellation errors
+        }
+      };
+
+      const handleClose = () => {
+        abortReader();
+      };
+
+      req.on("close", handleClose);
+      res.on("close", handleClose);
 
       // Pre-register session with provided verificationId/nonce and requestHash
       if (verificationId) {
@@ -205,11 +264,24 @@ export default async function handler(
         while (true) {
           const { done, value } = await reader.read();
 
+          if (aborted) break;
+
           if (value) {
-            const chunk = decoder.decode(value, { stream: true });
-            rawResponseBuffer += chunk;
+            hash?.update(value);
+            totalBytes += value.byteLength;
+
+            if (loggedLength < STREAM_LOG_BUFFER_CAP) {
+              const chunkText = decoder.decode(value, { stream: true });
+              const remaining = STREAM_LOG_BUFFER_CAP - loggedLength;
+              rawResponseBuffer += chunkText.slice(0, remaining);
+              loggedLength = rawResponseBuffer.length;
+            } else {
+              // Drain decoder to avoid holding internal buffers when not logging.
+              decoder.decode(value, { stream: true });
+            }
+
             // Write exact bytes without modification
-            res.write(chunk);
+            res.write(value);
           }
 
           if (done) break;
@@ -217,20 +289,46 @@ export default async function handler(
 
         const finalChunk = decoder.decode();
         if (finalChunk) {
-          rawResponseBuffer += finalChunk;
+          const remaining = STREAM_LOG_BUFFER_CAP - loggedLength;
+          if (remaining > 0) {
+            rawResponseBuffer += finalChunk.slice(0, remaining);
+            loggedLength = rawResponseBuffer.length;
+          }
+          hash?.update(finalChunk);
           res.write(finalChunk);
         }
 
-        if (verificationId) {
-          console.log("[verification] Stream complete:", {
+        if (verificationId && !aborted && hash) {
+          const responseHash = hash.digest("hex");
+          registerVerificationSession(
             verificationId,
-            rawResponseLength: rawResponseBuffer.length,
-            endsWithNewlines: rawResponseBuffer.endsWith("\n\n"),
+            verificationNonce,
+            requestHash,
+            responseHash
+          );
+          if (shouldLogVerification) {
+            console.log("[verification] Stream complete:", {
+              verificationId,
+              rawResponseLength: totalBytes,
+              bufferedLength: rawResponseBuffer.length,
+              bufferTruncated: totalBytes > rawResponseBuffer.length,
+            });
+          }
+        } else if (shouldLogVerification && !aborted && verificationId) {
+          console.log("[verification] Stream complete (no hash)", {
+            verificationId,
+            rawResponseLength: totalBytes,
+            bufferedLength: rawResponseBuffer.length,
           });
         }
+
       } catch (streamError) {
-        console.error("Stream error:", streamError);
+        if (!aborted) {
+          console.error("Stream error:", streamError);
+        }
       } finally {
+        req.off("close", handleClose);
+        res.off("close", handleClose);
         if (!res.writableEnded) {
           res.end();
         }
@@ -238,13 +336,31 @@ export default async function handler(
       return;
     } else {
       // Non-streaming response
-      let data;
+      let response: Response;
+      let timeoutId: NodeJS.Timeout | undefined;
       try {
-        data = await client.chatCompletions(requestBody, {
-          verificationId,
-          verificationNonce,
+        const { baseUrl, apiKey } = client.getConfig();
+        const controller = new AbortController();
+        const timeoutMs = parsedBody.data?.timeout ?? 120000;
+        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        response = await fetch(`${baseUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "X-Request-Id": randomUUID(),
+            ...(verificationId ? { "X-Verification-Id": verificationId } : {}),
+            ...(verificationNonce ? { "X-Nonce": verificationNonce } : {}),
+          },
+          body: requestBodyString,
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
       } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
+        // Ensure any pending timeout is cleared
         console.error("NEAR AI Cloud API error:", error);
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         const statusCode = error instanceof Error && "statusCode" in error
@@ -256,8 +372,33 @@ export default async function handler(
         });
       }
 
-      const responseText = JSON.stringify(data);
+      const responseText = await response.text();
+      if (!response.ok) {
+        let errorDetails: string | undefined;
+        try {
+          const parsedError = JSON.parse(responseText);
+          errorDetails =
+            parsedError?.error || parsedError?.message || responseText;
+        } catch {
+          errorDetails = responseText;
+        }
+        return res.status(response.status).json({
+          error: `NEAR AI Cloud API Error: ${response.status}`,
+          details: errorDetails,
+        });
+      }
+
       const responseHash = createHash("sha256").update(responseText).digest("hex");
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        return res.status(502).json({
+          error: "Failed to parse NEAR AI response",
+          details: "NEAR AI returned non-JSON response for chat completions",
+        });
+      }
+
       const rawVerification = extractVerificationMetadata(data);
       const { verification, verificationId: normalizedVerificationId } = normalizeVerificationPayload(
         rawVerification,

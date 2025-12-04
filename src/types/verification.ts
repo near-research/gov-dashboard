@@ -69,9 +69,17 @@ export interface IntelVerificationResult {
   reasons?: string[];
 }
 
+export interface SignatureFetchError {
+  status?: number;
+  statusText?: string | null;
+  message: string;
+  url?: string;
+}
+
 export interface VerificationProofResponse {
   attestation?: any;
   signature?: any;
+  signatureError?: SignatureFetchError | null;
   nras?: NrasResult | null;
   nrasRaw?: any;
   nonceCheck?: NonceCheck | null;
@@ -113,3 +121,16 @@ export interface NrasVerificationRequest {
 }
 
 export type { VerificationMetadata, VerificationStatus } from "@/types/agui-events";
+
+export interface ModelAttestationResponse {
+  model?: string;
+  model_id?: string;
+  issued_at?: number | string;
+  timestamp?: number | string;
+  nvidia_payload?: unknown;
+  intel_quote?: unknown;
+  gateway_attestation?: Record<string, unknown>;
+  model_attestations?: Array<Record<string, unknown>>;
+  attestation?: Record<string, unknown>;
+  evidence_list?: unknown;
+}

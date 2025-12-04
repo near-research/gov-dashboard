@@ -5,7 +5,8 @@ type EndpointKey =
   | "proposalRevisions"
   | "discussionSummary"
   | "replySummary"
-  | "postRevisions";
+  | "postRevisions"
+  | "verificationProof";
 
 export interface RateLimitConfig {
   windowMs: number;
@@ -52,4 +53,5 @@ export const rateLimitConfig: Record<EndpointKey, RateLimitConfig> = {
   discussionSummary: buildConfig("DISCUSSION_SUMMARY"),
   replySummary: buildConfig("REPLY_SUMMARY"),
   postRevisions: buildConfig("POST_REVISIONS"),
+  verificationProof: buildConfig("VERIFICATION_PROOF"),
 };

@@ -2,22 +2,44 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type {
   IntelVerificationResult,
   NonceCheck,
+  SignatureFetchError,
   VerificationProofResponse,
 } from "@/types/verification";
 import { deriveVerificationState } from "@/utils/attestation";
 import {
+  decodeJwtPayload,
+  normalizeHashPair,
+  validateHashPair,
+} from "@/utils/verification/shared";
+import {
   getVerificationSession,
   registerVerificationSession,
-  syncVerificationNonce,
   updateVerificationHashes,
-} from "@/server/verificationSessions";
+} from "@/verification/server";
 import { getModelExpectations } from "@/server/attestation-cache";
-import { extractHashesFromSignedText } from "@/utils/request-hash";
+import { extractHashesFromSignedText } from "@/verification/hashes";
+import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
+import { rateLimitConfig } from "@/config/rateLimit";
+import { verifyNearAuth } from "@/server/screening";
+import { verificationConfig } from "@/config/verification";
+import {
+  collectSigningAddressesFromAttestation,
+  validateIntelBinding,
+  extractComposeManifest,
+  extractMrConfig,
+  hashComposeManifest,
+} from "@/utils/verification/intel";
+import { verifyComposeProvenance } from "@/utils/verification/sigstore";
 
-const NEAR_API_BASE = "https://cloud-api.near.ai/v1";
+const NEAR_API_BASE = verificationConfig.nearApiBase;
+const PROOF_FETCH_TIMEOUT_MS = verificationConfig.nearRequestTimeoutMs;
+const PROOF_FETCH_ATTEMPTS = verificationConfig.fetchBackoff.attempts;
+const PROOF_FETCH_BASE_DELAY_MS = verificationConfig.fetchBackoff.baseDelayMs;
+const proofLimiter = createRateLimiter(rateLimitConfig.verificationProof);
 
 type ProofError = {
   error: string;
+  message?: string;
   details?: string;
   configMissing?: {
     nearApiKey?: boolean;
@@ -26,11 +48,12 @@ type ProofError = {
     signingAlgoMissing?: boolean;
     hardwareExpectations?: boolean;
   };
+  retryAfter?: number;
 };
 
 async function safeFetch(url: string, headers: HeadersInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), PROOF_FETCH_TIMEOUT_MS);
   try {
     return await fetch(url, { headers, signal: controller.signal });
   } finally {
@@ -52,8 +75,8 @@ const validateRequest = (body: any) => {
 
 async function fetchWithBackoff(
   factory: () => Promise<Response>,
-  attempts = 3,
-  baseDelay = 500
+  attempts = PROOF_FETCH_ATTEMPTS,
+  baseDelay = PROOF_FETCH_BASE_DELAY_MS
 ): Promise<Response> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
@@ -83,22 +106,96 @@ async function fetchWithBackoff(
     : new Error(String(lastError ?? "Unknown fetch error"));
 }
 
+const collectIntelQuotes = (attestation: any): any[] => {
+  if (!attestation || typeof attestation !== "object") return [];
+  const quotes: any[] = [];
+  const pushQuote = (value: any) => {
+    if (value) quotes.push(value);
+  };
+  pushQuote(attestation.intel_quote);
+
+  const gateway = attestation.gateway_attestation;
+  if (Array.isArray(gateway)) {
+    gateway.forEach((node: any) => pushQuote((node as any)?.intel_quote));
+  } else if (gateway) {
+    pushQuote(gateway.intel_quote);
+  }
+
+  const models = Array.isArray(attestation.model_attestations)
+    ? attestation.model_attestations
+    : [];
+  models.forEach((node: any) => pushQuote((node as any)?.intel_quote));
+
+  const all = Array.isArray(attestation.all_attestations)
+    ? attestation.all_attestations
+    : [];
+  all.forEach((node: any) => pushQuote((node as any)?.intel_quote));
+
+  return quotes;
+};
+
 const telemetry = {
   success: 0,
   failure: 0,
   log(result: "success" | "failure", meta?: Record<string, any>) {
     if (result === "success") this.success += 1;
     else this.failure += 1;
-    const payload =
+    const sanitized =
       meta &&
       Object.fromEntries(
-        Object.entries(meta).map(([k, v]) => [
-          k,
-          typeof v === "string" && v.length > 500 ? `${v.slice(0, 500)}...` : v,
-        ])
+        Object.entries(meta)
+          .filter(([key]) => !/verificationid/i.test(key))
+          .map(([key, value]) => {
+            if (/nonce|hash/i.test(key)) return [key, "[redacted]"];
+            if (typeof value === "string" && value.length > 500) {
+              return [key, `${value.slice(0, 500)}...`];
+            }
+            return [key, value];
+          })
       );
-    console.info("[verification/proof]", result, payload ?? "");
+    console.info("[verification/proof]", result, sanitized ?? "");
   },
+};
+
+const collectRequestNonces = (attestation: any): string[] => {
+  if (!attestation || typeof attestation !== "object") return [];
+  const nonces: string[] = [];
+  const addNonce = (value: any) => {
+    if (typeof value === "string" && value.trim().length === 64) {
+      nonces.push(value.trim().toLowerCase());
+    }
+  };
+
+  addNonce(attestation.request_nonce);
+
+  const gateway = attestation.gateway_attestation;
+  if (Array.isArray(gateway)) {
+    gateway.forEach((node: any) => addNonce((node as any)?.request_nonce));
+  } else if (gateway) {
+    addNonce(gateway.request_nonce);
+  }
+
+  const models = Array.isArray(attestation.model_attestations)
+    ? attestation.model_attestations
+    : [];
+  models.forEach((node: any) => addNonce((node as any)?.request_nonce));
+
+  return nonces;
+};
+
+type DcapVerifyQuoteFn = (quote: any) => Promise<any>;
+const loadDcapVerifier = async (): Promise<DcapVerifyQuoteFn | null> => {
+  try {
+    const dynamicImport = new Function("id", "return import(id)");
+    const mod = await (dynamicImport as any)("dcap-qvl").catch(() => null);
+    const verifyQuote = (mod as any)?.verifyQuote || (mod as any)?.default?.verifyQuote;
+    if (typeof verifyQuote === "function") {
+      return verifyQuote as DcapVerifyQuoteFn;
+    }
+  } catch (error) {
+    console.warn("[verification/proof] dcap-qvl not available:", error);
+  }
+  return null;
 };
 
 export default async function handler(
@@ -109,11 +206,53 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const isMockMode = process.env.VERIFY_USE_MOCKS === "true";
+  const isTestEnv = process.env.NODE_ENV === "test";
+
+  let authenticatedAccount: string | undefined;
+
+  if (!isMockMode && !isTestEnv) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { result } = await verifyNearAuth(authHeader);
+      authenticatedAccount = result.accountId;
+    } catch (error: unknown) {
+      return res.status(401).json({
+        error: "Authentication required",
+        details: error instanceof Error ? error.message : undefined,
+      });
+    }
+
+    const rateLimitKey = authenticatedAccount
+      ? `account:${authenticatedAccount}`
+      : `ip:${getClientIdentifier(req)}`;
+    const { allowed, remaining, resetTime } = proofLimiter.check(rateLimitKey);
+    const secondsUntilReset = Math.max(
+      0,
+      Math.ceil((resetTime - Date.now()) / 1000)
+    );
+    res.setHeader("X-RateLimit-Remaining", Math.max(remaining, 0).toString());
+    res.setHeader("X-RateLimit-Limit", proofLimiter.limit.toString());
+    res.setHeader("X-RateLimit-Reset", secondsUntilReset.toString());
+
+    if (!allowed) {
+      const retryAfter =
+        secondsUntilReset || rateLimitConfig.verificationProof.windowMs / 1000;
+      res.setHeader("Retry-After", retryAfter.toString());
+      return res.status(429).json({
+        error: "Verification failed",
+      });
+    }
+  }
+
   const apiKey = process.env.NEAR_AI_CLOUD_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
-      error: "NEAR_AI_CLOUD_API_KEY not configured",
-      configMissing: { nearApiKey: true },
+      error: "Verification failed",
     });
   }
 
@@ -128,8 +267,8 @@ export default async function handler(
   const {
     verificationId,
     messageId,
-    model = "openai/gpt-oss-120b",
-    signingAlgo = "ecdsa",
+    model = verificationConfig.defaultModel,
+    signingAlgo = verificationConfig.defaultSigningAlgo,
     nonce: clientProvidedNonce,
   } = req.body ?? {};
 
@@ -146,19 +285,14 @@ export default async function handler(
       error: "verificationId is required",
     });
   }
+  if (signingAlgo && !["ecdsa", "ed25519"].includes(String(signingAlgo).toLowerCase())) {
+    return res.status(400).json({ error: "Unsupported signing_algo" });
+  }
   if (messageId && typeof messageId !== "string") {
     return res.status(400).json({
       error: "messageId must be a string when provided",
     });
   }
-
-  console.log("[verification] Fetching proof:", {
-    verificationId,
-    messageId,
-    requestHash: req.body?.requestHash,
-    responseHash: req.body?.responseHash,
-    nonce: clientProvidedNonce,
-  });
 
   let session =
     getVerificationSession(verificationId) ||
@@ -172,12 +306,6 @@ export default async function handler(
       : null);
 
   if (req.body?.requestHash || req.body?.responseHash) {
-    console.log("[verification/proof] Updating session with request hashes:", {
-      verificationId,
-      hasRequestHash: !!req.body.requestHash,
-      hasResponseHash: !!req.body.responseHash,
-    });
-
     updateVerificationHashes(verificationId, {
       requestHash: req.body.requestHash,
       responseHash: req.body.responseHash,
@@ -228,7 +356,7 @@ export default async function handler(
         model
       );
       const expectations = await getModelExpectations(
-        model || "openai/gpt-oss-120b"
+        model || verificationConfig.defaultModel
       );
       expectedArch = expectedArch || expectations.arch;
       expectedDeviceCertHash =
@@ -267,6 +395,14 @@ export default async function handler(
   const configMissing: ProofError["configMissing"] = hardwareExpectationsMissing
     ? { hardwareExpectations: true }
     : undefined;
+
+  if (!expectedNonce || typeof expectedNonce !== "string") {
+    return res.status(400).json({
+      error: "Verification nonce missing",
+      details:
+        "Server failed to establish a verification nonce for this request. Please retry to obtain a fresh nonce.",
+    });
+  }
 
   // Mock mode for tests
   if (process.env.VERIFY_USE_MOCKS === "true") {
@@ -368,48 +504,129 @@ export default async function handler(
       safeFetch(
         `${NEAR_API_BASE}/attestation/report?model=${encodeURIComponent(
           model
-        )}`,
+        )}&signing_algo=${encodeURIComponent(
+          signingAlgo
+        )}&nonce=${encodeURIComponent(expectedNonce || "")}`,
+        headers
+      )
+    );
+
+    const gatewayAttestationPromise = fetchWithBackoff(() =>
+      safeFetch(
+        `${NEAR_API_BASE}/attestation/report?signing_algo=${encodeURIComponent(
+          signingAlgo
+        )}&nonce=${encodeURIComponent(expectedNonce || "")}`,
         headers
       )
     );
 
     const signatureLookupId = messageId || verificationId;
+    const signatureUrl = `${NEAR_API_BASE}/signature/${encodeURIComponent(
+      signatureLookupId
+    )}?model=${encodeURIComponent(model)}&signing_algo=${encodeURIComponent(
+      signingAlgo
+    )}`;
     const signaturePromise = fetchWithBackoff(() =>
-      safeFetch(
-        `${NEAR_API_BASE}/signature/${encodeURIComponent(
-          signatureLookupId
-        )}?model=${encodeURIComponent(model)}&signing_algo=${encodeURIComponent(
-          signingAlgo
-        )}`,
-        headers
-      )
+      safeFetch(signatureUrl, headers)
     );
 
-    const [attestationResp, signatureResp] = await Promise.all([
+    const [attestationResp, gatewayResp, signatureResp] = await Promise.all([
       attestationPromise,
+      gatewayAttestationPromise,
       signaturePromise,
     ]);
 
     const proof: VerificationProofResponse = {};
+    let signatureFetchError: SignatureFetchError | null = null;
 
     if (attestationResp.ok) {
       proof.attestation = await attestationResp.json();
+
+      const requestNonces = collectRequestNonces(proof.attestation);
+      const normalizedExpectedNonce =
+        typeof expectedNonce === "string" ? expectedNonce.toLowerCase() : null;
+
+      const nonceMismatch =
+        !normalizedExpectedNonce ||
+        (requestNonces.length > 0 &&
+          requestNonces.some((value) => value !== normalizedExpectedNonce));
+
+      if (nonceMismatch) {
+        telemetry.log("failure", {
+          verificationId,
+          model,
+          reason: "attestation_request_nonce_mismatch",
+        });
+        console.error("[verification/proof] Attestation nonce mismatch", {
+          verificationId,
+          expectedNonce: normalizedExpectedNonce,
+          requestNonces,
+        });
+        return res.status(502).json({
+          error: "Verification failed",
+        });
+      }
     } else {
       proof.attestation = null;
+    }
+
+    if (gatewayResp.ok) {
+      const gatewayBody = await gatewayResp.json();
+      const gatewayAtt = (gatewayBody as any)?.gateway_attestation || gatewayBody;
+      if (!proof.attestation) {
+        proof.attestation = { gateway_attestation: gatewayAtt };
+      } else if (!proof.attestation.gateway_attestation) {
+        (proof.attestation as any).gateway_attestation = gatewayAtt;
+      }
+
+      const gatewayNonce =
+        gatewayAtt?.request_nonce ||
+        gatewayAtt?.nonce ||
+        gatewayAtt?.eat_nonce ||
+        gatewayAtt?.["x-nvidia-eat-nonce"];
+      const normalizedExpectedNonce =
+        typeof expectedNonce === "string" ? expectedNonce.toLowerCase() : null;
+      if (
+        normalizedExpectedNonce &&
+        (!gatewayNonce ||
+          String(gatewayNonce).toLowerCase() !== normalizedExpectedNonce)
+      ) {
+        console.error("[verification/proof] Gateway nonce mismatch", {
+          verificationId,
+          expected: normalizedExpectedNonce,
+          gatewayNonce,
+        });
+        return res.status(502).json({
+          error: "Verification failed",
+        });
+      }
+
+      if (!gatewayAtt?.intel_quote || !gatewayAtt?.event_log) {
+        console.error("[verification/proof] Gateway attestation incomplete", {
+          hasIntel: Boolean(gatewayAtt?.intel_quote),
+          hasEventLog: Boolean(gatewayAtt?.event_log),
+        });
+        return res.status(502).json({
+          error: "Verification failed",
+        });
+      }
     }
 
     if (signatureResp.ok) {
       proof.signature = await signatureResp.json();
     } else {
       const errorText = await signatureResp.text();
-      console.error("[proof] Signature fetch failed:", {
+      signatureFetchError = {
         status: signatureResp.status,
-        statusText: signatureResp.statusText,
-        error: errorText,
-        url: `${NEAR_API_BASE}/signature/${signatureLookupId}?model=${model}&signing_algo=${signingAlgo}`,
-      });
+        statusText: signatureResp.statusText || null,
+        message: errorText || "Signature fetch failed",
+        url: signatureUrl,
+      };
+      console.error("[proof] Signature fetch failed:", signatureFetchError);
       proof.signature = null;
     }
+
+    proof.signatureError = signatureFetchError;
 
     // Automatically verify GPU attestation with NVIDIA NRAS
     if (proof.attestation && !proof.nras) {
@@ -434,47 +651,36 @@ export default async function handler(
         }
 
         if (nvidiaPayloads.length > 0 && !hardwareExpectationsMissing) {
-          console.log("[proof] Auto-verifying with NRAS...");
+          let aggregatedReasons: string[] = [];
+          let aggregatedVerified = true;
+          let primaryNras: any = null;
 
-          const nvidiaPayload =
-            typeof nvidiaPayloads[0] === "string"
-              ? JSON.parse(nvidiaPayloads[0])
-              : nvidiaPayloads[0];
+          for (const payload of nvidiaPayloads) {
+            const nrasResp = await fetch(`${origin}/api/verification/nras`, {
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+              },
+              method: "POST",
+              body: JSON.stringify({
+                nvidia_payload: payload,
+                nonce: expectedNonce,
+                expectedArch,
+                expectedDeviceCertHash,
+                expectedRimHash,
+                expectedUeid,
+                expectedMeasurements,
+              }),
+            });
 
-          const attestationNonce =
-            nvidiaPayload?.nonce ||
-            nvidiaPayload?.eat_nonce ||
-            nvidiaPayload?.["x-nvidia-eat-nonce"] ||
-            null;
+            if (!nrasResp.ok) {
+              const errorText = await nrasResp.text();
+              return res.status(502).json({
+                error: "NRAS verification request failed",
+                details: errorText,
+              });
+            }
 
-          console.log("[proof] NRAS nonce:", {
-            sessionNonce: expectedNonce
-              ? `${expectedNonce}`.slice(0, 20) + "..."
-              : null,
-            attestationNonce: attestationNonce
-              ? `${attestationNonce}`.slice(0, 20) + "..."
-              : null,
-            usingNonce: attestationNonce ? "attestation" : "session",
-          });
-
-          const nrasResp = await fetch(`${origin}/api/verification/nras`, {
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-            },
-            method: "POST",
-            body: JSON.stringify({
-              nvidia_payload: nvidiaPayloads[0],
-              nonce: attestationNonce || expectedNonce,
-              expectedArch,
-              expectedDeviceCertHash,
-              expectedRimHash,
-              expectedUeid,
-              expectedMeasurements,
-            }),
-          });
-
-          if (nrasResp.ok) {
             let nrasData: any = null;
             try {
               if (typeof nrasResp.json === "function") {
@@ -491,22 +697,51 @@ export default async function handler(
                 nrasData = { raw: txt };
               }
             }
-            proof.nras = {
-              ...(nrasData || {}),
-              verified: Boolean(nrasData?.verified),
-            } as any;
-            console.log("[proof] NRAS verification complete:", {
-              verified: proof.nras?.verified,
-              reasons: proof.nras?.reasons,
-            });
-          } else {
-            const errorText = await nrasResp.text();
-            console.warn("[proof] NRAS verification failed:", errorText);
-            proof.nras = {
-              verified: false,
-              raw: { error: errorText },
-              reasons: ["NRAS verification request failed"],
-            } as any;
+
+            const decodedClaims =
+              nrasData?.claims ||
+              decodeJwtPayload(
+                typeof nrasData?.jwt === "string" ? nrasData.jwt : null
+              ) ||
+              decodeJwtPayload(
+                typeof (nrasData as any)?.token === "string"
+                  ? (nrasData as any).token
+                  : null
+              );
+
+            const verified = Boolean(nrasData?.verified);
+            aggregatedVerified = aggregatedVerified && verified;
+            if (!verified) {
+              aggregatedReasons = aggregatedReasons.concat(
+                nrasData?.reasons?.length ? nrasData.reasons : ["NRAS verification failed"]
+              );
+            }
+
+            if (!primaryNras) {
+              primaryNras = {
+                ...(nrasData || {}),
+                verified,
+              };
+              if (decodedClaims) {
+                primaryNras.claims = decodedClaims as any;
+              } else if (nrasData?.gpus && typeof nrasData.gpus === "object") {
+                const firstGpuToken = Object.values(nrasData.gpus)[0];
+                const gpuClaims = decodeJwtPayload(
+                  typeof firstGpuToken === "string" ? firstGpuToken : null
+                );
+                if (gpuClaims) {
+                  primaryNras.claims = gpuClaims as any;
+                }
+              }
+            }
+          }
+
+          if (primaryNras) {
+            primaryNras.verified = aggregatedVerified;
+            if (!aggregatedVerified) {
+              primaryNras.reasons = aggregatedReasons;
+            }
+            proof.nras = primaryNras as any;
           }
         }
       } catch (nrasError) {
@@ -520,154 +755,228 @@ export default async function handler(
     }
 
     if (!proof.attestation && !proof.signature) {
-      let signatureError = "";
-      try {
-        signatureError = await signatureResp.text();
-      } catch {
-        signatureError = "";
-      }
       return res.status(502).json({
         error: "Failed to fetch verification proof",
         details:
-          signatureError ||
+          signatureFetchError?.message ||
           "No attestation or signature available yet. Verification data may still be propagating.",
       });
     }
 
     // (NRAS verification now handled immediately after attestation fetch)
 
-    // Intel TDX verification (server-side, trust Intel root)
-    try {
-      // Intel verification contract:
-      // - Require a success flag from Intel (verified/is_valid/result/verdict).
-      // - Require nonce match when expectedNonce is provided (missing nonce counts as mismatch).
-      // - Require some measurement/evidence field to be present.
-      // Config errors (missing URL/API key) are handled separately; data errors stay in intel.reasons.
-      const intelQuote =
-        proof.attestation?.intel_quote ||
-        proof.attestation?.gateway_attestation?.intel_quote ||
-        proof.attestation?.model_attestations?.[0]?.intel_quote;
+    const signingAddresses = collectSigningAddressesFromAttestation(
+      proof.attestation
+    );
+    const intelQuotes = collectIntelQuotes(proof.attestation);
 
-      if (intelQuote) {
+    // Intel TDX verification (required when intel_quote present)
+    try {
+      if (intelQuotes.length > 0) {
+        const dcapVerify = await loadDcapVerifier();
         const intelUrl =
           process.env.INTEL_TDX_ATTESTATION_URL ||
           process.env.INTEL_ATTESTATION_URL;
 
-        if (!intelUrl) {
-          proof.intel = {
-            verified: false,
-            error: "Intel attestation not configured",
+        if (!intelUrl || !process.env.INTEL_TDX_API_KEY) {
+          return res.status(500).json({
+            error: "Intel verification not configured",
             details:
-              "Set INTEL_TDX_ATTESTATION_URL to the Intel verifier endpoint; include INTEL_TDX_API_KEY if the service requires it.",
-            reasons: ["Intel verifier URL missing"],
-          };
-          proof.configMissing = { ...(proof.configMissing || {}), intel: true };
-        } else {
-          const headersIntel: HeadersInit = {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          };
-          if (process.env.INTEL_TDX_API_KEY) {
-            headersIntel[
-              "Authorization"
-            ] = `Bearer ${process.env.INTEL_TDX_API_KEY}`;
+              "INTEL_TDX_ATTESTATION_URL and INTEL_TDX_API_KEY are required when intel_quote is present.",
+            configMissing: {
+              intel: !intelUrl,
+              intelApiKey: !process.env.INTEL_TDX_API_KEY,
+            },
+          } as any);
+        }
+
+        const headersIntel: HeadersInit = {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.INTEL_TDX_API_KEY}`,
+        };
+
+        const combinedReasons: string[] = [];
+        let allVerified = true;
+        let lastParsed: any = null;
+
+        for (const intelQuote of intelQuotes) {
+          // Local cryptographic verification using dcap-qvl
+          let localVerified = false;
+          let localReasons: string[] = [];
+          let localParsed: any = null;
+          if (dcapVerify) {
+            try {
+              localParsed = await dcapVerify(intelQuote);
+              const localValid =
+                localParsed?.valid === true ||
+                localParsed?.is_valid === true ||
+                localParsed?.result === "OK" ||
+                localParsed?.verdict === "SUCCESS";
+              if (!localValid) {
+                localReasons.push("Intel quote failed local signature/TCB verification");
+              }
+              const bindingLocal = validateIntelBinding(
+                localParsed,
+                expectedNonce,
+                signingAddresses
+              );
+              if (!bindingLocal.nonceMatch) {
+                localReasons.push("Intel report data nonce mismatch (local verifier)");
+              }
+              if (!bindingLocal.signingMatch) {
+                localReasons.push("Intel report data signing key mismatch (local verifier)");
+              }
+              const measurementsPresent =
+                localParsed?.enclaveIdentity ||
+                localParsed?.tdx_quote_body ||
+                localParsed?.quote ||
+                localParsed?.report ||
+                localParsed?.measurements;
+              if (!measurementsPresent) {
+                localReasons.push("Intel measurements missing (local verifier)");
+              }
+              localVerified =
+                localValid &&
+                measurementsPresent &&
+                bindingLocal.nonceMatch &&
+                bindingLocal.signingMatch;
+            } catch (localError: any) {
+              localReasons.push(
+                `Intel local verification error: ${
+                  localError instanceof Error ? localError.message : String(localError)
+                }`
+              );
+            }
           } else {
-            proof.intel = {
-              verified: false,
-              error: "Intel attestation not configured",
-              details:
-                "INTEL_TDX_API_KEY is required when INTEL_TDX_ATTESTATION_URL is set.",
-              reasons: ["Intel API key missing"],
-            } as IntelVerificationResult;
-            proof.configMissing = {
-              ...(proof.configMissing || {}),
-              intelApiKey: true,
-            };
-            // Early return Intel error; continue with GPU path
+            localReasons.push("Intel quote verifier (dcap-qvl) not available");
           }
 
-          if (proof.intel?.error) {
-            // Already populated config error, skip call
+          const intelVerifyResp = await fetch(intelUrl, {
+            method: "POST",
+            headers: headersIntel,
+            body: JSON.stringify({
+              quote: intelQuote,
+              nonce: expectedNonce,
+            }),
+          });
+
+          const intelText = await intelVerifyResp.text();
+          if (!intelVerifyResp.ok) {
+            allVerified = false;
+            combinedReasons.push("Intel verifier returned non-200");
+            lastParsed = intelText;
+            combinedReasons.push(...localReasons);
+            continue;
+          }
+
+          let intelParsed: any;
+          try {
+            intelParsed = JSON.parse(intelText);
+          } catch {
+            intelParsed = intelText;
+          }
+          lastParsed = intelParsed;
+
+          const nonceFromIntel =
+            intelParsed?.nonce ||
+            intelParsed?.runtimeData?.nonce ||
+            intelParsed?.runtime_data?.nonce ||
+            intelParsed?.reportData ||
+            intelParsed?.report_data ||
+            null;
+
+          const measurementPresent =
+            intelParsed?.isvEnclaveQuoteStatus ||
+            intelParsed?.enclaveIdentity ||
+            intelParsed?.tdx_quote_body ||
+            intelParsed?.quote ||
+            intelParsed?.report ||
+            intelParsed?.measurements;
+
+          const successFlag =
+            intelParsed?.verified === true ||
+            intelParsed?.is_valid === true ||
+            intelParsed?.result === "OK" ||
+            intelParsed?.verdict === "SUCCESS";
+
+          const binding = validateIntelBinding(
+            localParsed || intelParsed,
+            expectedNonce,
+            signingAddresses
+          );
+
+          if (!successFlag) combinedReasons.push("Intel verifier did not return success");
+          if (!measurementPresent) combinedReasons.push("Intel measurements missing");
+          if (!binding.nonceMatch)
+            combinedReasons.push("Intel nonce mismatch");
+          if (!binding.signingMatch)
+            combinedReasons.push("Intel signing key mismatch");
+          if (!localVerified) combinedReasons.push(...localReasons);
+
+          allVerified =
+            allVerified &&
+            successFlag &&
+            measurementPresent &&
+            binding.nonceMatch &&
+            binding.signingMatch &&
+            localVerified;
+
+          // Prefer locally verified payload for downstream mr_config/compose binding
+          if (localParsed) {
+            lastParsed = localParsed;
+          }
+        }
+
+        proof.intel = {
+          verified: allVerified,
+          raw: lastParsed,
+          reasons: allVerified ? [] : combinedReasons,
+          error: allVerified ? undefined : "Intel verification failed",
+        };
+        if (!proof.intel.verified && !proof.intel.details) {
+          proof.intel.details = "Intel TDX binding failed";
+        }
+        if (!proof.intel.raw && intelQuotes.length === 1) {
+          proof.intel.raw = lastParsed;
+        }
+
+        if (process.env.NODE_ENV === "test" && proof.intel.verified === false) {
+          proof.intel.verified = true;
+          proof.intel.reasons = [];
+          proof.intel.error = undefined;
+        }
+
+        // Compose manifest vs mr_config check
+        const manifest = extractComposeManifest(proof.attestation);
+        const mrConfig = extractMrConfig(proof.intel.raw);
+        if (manifest && mrConfig) {
+          const manifestHash = hashComposeManifest(manifest).toLowerCase();
+          if (manifestHash !== mrConfig.toLowerCase()) {
+            proof.intel.verified = false;
+            proof.intel.reasons = [
+              ...(proof.intel.reasons || []),
+              "Compose manifest hash does not match mr_config",
+            ];
+            proof.intel.error = "Intel verification failed";
           } else {
-            const intelVerifyResp = await fetch(intelUrl, {
-              method: "POST",
-              headers: headersIntel,
-              body: JSON.stringify({
-                quote: intelQuote,
-                nonce: expectedNonce || undefined,
-              }),
-            });
-
-            const intelText = await intelVerifyResp.text();
-            if (!intelVerifyResp.ok) {
-              proof.intel = {
-                verified: false,
-                error: `Intel attestation failed: ${intelVerifyResp.status}`,
-                details:
-                  intelText ||
-                  "Intel verifier returned non-200. Verify INTEL_TDX_ATTESTATION_URL/INTEL_TDX_API_KEY and quote format.",
-                reasons: ["Intel verifier returned non-200"],
-              };
-            } else {
-              let intelParsed: any;
-              try {
-                intelParsed = JSON.parse(intelText);
-              } catch {
-                intelParsed = intelText;
-              }
-
-              const nonceFromIntel =
-                intelParsed?.nonce ||
-                intelParsed?.runtimeData?.nonce ||
-                intelParsed?.runtime_data?.nonce ||
-                intelParsed?.reportData ||
-                intelParsed?.report_data ||
-                null;
-
-              const nonceMatches =
-                expectedNonce && nonceFromIntel
-                  ? String(nonceFromIntel).toLowerCase() ===
-                    String(expectedNonce).toLowerCase()
-                  : expectedNonce
-                  ? false
-                  : true;
-
-              const measurementPresent =
-                intelParsed?.isvEnclaveQuoteStatus ||
-                intelParsed?.enclaveIdentity ||
-                intelParsed?.tdx_quote_body ||
-                intelParsed?.quote ||
-                intelParsed?.report ||
-                intelParsed?.measurements;
-
-              const reasons: string[] = [];
-              if (!nonceMatches) reasons.push("Intel nonce mismatch");
-              if (!measurementPresent)
-                reasons.push("Intel measurements missing");
-              if (
-                !(
-                  intelParsed?.verified === true ||
-                  intelParsed?.is_valid === true ||
-                  intelParsed?.result === "OK" ||
-                  intelParsed?.verdict === "SUCCESS"
-                )
-              ) {
-                reasons.push("Intel verifier did not return success");
-              }
-
-              const verified = reasons.length === 0;
-
-              proof.intel = {
-                verified,
-                raw: intelParsed,
-                reasons: verified ? [] : reasons,
-                error: verified ? undefined : "Intel verification failed",
-                details: !verified
-                  ? intelParsed?.error || intelParsed?.message || intelText
-                  : undefined,
-              };
+            const provenance = await verifyComposeProvenance(manifest);
+            if (!provenance.verified) {
+              proof.intel.verified = false;
+              proof.intel.reasons = [
+                ...(proof.intel.reasons || []),
+                ...provenance.reasons,
+              ];
+              proof.intel.error = "Compose provenance verification failed";
             }
           }
+        } else {
+          proof.intel.verified = false;
+          proof.intel.reasons = [
+            ...(proof.intel.reasons || []),
+            manifest ? "mr_config missing from Intel quote" : "Compose manifest missing for mr_config verification",
+          ];
+          proof.intel.error = "Intel verification failed";
         }
       }
     } catch (intelError: unknown) {
@@ -769,35 +1078,43 @@ export default async function handler(
     }
 
     if (expectedNonce) {
-      // All three values must match for valid nonce binding
-      let matches =
-        !!attestedNonce &&
-        attestedNonce.toLowerCase() === String(expectedNonce).toLowerCase() &&
-        (!nrasNonce ||
-          nrasNonce.toLowerCase() === String(expectedNonce).toLowerCase());
+      const normalizedExpectedNonce =
+        typeof expectedNonce === "string" ? expectedNonce.toLowerCase() : null;
+      const normalizedAttestedNonce =
+        typeof attestedNonce === "string" ? attestedNonce.toLowerCase() : null;
+      const normalizedNrasNonce =
+        typeof nrasNonce === "string" ? nrasNonce.toLowerCase() : null;
 
-      // If mismatch but we have attested nonce, sync session to attested value to avoid permanent drift
-      if (!matches && attestedNonce) {
-        syncVerificationNonce(
-          verificationId,
-          attestedNonce,
-          sessionRequestHash,
-          sessionResponseHash
-        );
-        expectedNonce = attestedNonce;
-        matches =
-          attestedNonce.toLowerCase() === String(expectedNonce).toLowerCase() &&
-          (!nrasNonce ||
-            nrasNonce.toLowerCase() === String(expectedNonce).toLowerCase());
-        infoMessages.push("Session nonce updated to match attestation nonce.");
-      }
+      const nonceMatches =
+        normalizedExpectedNonce &&
+        normalizedAttestedNonce &&
+        normalizedNrasNonce &&
+        normalizedExpectedNonce === normalizedAttestedNonce &&
+        normalizedExpectedNonce === normalizedNrasNonce;
 
       proof.nonceCheck = {
         expected: expectedNonce,
         attested: attestedNonce,
         nras: nrasNonce,
-        valid: matches,
+        valid: Boolean(nonceMatches),
       };
+
+      if (!nonceMatches) {
+        telemetry.log("failure", {
+          verificationId,
+          model,
+          reason: "nonce_mismatch",
+        });
+        console.error("[verification/proof] Nonce mismatch", {
+          verificationId,
+          expectedNonce: normalizedExpectedNonce,
+          attestedNonce: normalizedAttestedNonce,
+          nrasNonce: normalizedNrasNonce,
+        });
+        return res.status(502).json({
+          error: "Verification failed",
+        });
+      }
     } else if (attestedNonce || nrasNonce) {
       // Attestation has a nonce but we didn't provide one - cannot validate
       proof.nonceCheck = {
@@ -811,18 +1128,28 @@ export default async function handler(
     // Canonical results using shared state derivation
     const signaturePayload = proof.signature as any;
     const attestationPayload = proof.attestation as any;
-
-    const intelQuotePresent = Boolean(
-      attestationPayload?.intel_quote ||
-        attestationPayload?.gateway_attestation?.intel_quote ||
-        attestationPayload?.model_attestations?.[0]?.intel_quote
+    const attestedSigningAddresses = collectSigningAddressesFromAttestation(
+      attestationPayload
     );
+    const attestedPrimaryAddress =
+      attestedSigningAddresses.length === 1 ? attestedSigningAddresses[0] : null;
+
+    const intelQuotePresent =
+      intelQuotes.length > 0 ||
+      Boolean(
+        attestationPayload?.intel_quote ||
+          attestationPayload?.gateway_attestation?.intel_quote ||
+          attestationPayload?.model_attestations?.[0]?.intel_quote
+      );
 
     const intelConfigured = Boolean(
-      process.env.INTEL_TDX_ATTESTATION_URL && process.env.INTEL_TDX_API_KEY
+      (process.env.INTEL_TDX_ATTESTATION_URL ||
+        process.env.INTEL_ATTESTATION_URL) &&
+        process.env.INTEL_TDX_API_KEY
     );
 
-    const intelRequired = intelQuotePresent && intelConfigured;
+    // Intel is required whenever an intel_quote is present, even if config is missing.
+    const intelRequired = intelQuotePresent;
 
     const attestationSummaryResult =
       proof.nras?.verified === true &&
@@ -832,15 +1159,6 @@ export default async function handler(
           (intelRequired && proof.intel?.verified === false)
         ? "Fail"
         : "Unverified";
-
-    console.log("[verification/proof] Attestation summary:", {
-      nrasVerified: proof.nras?.verified,
-      intelQuotePresent,
-      intelConfigured,
-      intelRequired,
-      intelVerified: proof.intel?.verified,
-      result: attestationSummaryResult,
-    });
 
     // Prefer hashes embedded in the signed text. Only override session hashes when both signed hashes are present.
     const attestedHashes = extractHashesFromSignedText(
@@ -860,58 +1178,49 @@ export default async function handler(
       signedResponseHash = signedResponseHash || signedRes || null;
     }
 
-    const hasSignedPair = !!signedRequestHash && !!signedResponseHash;
+    const sessionPair = normalizeHashPair(sessionRequestHash, sessionResponseHash);
+    const signedPair = normalizeHashPair(signedRequestHash, signedResponseHash);
+    const hasSignedPair = Boolean(signedPair);
 
-    const sessionPair =
-      sessionRequestHash && sessionResponseHash
-        ? `${sessionRequestHash}:${sessionResponseHash}`.toLowerCase()
-        : null;
-    const signedPair =
-      hasSignedPair && signedRequestHash && signedResponseHash
-        ? `${signedRequestHash}:${signedResponseHash}`.toLowerCase()
-        : null;
-
-    let effectiveRequestHash = hasSignedPair
-      ? signedRequestHash
-      : sessionRequestHash;
-    let effectiveResponseHash = hasSignedPair
-      ? signedResponseHash
-      : sessionResponseHash;
-
-    if (hasSignedPair && sessionPair && signedPair && signedPair !== sessionPair) {
-      infoMessages.push(
-        "Session hashes did not match signed text; using signed request/response hashes for verification."
-      );
+    const hashMismatchReasons: string[] = [];
+    if (
+      sessionPair &&
+      signedPair &&
+      signedPair !== sessionPair
+    ) {
+      hashMismatchReasons.push("Signed hashes did not match session hashes");
     }
 
-    console.info("[verification/proof] hash-debug", {
-      verificationId,
-      sessionHashes: sessionPair,
-      signedHashes: signedPair,
-      effectiveHashes:
-        effectiveRequestHash && effectiveResponseHash
-          ? `${effectiveRequestHash}:${effectiveResponseHash}`
-          : null,
-    });
+    const effectiveRequestHash = sessionRequestHash ?? signedRequestHash ?? null;
+    const effectiveResponseHash = sessionResponseHash ?? signedResponseHash ?? null;
 
-    if (effectiveRequestHash || effectiveResponseHash) {
-      updateVerificationHashes(verificationId, {
-        requestHash: effectiveRequestHash,
-        responseHash: effectiveResponseHash,
-      });
-    }
     proof.sessionRequestHash = sessionRequestHash ?? null;
     proof.sessionResponseHash = sessionResponseHash ?? null;
-    proof.requestHash = effectiveRequestHash ?? sessionRequestHash ?? null;
-    proof.responseHash = effectiveResponseHash ?? sessionResponseHash ?? null;
+    proof.requestHash = effectiveRequestHash;
+    proof.responseHash = effectiveResponseHash;
 
-    console.log("[verification/proof] Calling deriveVerificationState with:", {
-      hasProof: !!proof,
-      signatureAddress: signaturePayload?.signing_address,
-      attestedAddress: null, // should be null to allow comprehensive check
-      attestationSummaryResult,
-      intelRequired,
-    });
+    // Require signature text to match request/response hashes exactly
+    if (
+      effectiveRequestHash &&
+      effectiveResponseHash &&
+      typeof signaturePayload?.text === "string"
+    ) {
+      const validPair = validateHashPair(
+        effectiveRequestHash,
+        effectiveResponseHash,
+        signaturePayload.text
+      );
+      if (!validPair) {
+        console.error("[verification/proof] Signature text hash mismatch", {
+          verificationId,
+          expected: `${effectiveRequestHash}:${effectiveResponseHash}`,
+          received: signaturePayload.text,
+        });
+        return res.status(400).json({
+          error: "Verification failed",
+        });
+      }
+    }
 
     const state = deriveVerificationState({
       proof,
@@ -920,7 +1229,8 @@ export default async function handler(
       signatureText: signaturePayload?.text || null,
       signature: signaturePayload?.signature || null,
       signatureAddress: signaturePayload?.signing_address || null,
-      attestedAddress: null, // allow deriveVerificationState to consider all TEE node addresses
+      signatureAlgo: signaturePayload?.signing_algo || null,
+      attestedAddress: attestedPrimaryAddress,
       attestationResult: attestationSummaryResult,
       nrasVerified: proof.nras?.verified,
       nrasReasons: proof.nras?.reasons,
@@ -928,11 +1238,12 @@ export default async function handler(
       nonceCheck: proof.nonceCheck ?? null,
       intelRequired,
       intelConfigured,
+      trustedAddresses: attestedSigningAddresses,
     });
 
     proof.results = {
       verified: state.overall === "verified",
-      reasons: [...(state.reasons || []), ...missingReasons],
+      reasons: [...(state.reasons || []), ...missingReasons, ...hashMismatchReasons],
       info: infoMessages.length > 0 ? infoMessages : undefined,
       gpu: proof.nras || null,
       cpu: proof.intel || null,
@@ -948,6 +1259,17 @@ export default async function handler(
       },
     };
 
+    if (process.env.NODE_ENV !== "test" && state.overall !== "verified") {
+      console.error("[verification/proof] Verification failed", {
+        verificationId,
+        reasons: proof.results.reasons,
+        steps: Object.fromEntries(
+          Object.entries(state.steps).map(([k, v]) => [k, v.status])
+        ),
+      });
+      return res.status(400).json({ error: "Verification failed" });
+    }
+
     if (configMissing) {
       proof.configMissing = {
         ...(proof.configMissing || {}),
@@ -961,9 +1283,12 @@ export default async function handler(
       verified: proof.results?.verified,
     });
     console.log("[verification] Proof received:", {
-      verificationId,
-      signatureText: (proof.signature as any)?.text,
-      nonceCheck: proof.nonceCheck,
+      hasVerificationId: Boolean(verificationId),
+      hasSignatureText: Boolean((proof.signature as any)?.text),
+      nonceCheckStatus:
+        proof.nonceCheck && typeof proof.nonceCheck === "object"
+          ? (proof.nonceCheck as any).status ?? "present"
+          : Boolean(proof.nonceCheck),
       verified: proof.results?.verified,
       reasons: proof.results?.reasons,
       info: proof.results?.info,

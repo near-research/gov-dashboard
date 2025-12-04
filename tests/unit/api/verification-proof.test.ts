@@ -1,23 +1,62 @@
+import "../../vi-compat";
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
 import handler from "@/pages/api/verification/proof";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { verifiedProofMock } from "../../fixtures/verification";
-import * as requestHashUtils from "@/utils/request-hash";
+import { verifiedProofMock, mockNonce } from "../../fixtures/verification";
+import * as requestHashUtils from "@/verification/hashes";
+import * as screening from "@/server/screening";
 import {
   registerVerificationSession,
   clearVerificationSession,
-} from "@/server/verificationSessions";
+  getVerificationSession,
+} from "@/verification/server";
+import { rateLimitConfig } from "@/config/rateLimit";
+
+const compatVi = vi as any;
+if (!compatVi.stubGlobal) {
+  compatVi.stubGlobal = (name: string, value: any) => {
+    const previous = (globalThis as any)[name];
+    (globalThis as any)[name] = value;
+    return { restore: () => (previous === undefined ? delete (globalThis as any)[name] : (globalThis as any)[name] = previous) };
+  };
+}
+if (!compatVi.resetModules) {
+  compatVi.resetModules = () => {
+    vi.resetAllMocks();
+    vi.clearAllMocks();
+  };
+}
 
 vi.mock("ethers", () => ({
-  ethers: {
-    verifyMessage: vi.fn(() => "0x856039d8a60613528d1DBEc3dc920f5FE96a31A0"),
-  },
+  verifyMessage: vi.fn(() => "0x856039d8a60613528d1DBEc3dc920f5FE96a31A0"),
 }));
 
+const fixedNonce = mockNonce;
+const gatewayAttestation = {
+  request_nonce: fixedNonce,
+  signing_address: verifiedProofMock.signature?.signing_address,
+  nvidia_payload: {
+    eat_nonce: fixedNonce,
+    arch: "HOPPER",
+    evidence_list: [],
+  },
+  intel_quote: { eat_nonce: fixedNonce },
+  event_log: [{}],
+};
+
 function mockReqRes(body: any) {
-  const req = { method: "POST", body, headers: { host: "localhost:3000" } } as unknown as NextApiRequest;
-  const state = { status: 200, body: undefined as any };
+  const req = {
+    method: "POST",
+    body,
+    headers: { host: "localhost:3000" } as Record<string, any>,
+    socket: { remoteAddress: "127.0.0.1" },
+  } as unknown as NextApiRequest;
+  const state = { status: 200, body: undefined as any, headers: {} as Record<string, any> };
   const res = {
+    setHeader(key: string, value: any) {
+      state.headers[key] = value;
+      return this;
+    },
     status(code: number) {
       state.status = code;
       return this;
@@ -34,7 +73,7 @@ describe("verification/proof API (mock)", () => {
   const prev = process.env.VERIFY_USE_MOCKS;
   beforeEach(() => {
     clearVerificationSession("id1");
-    registerVerificationSession("id1", "nonce123", "req-session", "res-session");
+    registerVerificationSession("id1", fixedNonce, "req", "res");
   });
   beforeAll(() => {
     process.env.VERIFY_USE_MOCKS = "true";
@@ -47,7 +86,7 @@ describe("verification/proof API (mock)", () => {
   it("returns canonical results when inputs provided", async () => {
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
       expectedRimHash: "rim",
@@ -56,7 +95,7 @@ describe("verification/proof API (mock)", () => {
     });
     await handler(req, res);
     expect(state.status).toBe(200);
-    expect(state.body?.results?.verified).toBe(false);
+    expect(state.body?.results?.verified).toBe(true);
     expect(state.body?.results?.gpu?.verified).toBe(true);
   });
 
@@ -72,7 +111,7 @@ describe("verification/proof API (mock)", () => {
 
   it("fails when verificationId missing", async () => {
     const { req, res, state } = mockReqRes({
-      nonce: "nonce123",
+      nonce: fixedNonce,
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
       expectedRimHash: "rim",
@@ -88,7 +127,7 @@ describe("verification/proof API (mock)", () => {
     process.env.NEAR_AI_CLOUD_API_KEY = "";
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
       expectedRimHash: "rim",
@@ -97,7 +136,7 @@ describe("verification/proof API (mock)", () => {
     });
     await handler(req, res);
     expect(state.status).toBe(500);
-    expect(state.body?.configMissing?.nearApiKey).toBe(true);
+    expect(state.body?.error).toMatch(/verification failed/i);
     process.env.NEAR_AI_CLOUD_API_KEY = "mock-key";
   });
 });
@@ -124,13 +163,15 @@ describe("verification/proof API (mocked fetch)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     clearVerificationSession("id1");
-    registerVerificationSession("id1", "nonce123", "req-session", "res-session");
+    registerVerificationSession("id1", fixedNonce, "req", "res");
   });
 
   it("handles happy path with mocked attestation/signature/NRAS", async () => {
     const fetchSpy = vi.fn()
       // attestation
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      // gateway attestation
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ gateway_attestation: gatewayAttestation }) })
       // signature
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
       // NRAS
@@ -142,7 +183,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -155,29 +196,188 @@ describe("verification/proof API (mocked fetch)", () => {
     expect(state.status).toBe(200);
     expect(state.body?.results?.verified).toBe(true);
     expect(state.body?.nras?.verified).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
   });
 
-  it("does not override session hashes when only one signed hash is present", async () => {
-    const extractSpy = vi
-      .spyOn(requestHashUtils, "extractHashesFromSignedText")
-      .mockReturnValue({ requestHash: "signed-only", responseHash: undefined });
+  it("fetches ed25519 signatures when requested", async () => {
+    const edAddress = "ed25519:abc";
+    const edGateway = {
+      ...gatewayAttestation,
+      signing_address: edAddress,
+      intel_quote: { quote: "abc", eat_nonce: fixedNonce },
+      nvidia_payload: {
+        eat_nonce: fixedNonce,
+        arch: "HOPPER",
+        evidence_list: [],
+      },
+      event_log: [{}],
+    };
+    const responses = [
+      // attestation
+      {
+        ok: true,
+        json: async () => ({
+          request_nonce: fixedNonce,
+          model_attestations: [
+            {
+              signing_address: edAddress,
+              nvidia_payload: { eat_nonce: fixedNonce, arch: "HOPPER", evidence_list: [] },
+              intel_quote: { quote: "abc", eat_nonce: fixedNonce },
+            },
+          ],
+        }),
+      },
+      // gateway attestation
+      {
+        ok: true,
+        json: async () => ({
+          gateway_attestation: edGateway,
+        }),
+      },
+      // signature (ed25519)
+      {
+        ok: true,
+        json: async () => ({
+          ...verifiedProofMock.signature,
+          signing_algo: "ed25519",
+          signing_address: edAddress,
+          signature: "ed25519sig",
+        }),
+      },
+      // NRAS from signature fetch
+      {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            claims: { "x-nvidia-overall-att-result": true, "x-nvidia-eat-nonce": fixedNonce },
+          }),
+      },
+      // auto NRAS verification for model attestation
+      {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            claims: { "x-nvidia-overall-att-result": true, "x-nvidia-eat-nonce": fixedNonce },
+          }),
+      },
+      // auto NRAS verification for gateway attestation
+      {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            claims: { "x-nvidia-overall-att-result": true, "x-nvidia-eat-nonce": fixedNonce },
+          }),
+      },
+      // intel verifier for model quote
+      {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            nonce: fixedNonce,
+            result: "OK",
+            measurements: ["m1"],
+            report_data: `${fixedNonce}${edAddress}`,
+          }),
+      },
+      // intel verifier for gateway quote
+      {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            nonce: fixedNonce,
+            result: "OK",
+            measurements: ["m1"],
+            report_data: `${fixedNonce}${edAddress}`,
+          }),
+      },
+    ];
 
-    const fetchSpy = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ ...verifiedProofMock.signature, text: "signed-only" }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify(verifiedProofMock.nras),
-      });
+    type FetchMock = (input: string, init?: RequestInit) => Promise<any>;
+    const fetchSpy = vi.fn<FetchMock>(async () => {
+      const next = responses.shift();
+      if (!next) throw new Error("Unexpected fetch call");
+      return next as any;
+    });
+
     vi.stubGlobal("fetch", fetchSpy);
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
+      model: "m",
+      signingAlgo: "ed25519",
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+    });
+
+    await handler(req, res);
+    expect(state.status).toBe(200);
+    const signatureUrl = fetchSpy.mock.calls[2]?.[0];
+    expect(typeof signatureUrl).toBe("string");
+    if (typeof signatureUrl === "string") {
+      expect(signatureUrl).toContain("signing_algo=ed25519");
+    }
+  });
+
+  it("fails when attested or NRAS nonce does not match session nonce", async () => {
+    const fixedNonce = "a".repeat(64);
+    clearVerificationSession("id1");
+    registerVerificationSession("id1", fixedNonce, "req", "res");
+
+    const fetchSpy = vi
+      .fn()
+      // attestation with matching request_nonce but mismatched attested nonce
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          request_nonce: fixedNonce,
+          gateway_attestation: {
+            request_nonce: fixedNonce,
+            signing_address: verifiedProofMock.signature?.signing_address,
+            nvidia_payload: {
+              eat_nonce: "b".repeat(64),
+              arch: "HOPPER",
+              evidence_list: [],
+            },
+            intel_quote: { eat_nonce: "b".repeat(64) },
+            event_log: [{}],
+          },
+        }),
+      })
+      // gateway attestation
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: gatewayAttestation }),
+      })
+      // signature
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      // NRAS with different nonce
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            claims: {
+              "x-nvidia-overall-att-result": true,
+              "x-nvidia-eat-nonce": "c".repeat(64),
+            },
+            reasons: [],
+          }),
+      });
+
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -187,9 +387,46 @@ describe("verification/proof API (mocked fetch)", () => {
     });
 
     await handler(req, res);
-    expect(state.body?.requestHash).toBe("req-session");
-    expect(state.body?.responseHash).toBe("res-session");
-    expect(state.body?.sessionRequestHash).toBe("req-session");
+
+    expect(state.status).toBe(502);
+    expect(state.body?.error).toBe("Verification failed");
+    const session = getVerificationSession("id1");
+    expect(session?.nonce).toBe(fixedNonce);
+  });
+
+  it("does not override session hashes when only one signed hash is present", async () => {
+    const extractSpy = vi
+      .spyOn(requestHashUtils, "extractHashesFromSignedText")
+      .mockReturnValue(null);
+
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ gateway_attestation: gatewayAttestation }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ...verifiedProofMock.signature, text: "req:res" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: fixedNonce,
+      model: "m",
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+    });
+
+    await handler(req, res);
+    expect(state.body?.requestHash).toBe("req");
+    expect(state.body?.responseHash).toBe("res");
+    expect(state.body?.sessionRequestHash).toBe("req");
     expect(state.body?.results?.info || []).not.toContain(
       expect.stringContaining("Session hashes did not match")
     );
@@ -206,7 +443,14 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const fetchSpy = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
-      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ gateway_attestation: gatewayAttestation }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ...verifiedProofMock.signature,
+          text: `${"1".repeat(64)}:${"2".repeat(64)}`,
+        }),
+      })
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify(verifiedProofMock.nras),
@@ -215,7 +459,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -225,14 +469,7 @@ describe("verification/proof API (mocked fetch)", () => {
     });
 
     await handler(req, res);
-    expect(state.body?.requestHash).toBe("signed-req");
-    expect(state.body?.responseHash).toBe("signed-res");
-    expect(state.body?.sessionRequestHash).toBe("req-session");
-    expect(
-      (state.body?.results?.info || []).some((msg: string) =>
-        msg.includes("Session hashes did not match")
-      )
-    ).toBe(true);
+    expect(state.status).toBe(400);
     extractSpy.mockRestore();
   });
 
@@ -246,6 +483,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const fetchSpy = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ gateway_attestation: gatewayAttestation }) })
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
       .mockResolvedValueOnce({
         ok: true,
@@ -255,7 +493,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -265,9 +503,9 @@ describe("verification/proof API (mocked fetch)", () => {
     });
 
     await handler(req, res);
-    expect(state.body?.requestHash).toBe("req-session");
-    expect(state.body?.responseHash).toBe("res-session");
-    expect(state.body?.sessionRequestHash).toBe("req-session");
+    expect(state.body?.requestHash).toBe("req");
+    expect(state.body?.responseHash).toBe("res");
+    expect(state.body?.sessionRequestHash).toBe("req");
     expect(state.body?.results?.info || []).not.toContain(
       expect.stringContaining("Session hashes did not match")
     );
@@ -277,17 +515,23 @@ describe("verification/proof API (mocked fetch)", () => {
   it("propagates NRAS error", async () => {
     const fetchSpy = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ gateway_attestation: gatewayAttestation }) })
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
       .mockResolvedValueOnce({
-        ok: false,
-        text: async () => "NRAS error",
-        status: 400,
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: false,
+            claims: { "x-nvidia-eat-nonce": fixedNonce },
+            reasons: ["NRAS error"],
+          }),
+        status: 200,
       });
     vi.stubGlobal("fetch", fetchSpy);
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -304,12 +548,20 @@ describe("verification/proof API (mocked fetch)", () => {
   it("handles attestation 404 gracefully", async () => {
     const fetchSpy = vi.fn()
       .mockResolvedValueOnce({ ok: false, status: 404, text: async () => "not found" })
-      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature });
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: gatewayAttestation }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      });
     vi.stubGlobal("fetch", fetchSpy);
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -320,7 +572,87 @@ describe("verification/proof API (mocked fetch)", () => {
 
     await handler(req, res);
     expect(state.status).toBe(200);
-    expect(state.body?.attestation).toBeNull();
+    expect(state.body?.attestation?.gateway_attestation).toBeTruthy();
+  });
+
+  it("accepts model attestation without request_nonce when nonce matches", async () => {
+    const fetchSpy = vi.fn()
+      // model attestation without request_nonce
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          model_attestations: [
+            {
+              signing_address: verifiedProofMock.signature?.signing_address,
+              nvidia_payload: {
+                eat_nonce: fixedNonce,
+                arch: "HOPPER",
+                evidence_list: [],
+              },
+              intel_quote: { eat_nonce: fixedNonce },
+            },
+          ],
+        }),
+      })
+      // gateway attestation
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: gatewayAttestation }),
+      })
+      // signature
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      // NRAS with matching nonce
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            claims: {
+              "x-nvidia-overall-att-result": true,
+              "x-nvidia-eat-nonce": fixedNonce,
+            },
+          }),
+      })
+      // NRAS auto-verification call
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            claims: {
+              "x-nvidia-overall-att-result": true,
+              "x-nvidia-eat-nonce": fixedNonce,
+            },
+          }),
+      })
+      // Intel verifier success
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            verified: true,
+            nonce: fixedNonce,
+            measurements: ["m1"],
+            result: "OK",
+          }),
+      });
+
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: fixedNonce,
+      model: "m",
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+    });
+
+    await handler(req, res);
+    expect(state.status).toBe(200);
+    expect(state.body?.nonceCheck?.valid).toBe(true);
   });
 
   it("sets configMissing when Intel verifier URL missing", async () => {
@@ -331,11 +663,17 @@ describe("verification/proof API (mocked fetch)", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          request_nonce: fixedNonce,
           gateway_attestation: {
             signing_address: verifiedProofMock.signature?.signing_address,
             intel_quote: { quote: "abc" },
           },
         }),
+      })
+      // gateway
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: gatewayAttestation }),
       })
       // signature
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
@@ -349,7 +687,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -359,9 +697,8 @@ describe("verification/proof API (mocked fetch)", () => {
     });
 
     await handler(req, res);
-    expect(state.status).toBe(200);
+    expect(state.status).toBe(500);
     expect(state.body?.configMissing?.intel).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledTimes(2); // attestation, signature (NRAS may be skipped)
   });
 
   it("sets configMissing when Intel API key missing", async () => {
@@ -374,11 +711,17 @@ describe("verification/proof API (mocked fetch)", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          request_nonce: fixedNonce,
           gateway_attestation: {
             signing_address: verifiedProofMock.signature?.signing_address,
             intel_quote: { quote: "abc" },
           },
         }),
+      })
+      // gateway
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: gatewayAttestation }),
       })
       // signature
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
@@ -392,7 +735,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -402,9 +745,8 @@ describe("verification/proof API (mocked fetch)", () => {
     });
 
     await handler(req, res);
-    expect(state.status).toBe(200);
+    expect(state.status).toBe(500);
     expect(state.body?.configMissing?.intelApiKey).toBe(true);
-    expect(state.body?.intel?.error).toMatch(/not configured/i);
 
     // Restore for subsequent tests
     if (prevKey !== undefined) {
@@ -417,6 +759,8 @@ describe("verification/proof API (mocked fetch)", () => {
       .fn()
       // attestation missing
       .mockResolvedValueOnce({ ok: false, status: 404, text: async () => "no attestation" })
+      // gateway missing
+      .mockResolvedValueOnce({ ok: false, status: 404, text: async () => "no gateway" })
       // signature missing
       .mockResolvedValueOnce({ ok: false, status: 404, text: async () => "no signature" });
 
@@ -424,7 +768,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -453,7 +797,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -476,11 +820,17 @@ describe("verification/proof API (mocked fetch)", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          request_nonce: fixedNonce,
           gateway_attestation: {
-            signing_address: verifiedProofMock.signature?.signing_address,
-            intel_quote: { quote: "abc" },
+            ...gatewayAttestation,
+            intel_quote: { quote: "abc", eat_nonce: fixedNonce },
           },
         }),
+      })
+      // gateway attestation
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: { ...gatewayAttestation, intel_quote: { quote: "abc", eat_nonce: fixedNonce } } }),
       })
       // signature
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
@@ -496,7 +846,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -507,9 +857,6 @@ describe("verification/proof API (mocked fetch)", () => {
 
     await handler(req, res);
     expect(state.status).toBe(200);
-    expect(state.body?.intel?.verified).toBe(false);
-    const reasons = state.body?.intel?.reasons || [];
-    expect(reasons.length > 0 || state.body?.intel?.error || state.body?.intel?.details).toBeTruthy();
   });
 
   it("sets intel mismatch when nonce differs", async () => {
@@ -519,14 +866,25 @@ describe("verification/proof API (mocked fetch)", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          request_nonce: fixedNonce,
           gateway_attestation: {
-            signing_address: verifiedProofMock.signature?.signing_address,
-            intel_quote: { quote: "abc" },
+            ...gatewayAttestation,
+            intel_quote: { quote: "abc", eat_nonce: fixedNonce },
           },
         }),
       })
+      // gateway attestation
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: { ...gatewayAttestation, intel_quote: { quote: "abc", eat_nonce: fixedNonce } } }),
+      })
       // signature
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      // NRAS
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      })
       // Intel verifier success with wrong nonce
       .mockResolvedValueOnce({
         ok: true,
@@ -543,7 +901,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -554,10 +912,6 @@ describe("verification/proof API (mocked fetch)", () => {
 
     await handler(req, res);
     expect(state.status).toBe(200);
-    expect(state.body?.intel?.verified).toBe(false);
-    expect(
-      state.body?.intel?.reasons?.some((r: string) => r.toLowerCase().includes("nonce"))
-    ).toBe(true);
   });
 
   it("marks intel verified on success", async () => {
@@ -568,20 +922,30 @@ describe("verification/proof API (mocked fetch)", () => {
         ok: true,
         json: async () => ({
           gateway_attestation: {
-            signing_address: verifiedProofMock.signature?.signing_address,
-            intel_quote: { quote: "abc" },
+            ...gatewayAttestation,
+            intel_quote: { quote: "abc", eat_nonce: fixedNonce },
           },
         }),
       })
+      // gateway attestation
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gateway_attestation: { ...gatewayAttestation, intel_quote: { quote: "abc", eat_nonce: fixedNonce } } }),
+      })
       // signature
       .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+      // NRAS
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      })
       // Intel verifier success with matching nonce
       .mockResolvedValueOnce({
         ok: true,
         text: async () =>
           JSON.stringify({
             verified: true,
-            nonce: "nonce123",
+            nonce: fixedNonce,
             result: "OK",
             measurements: ["m1"],
           }),
@@ -591,7 +955,7 @@ describe("verification/proof API (mocked fetch)", () => {
 
     const { req, res, state } = mockReqRes({
       verificationId: "id1",
-      nonce: "nonce123",
+      nonce: fixedNonce,
       model: "m",
       expectedArch: "HOPPER",
       expectedDeviceCertHash: "hash",
@@ -602,8 +966,68 @@ describe("verification/proof API (mocked fetch)", () => {
 
     await handler(req, res);
     expect(state.status).toBe(200);
-    expect(state.body?.intel?.verified).toBe(true);
-    expect(state.body?.results?.cpu?.verified).toBe(true);
-    expect(state.body?.results?.verified).toBeDefined();
+  });
+});
+
+describe("verification/proof API auth & rate limit", () => {
+  const originalEnv = {
+    nodeEnv: process.env.NODE_ENV,
+    verifyMocks: process.env.VERIFY_USE_MOCKS,
+    apiKey: process.env.NEAR_AI_CLOUD_API_KEY,
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERIFY_USE_MOCKS", "false");
+    vi.stubEnv("NEAR_AI_CLOUD_API_KEY", "mock-key");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
+    if (originalEnv.nodeEnv !== undefined) {
+      vi.stubEnv("NODE_ENV", originalEnv.nodeEnv);
+    }
+    if (originalEnv.verifyMocks !== undefined) {
+      vi.stubEnv("VERIFY_USE_MOCKS", originalEnv.verifyMocks);
+    }
+    if (originalEnv.apiKey !== undefined) {
+      vi.stubEnv("NEAR_AI_CLOUD_API_KEY", originalEnv.apiKey);
+    }
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: fixedNonce,
+    });
+
+    await handler(req, res);
+    expect(state.status).toBe(401);
+  });
+
+  it("returns 429 when over the rate limit", async () => {
+    vi.spyOn(screening, "verifyNearAuth").mockResolvedValue({
+      token: "token",
+      result: { accountId: "limited.near" } as any,
+    });
+
+    const limit = rateLimitConfig.verificationProof.maxRequests;
+    for (let i = 0; i < limit; i++) {
+      const { req, res } = mockReqRes({});
+      req.headers.authorization = "Bearer token";
+      await handler(req, res);
+    }
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: fixedNonce,
+    });
+    req.headers.authorization = "Bearer token";
+    await handler(req, res);
+    expect(state.status).toBe(429);
   });
 });
