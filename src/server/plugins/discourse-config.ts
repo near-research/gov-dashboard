@@ -1,4 +1,5 @@
 import { createPluginRuntime } from "every-plugin";
+import { wrapDiscoursePluginError } from "@/server/plugins/discourse-errors";
 
 export type DiscourseRouter = {
   search: (input: Record<string, unknown>) => Promise<unknown>;
@@ -52,10 +53,13 @@ export const runtimeRouterFactory: DiscourseRouterFactory = async () => {
     secrets: { DISCOURSE_API_KEY: apiKey },
   });
 
-  const { router } = await runtime.usePlugin("discourse-plugin", {
-    variables,
-    secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
-  });
-
-  return router as unknown as DiscourseRouter;
+  try {
+    const { router } = await runtime.usePlugin("discourse-plugin", {
+      variables,
+      secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
+    });
+    return router as unknown as DiscourseRouter;
+  } catch (error) {
+    return wrapDiscoursePluginError(error);
+  }
 };

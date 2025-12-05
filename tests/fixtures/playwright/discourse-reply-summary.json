@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "summary": "Mock reply summary highlighting the core counterpoints.",
+  "model": "deepseek-ai/DeepSeek-V3.1",
+  "replyId": "5678",
+  "author": "reply-bot",
+  "postNumber": 5,
+  "createdAt": "2024-04-02T14:00:00Z",
+  "likeCount": 3,
+  "replyTo": { "username": "opponent", "postNumber": 2 },
+  "parentPostIncluded": true,
+  "truncated": false,
+  "generatedAt": 1690000100,
+  "cached": false
+}

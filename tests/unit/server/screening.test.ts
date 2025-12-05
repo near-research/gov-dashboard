@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import fc from "fast-check";
+import type { Evaluation } from "@/types/evaluation";
 import {
+  parseEvaluation,
   ScreeningError,
   MAX_CONTENT_LENGTH,
   requestEvaluation,
@@ -25,6 +28,21 @@ vi.mock("@/lib/near-ai/client", () => ({
 vi.mock("near-sign-verify", () => ({
   verify: vi.fn(),
 }));
+
+const evaluationFixture: Evaluation = {
+  complete: { pass: true, reason: "complete" },
+  legible: { pass: true, reason: "legible" },
+  consistent: { pass: true, reason: "consistent" },
+  compliant: { pass: true, reason: "compliant" },
+  justified: { pass: true, reason: "justified" },
+  measurable: { pass: true, reason: "measurable" },
+  relevant: { score: "high", reason: "relevant" },
+  material: { score: "medium", reason: "material" },
+  qualityScore: 0.8,
+  attentionScore: 0.75,
+  overallPass: true,
+  summary: "Test summary",
+};
 
 describe("screening", () => {
   afterAll(() => {
@@ -146,6 +164,44 @@ describe("screening", () => {
     await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
       statusCode: 500,
       message: "Could not parse evaluation response",
+    });
+  });
+
+  describe("parseEvaluation helper", () => {
+    const evaluationJson = JSON.stringify(evaluationFixture);
+
+    it("parses evaluation even when wrapped in prose", () => {
+      const decorated = `
+        Here is the analysis:
+        ${evaluationJson}
+        Please flag issues.
+      `;
+
+      expect(parseEvaluation(decorated)).toEqual(evaluationFixture);
+    });
+
+    it("extracts evaluation JSON from SSE-style data lines", () => {
+      const sseStream = [
+        "data: context line\n",
+        `data: ${evaluationJson}\n`,
+        "data: [DONE]\n",
+      ].join("");
+
+      expect(parseEvaluation(sseStream)).toEqual(evaluationFixture);
+    });
+
+    it("robustly parses evaluation when JSON appears anywhere", () => {
+      fc.assert(
+        fc.property(
+          fc.string({ maxLength: 16 }),
+          fc.string({ maxLength: 16 }),
+          (prefix, suffix) => {
+            const input = `${prefix}${evaluationJson}${suffix}`;
+            expect(parseEvaluation(input)).toEqual(evaluationFixture);
+          }
+        ),
+        { numRuns: 32 }
+      );
     });
   });
 });

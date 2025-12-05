@@ -37,3 +37,9 @@ tmp-*.log
 
 # Coverage
 coverage/
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

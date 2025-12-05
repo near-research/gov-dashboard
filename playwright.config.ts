@@ -1,10 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // Allow overriding port/host; fall back to a higher, less contended port for local dev.
-const port = process.env.PLAYWRIGHT_PORT || process.env.PORT || "4000";
+const port = process.env.PLAYWRIGHT_PORT || process.env.PORT || "3000";
 const host = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
+const hostForBrowser = host === "0.0.0.0" ? "127.0.0.1" : host;
 const baseURL =
-  process.env.PLAYWRIGHT_BASE_URL || `http://${host}:${port}`;
+  process.env.PLAYWRIGHT_BASE_URL || `http://${hostForBrowser}:${port}`;
 
 // Default to auto-starting the dev server; set PLAYWRIGHT_START_SERVER=false to opt out.
 const startServer = process.env.PLAYWRIGHT_START_SERVER !== "false";

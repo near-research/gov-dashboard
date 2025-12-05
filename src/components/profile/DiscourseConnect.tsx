@@ -22,6 +22,10 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { saveDiscourseUserApiKey } from "@/utils/discourse";
+import type {
+  DiscourseAuthUrl,
+  DiscourseCompleteLinkResult,
+} from "@/types/discourse-linkage";
 
 interface DiscourseConnectProps {
   onLinked: (result: {
@@ -98,10 +102,10 @@ export const DiscourseConnect = ({
     clearErrors();
 
     try {
-      const data = await client.discourse.getUserApiAuthUrl({
+      const data = (await client.discourse.getUserApiAuthUrl({
         clientId: "discourse-plugin",
         applicationName: "NEAR Gov",
-      });
+      })) as DiscourseAuthUrl;
       setAuthUrl(data.authUrl);
       setNonce(data.nonce);
       stopPopupWatcher();
@@ -159,11 +163,11 @@ export const DiscourseConnect = ({
       setStep("completing");
 
       // Complete the link via oRPC
-      const data = await client.discourse.completeLink({
+      const data = (await client.discourse.completeLink({
         payload: payload.trim(),
         nonce,
         authToken,
-      });
+      })) as DiscourseCompleteLinkResult;
 
       stopPopupWatcher();
       popupRef.current?.close();

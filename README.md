@@ -183,6 +183,53 @@ Primary table for storing proposal evaluations.
 - **Discourse plugin** – loaded via `every-plugin` Module Federation runtime with `DISCOURSE_API_KEY` secret and `DISCOURSE_URL`/`DISCOURSE_API_USERNAME`/`DISCOURSE_CLIENT_ID` variables. Runtime setup lives in `src/lib/router.ts` and `src/server/plugins/discourse-config.ts` using `createPluginRuntime` per the “Using Plugins” guide. Types are augmented in `src/types/every-plugin.d.ts` to keep `usePlugin("discourse-plugin")` strongly typed.
 - **`every-plugin` framework** – The runtime loads and executes Discourse API calls using Module Federation. See the typed contract in `discourse-plugin/index.d.ts`, runtime wiring in `src/lib/router.ts` and `src/server/plugins/discourse-config.ts`, and override the remote with `DISCOURSE_PLUGIN_URL` if you host your own build.
 
+### Local Plugin Development
+
+When you want to run plugins directly (for monorepo dev, CI, or tests) without Module Federation noise, use `createLocalPluginRuntime` from `every-plugin/testing`. Define your local implementations, map them with `as const`, and the helper infers the plugin IDs, procedures, and config typings for you.
+
+```typescript
+import { createLocalPluginRuntime } from "every-plugin/testing";
+import DataSource from "./plugins/data-source";
+import Transformer from "./plugins/transformer";
+
+const pluginMap = {
+  "data-source": DataSource,
+  transformer: Transformer
+} as const;
+
+const runtime = createLocalPluginRuntime(
+  {
+    registry: {
+      "data-source": { remoteUrl: "http://localhost:3000/remoteEntry.js", version: "1.0.0" },
+      transformer: { remoteUrl: "http://localhost:3001/remoteEntry.js", version: "1.0.0" }
+    },
+    secrets: { API_KEY: "dev-key" }
+  },
+  pluginMap
+);
+
+const { client } = await runtime.usePlugin("data-source", {
+  secrets: { apiKey: "{{API_KEY}}" },
+  variables: { timeout: 30_000 }
+});
+
+const result = await client.getData({ id: "123" });
+```
+
+**Why it helps**
+
+- **Automatic typing** – `as const` gives IDE autocomplete for plugin IDs, procedures, and configs without manual bindings.
+- **Local-first workflows** – Use the same code paths for monorepo dev, unit/integration testing, and CI before switching to remote CDN entries in prod.
+
+**Recommended workflow**
+
+1. Implement your local plugin (`plugins/my-plugin/src/index.ts`) with `createPlugin`.
+2. Build a `pluginMap` for `createLocalPluginRuntime` in your dev server or tests.
+3. Call `runtime.usePlugin()` just like the dist/runtime interface; secrets/variables are resolved via templates like `{{API_KEY}}`.
+4. When you’re ready for production, swap to `createPluginRuntime` with remote URLs while keeping the same client calls.
+
+By centralizing this pattern you stay compliant with the macOS host restriction and avoid multi-host Module Federation headaches during local development.
+
 ### Proposal Management
 
 | Endpoint                                  | Method | Auth | Description            |

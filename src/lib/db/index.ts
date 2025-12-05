@@ -66,9 +66,20 @@ async function createClientWithRetry() {
   throw lastError;
 }
 
-const client = await createClientWithRetry();
-export const db = drizzle(client, {
-  schema: { ...schema },
-});
+const shouldSkipDb =
+  process.env.NODE_ENV === "test" && process.env.TEST_USE_DATABASE !== "1";
 
+type DrizzleClient = ReturnType<typeof drizzle>;
+
+let db: DrizzleClient;
+if (shouldSkipDb) {
+  db = {} as DrizzleClient;
+} else {
+  const client = await createClientWithRetry();
+  db = drizzle(client, {
+    schema: { ...schema },
+  });
+}
+
+export { db };
 export { schema };

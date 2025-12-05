@@ -4,9 +4,12 @@ import handler from "@/pages/api/verification/proof";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { verifiedProofMock } from "../../fixtures/verification";
 import {
-  registerVerificationSession,
   clearVerificationSession,
+  getVerificationSessionNotFoundMetrics,
+  registerVerificationSession,
+  resetVerificationSessionNotFoundMetrics,
 } from "@/verification/server";
+import sessionHandler from "@/pages/api/verification/session";
 
 var sessionNonce = "a".repeat(64);
 var attestedAddress = "0x856039d8a60613528d1dbec3dc920f5fe96a31a0";
@@ -252,5 +255,40 @@ describe("verification/proof end-to-end chain (integration, mocked fetch)", () =
     await handler(req, res);
     expect(state.status).toBe(400);
     expect(state.body?.error).toBe("Verification failed");
+  });
+
+  it("fails when the verification session disappears between registration and proof", async () => {
+    const verificationId = "chain-session-gap";
+    resetVerificationSessionNotFoundMetrics();
+
+    const sessionRequest = mockReqRes({ verificationId });
+    await sessionHandler(sessionRequest.req, sessionRequest.res);
+    expect(sessionRequest.state.status).toBe(200);
+    const sessionNonce = sessionRequest.state.body?.nonce;
+    expect(typeof sessionNonce).toBe("string");
+
+    resetVerificationSessionNotFoundMetrics();
+    clearVerificationSession(verificationId);
+
+    const proofRequest = mockReqRes({
+      verificationId,
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+      model: "m",
+    });
+
+    await handler(proofRequest.req, proofRequest.res);
+    expect(proofRequest.state.status).toBe(400);
+    expect(proofRequest.state.body).toEqual(
+      expect.objectContaining({
+        error: expect.stringContaining("Verification session not registered"),
+      })
+    );
+
+    const metrics = getVerificationSessionNotFoundMetrics();
+    expect(metrics?.count).toBeGreaterThanOrEqual(1);
   });
 });

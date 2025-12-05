@@ -14,7 +14,7 @@
     "lint": "eslint src tests scripts next.config.js postcss.config.js tailwind.config.js playwright.config.ts vitest.config.ts drizzle.config.ts test-setup.ts next-env.d.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "PLAYWRIGHT_TS_CONFIG=tests/e2e/tsconfig.json PLAYWRIGHT_TEST=${PLAYWRIGHT_TEST:-false} bunx playwright test",
     "test:unit": "vitest run tests/unit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -75,7 +75,7 @@
   },
   "devDependencies": {
     "@near-js/types": "^2.3.1",
-    "@playwright/test": "^1.56.1",
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4.1.17",
     "@tailwindcss/typography": "^0.5.19",
     "@testing-library/jest-dom": "^6.4.2",

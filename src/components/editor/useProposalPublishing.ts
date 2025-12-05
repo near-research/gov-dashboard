@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GovernanceTrackFn } from "@/lib/analytics";
 type OrpcClient = typeof import("@/lib/orpc").client;
+import type {
+  DiscourseAuthUrl,
+  DiscourseLinkage,
+  DiscoursePostResult,
+} from "@/types/discourse-linkage";
 
 interface UseProposalPublishingParams {
   client: OrpcClient;
@@ -43,10 +48,10 @@ export const useProposalPublishing = ({
       }
       setCheckingLinkage(true);
       try {
-        const linkage = await client.discourse.getLinkage({
-          nearAccount: signedAccountId,
-        });
-        setDiscourseLinked(Boolean(linkage?.discourseUsername));
+      const linkage = (await client.discourse.getLinkage({
+        nearAccount: signedAccountId,
+      })) as DiscourseLinkage | null;
+      setDiscourseLinked(Boolean(linkage?.discourseUsername));
       } catch (err) {
         console.error("Failed to check Discourse linkage:", err);
         setDiscourseLinked(false);
@@ -61,10 +66,10 @@ export const useProposalPublishing = ({
     try {
       setPublishError("");
       setLinkError("");
-      const data = await client.discourse.getUserApiAuthUrl({
+      const data = (await client.discourse.getUserApiAuthUrl({
         clientId: "discourse-plugin",
         applicationName: "NEAR Gov",
-      });
+      })) as DiscourseAuthUrl;
       if (data?.authUrl) {
         window.open(data.authUrl, "_blank", "noopener,noreferrer");
         setLinkNonce(data.nonce);
@@ -99,9 +104,9 @@ export const useProposalPublishing = ({
         nonce: linkNonce,
         authToken,
       });
-      const linkage = await client.discourse.getLinkage({
+      const linkage = (await client.discourse.getLinkage({
         nearAccount: signedAccountId || "",
-      });
+      })) as DiscourseLinkage | null;
       setDiscourseLinked(Boolean(linkage?.discourseUsername));
       setLinkPayload("");
       setLinkNonce("");
@@ -145,11 +150,11 @@ export const useProposalPublishing = ({
         recipient: "social.near",
       });
 
-      const result = await client.discourse.createPost({
+      const result = (await client.discourse.createPost({
         authToken,
         title: title.trim(),
         raw: content.trim(),
-      });
+      })) as DiscoursePostResult;
 
       setPublishSuccess(result.postUrl || "Published to Discourse");
       track("draft_publish_succeeded", {

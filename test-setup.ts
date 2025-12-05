@@ -1,6 +1,10 @@
 import { vi } from "vitest";
 import { JSDOM } from "jsdom";
 
+if (!process.env.NODE_ENV) {
+  (process.env as any).NODE_ENV = "test";
+}
+
 const ensureDom = () => {
   if (typeof document !== "undefined" && (globalThis as any).document) return;
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {

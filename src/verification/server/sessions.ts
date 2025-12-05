@@ -8,8 +8,15 @@ export type VerificationSession = {
   responseHash?: string | null;
 };
 
+type SessionNotFoundMetrics = {
+  count: number;
+  lastSeenAt: number;
+  lastVerificationId?: string;
+};
+
 type GlobalWithSessions = typeof globalThis & {
   __verificationSessions?: Map<string, VerificationSession>;
+  __verificationSessionNotFoundMetrics?: SessionNotFoundMetrics;
 };
 
 // Share a single in-memory store across module reloads/workers so tests and API
@@ -36,10 +43,54 @@ export function cleanupExpiredSessions() {
   }
 }
 
-export function getVerificationSession(verificationId: string): VerificationSession | null {
+const getSessionNotFoundMetricsStore = () => {
+  const g = globalThis as GlobalWithSessions;
+  if (!g.__verificationSessionNotFoundMetrics) {
+    g.__verificationSessionNotFoundMetrics = {
+      count: 0,
+      lastSeenAt: Date.now(),
+    };
+  }
+  return g.__verificationSessionNotFoundMetrics;
+};
+
+const recordSessionNotFound = (
+  verificationId: string,
+  reason: "missing" | "expired"
+) => {
+  const metrics = getSessionNotFoundMetricsStore();
+  metrics.count += 1;
+  metrics.lastSeenAt = Date.now();
+  metrics.lastVerificationId = verificationId;
+  console.warn("[verification] Session not found", {
+    verificationId,
+    reason,
+    count: metrics.count,
+    lastSeenAt: metrics.lastSeenAt,
+  });
+};
+
+export function getVerificationSessionNotFoundMetrics(): SessionNotFoundMetrics | null {
+  const g = globalThis as GlobalWithSessions;
+  return g.__verificationSessionNotFoundMetrics ?? null;
+}
+
+export function resetVerificationSessionNotFoundMetrics() {
+  const g = globalThis as GlobalWithSessions;
+  g.__verificationSessionNotFoundMetrics = undefined;
+}
+
+export function getVerificationSession(
+  verificationId: string
+): VerificationSession | null {
   cleanupExpiredSessions();
   const existing = SESSIONS.get(verificationId);
-  return existing && !isExpired(existing) ? existing : null;
+  const session = existing && !isExpired(existing) ? existing : null;
+  if (!session) {
+    const reason = existing ? "expired" : "missing";
+    recordSessionNotFound(verificationId, reason);
+  }
+  return session;
 }
 
 const isHex64 = (value: string) => /^[0-9a-f]{64}$/i.test(value);

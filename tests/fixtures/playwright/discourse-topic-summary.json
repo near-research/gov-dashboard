@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "summary": "Mock discussion summary covering main community sentiment and TODOs.",
+  "model": "deepseek-ai/DeepSeek-V3.1",
+  "topicId": "1234",
+  "title": "Mock Forum Discussion",
+  "replyCount": 8,
+  "truncated": false,
+  "generatedAt": 1690000000,
+  "cached": false,
+  "engagement": {
+    "totalLikes": 18,
+    "totalReplies": 8,
+    "participantCount": 5,
+    "avgLikesPerReply": 2.25,
+    "highlyEngagedReplies": 3,
+    "maxLikes": 6
+  }
+}

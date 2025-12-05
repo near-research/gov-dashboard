@@ -7,10 +7,8 @@ import {
 const getCryptoImpl = () => {
   const mocks: Map<string, any> | undefined = (globalThis as any).__moduleMocks;
   const mockedCrypto = mocks?.get("crypto") ?? mocks?.get("@/server/crypto");
-  if (mockedCrypto) {
-    mocks?.delete("crypto");
-    mocks?.delete("@/server/crypto");
-  }
+  // Preserve mocks until explicitly cleared so both createPublicKey and verify
+  // can share the same mock implementation in tests.
   return mockedCrypto ?? { createPublicKey: nodeCreatePublicKey, verify: nodeVerify };
 };
 

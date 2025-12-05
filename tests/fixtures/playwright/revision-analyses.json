@@ -1,0 +1,53 @@
+{
+  "topicId": "42",
+  "screenings": {
+    "latest": {
+      "revisionNumber": 3,
+      "evaluation": {
+        "complete": { "pass": true, "reason": "Latest version covers every checklist item." },
+        "legible": { "pass": true, "reason": "Language is structured for reviewers." },
+        "consistent": { "pass": true, "reason": "Numbers align with deliverables." },
+        "compliant": { "pass": true, "reason": "Template rules are honored." },
+        "justified": { "pass": true, "reason": "Rationale flows with data." },
+        "measurable": { "pass": true, "reason": "KPIs include verifiable steps." },
+        "relevant": { "score": "high", "reason": "Directly aligns with NEAR growth." },
+        "material": { "score": "medium", "reason": "Risks acknowledged with mitigation." },
+        "qualityScore": 0.94,
+        "attentionScore": 0.91,
+        "overallPass": true,
+        "summary": "Mock screening result for revision 3: all criteria satisfied.",
+        "model": "deepseek-ai/DeepSeek-V3.1"
+      },
+      "qualityScore": 0.94,
+      "attentionScore": 0.91,
+      "title": "Mock Proposal for Playwright",
+      "nearAccount": "playwright.near",
+      "timestamp": "2024-04-03T12:00:00Z",
+      "model": "deepseek-ai/DeepSeek-V3.1"
+    },
+    "2": {
+      "revisionNumber": 2,
+      "evaluation": {
+        "complete": { "pass": true, "reason": "Version 2 already followed the template." },
+        "legible": { "pass": true, "reason": "Readable outline." },
+        "consistent": { "pass": true, "reason": "Numbers match the narrative." },
+        "compliant": { "pass": true, "reason": "No policy conflicts." },
+        "justified": { "pass": true, "reason": "Reasons align with NEAR governance." },
+        "measurable": { "pass": true, "reason": "Baseline metrics included." },
+        "relevant": { "score": "high", "reason": "Addresses NEAR initiative." },
+        "material": { "score": "low", "reason": "Minor changes from prior version." },
+        "qualityScore": 0.87,
+        "attentionScore": 0.68,
+        "overallPass": true,
+        "summary": "Mock screening result for revision 2: solid foundations but fewer KPIs.",
+        "model": "deepseek-ai/DeepSeek-V3.1"
+      },
+      "qualityScore": 0.87,
+      "attentionScore": 0.68,
+      "title": "Mock Proposal for Playwright",
+      "nearAccount": "playwright.near",
+      "timestamp": "2024-04-02T12:00:00Z",
+      "model": "deepseek-ai/DeepSeek-V3.1"
+    }
+  }
+}

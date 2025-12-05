@@ -1,0 +1,24 @@
+{
+  "evaluation": {
+    "complete": { "pass": true, "reason": "All required sections are present." },
+    "legible": { "pass": true, "reason": "Content is readable and well-structured." },
+    "consistent": { "pass": true, "reason": "Numbers and milestones align consistently." },
+    "compliant": { "pass": true, "reason": "Budget and timeline follow the template." },
+    "justified": { "pass": true, "reason": "Resource needs are explained with data." },
+    "measurable": { "pass": true, "reason": "KPIs include concrete values and tracking." },
+    "relevant": { "score": "high", "reason": "Proposal addresses NEAR adoption pain points." },
+    "material": { "score": "medium", "reason": "Key risks are acknowledged." },
+    "qualityScore": 0.92,
+    "attentionScore": 0.87,
+    "overallPass": true,
+    "summary": "Mock screening result: the proposal is ready for submission with clear roadmap and metrics.",
+    "model": "deepseek-ai/DeepSeek-V3.1"
+  },
+  "verification": {
+    "source": "near-ai-cloud",
+    "status": "verified",
+    "messageId": "mock-screening-message"
+  },
+  "verificationId": "mock-screening-message",
+  "model": "deepseek-ai/DeepSeek-V3.1"
+}

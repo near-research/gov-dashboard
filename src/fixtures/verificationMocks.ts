@@ -1,10 +1,46 @@
 import type { VerificationProofResponse } from "@/types/verification";
+import { verificationConfig } from "@/config/verification";
 
 export const mockNonce = "a".repeat(64);
 export const mockAddress = "0x856039d8a60613528d1DBEc3dc920f5FE96a31A0";
 export const mockSignature =
   "0x77e4db99019046762da28e669d8fce369fca67361592efd7b90ce5b225d7d6450cc4e7ee5f5a6fff8c7ab892f1caabb3d5625ba61f0dd79f97a5344fbbfa468d1c";
 export const mockSignedText = "req:res";
+
+const NRAS_AUDIENCE = verificationConfig.nras.audience;
+
+const toBase64Url = (value: any) =>
+  Buffer.from(
+    typeof value === "string" ? value : JSON.stringify(value)
+  ).toString("base64url");
+
+const buildMockJwt = (
+  payload: Record<string, any>,
+  header: Record<string, any> = {}
+) => {
+  const jwtHeader = { alg: "ES256", kid: "mock-kid", ...header };
+  const encodedHeader = toBase64Url(jwtHeader);
+  const encodedPayload = toBase64Url(payload);
+  const encodedSignature = toBase64Url("signature");
+  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+};
+
+const buildBaseNrasClaims = (overrides: Record<string, any> = {}) => ({
+  aud: NRAS_AUDIENCE,
+  nonce: mockNonce,
+  eat_nonce: mockNonce,
+  "x-nvidia-eat-nonce": mockNonce,
+  "x-nvidia-overall-att-result": true,
+  "x-nvidia-gpu-driver-version": "570.123",
+  "x-nvidia-gpu-vbios-version": "96.00",
+  hwmodel: "GH100 A01 GSP BROM",
+  secboot: "enabled",
+  measres: "success",
+  "x-nvidia-measres": "success",
+  "x-nvidia-gpu-attestation-report-signature-verified": true,
+  "x-nvidia-gpu-attestation-report-nonce-match": true,
+  ...overrides,
+});
 
 export const verifiedProofMock: VerificationProofResponse = {
   attestation: {
@@ -28,15 +64,19 @@ export const verifiedProofMock: VerificationProofResponse = {
   },
   nras: {
     verified: true,
-    jwt: "mock",
-    claims: {
-      "x-nvidia-overall-att-result": true,
-      "x-nvidia-gpu-driver-version": "570.123",
-      "x-nvidia-gpu-vbios-version": "96.00",
-      "x-nvidia-eat-nonce": mockNonce,
-      hwmodel: "GH100 A01 GSP BROM",
+    jwt: buildMockJwt(buildBaseNrasClaims()),
+    claims: buildBaseNrasClaims(),
+    gpus: {
+      "GPU-0": buildMockJwt(
+        buildBaseNrasClaims({
+          "x-nvidia-gpu-attestation-report-signature-verified": true,
+          "x-nvidia-gpu-attestation-report-nonce-match": true,
+          measres: "success",
+          "x-nvidia-measres": "success",
+        }),
+        { kid: "gpu-kid" }
+      ),
     },
-    gpus: { "GPU-0": "mock-token" },
     raw: {},
     reasons: [],
   },

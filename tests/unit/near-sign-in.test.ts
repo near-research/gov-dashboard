@@ -113,4 +113,24 @@ describe("nearSignInWithRetry", () => {
       message: "Wallet connection cancelled",
     });
   });
+
+  it("returns a network-mismatch before invoking disconnect handlers", async () => {
+    const requestSignIn = vi.fn().mockResolvedValue(undefined);
+    const signIn = vi.fn().mockRejectedValue({ code: "NETWORK_MISMATCH" });
+    const disconnectOnError = vi.fn().mockResolvedValue(undefined);
+
+    const result = await nearSignInWithRetry({
+      walletAccountId: mockSession.user.nearAccountId,
+      connectWallet: vi.fn(),
+      requestSignIn,
+      signIn,
+      disconnectOnError,
+    });
+
+    expect(disconnectOnError).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: "network-mismatch",
+      message: "Connected wallet is on a different network.",
+    });
+  });
 });

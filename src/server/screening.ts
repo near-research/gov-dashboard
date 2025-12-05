@@ -68,16 +68,65 @@ const evaluationSchema = z.object({
   model: z.string().optional(),
 });
 
-const parseEvaluation = (raw: string): Evaluation => {
-  const candidates = new Set<string>();
+const extractJsonFragments = (text: string): Set<string> => {
+  const fragments = new Set<string>();
+
+  for (let start = 0; start < text.length; start++) {
+    if (text[start] !== "{") {
+      continue;
+    }
+
+    let depth = 0;
+    for (let index = start; index < text.length; index++) {
+      const char = text[index];
+      if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+      }
+
+      if (depth === 0) {
+        fragments.add(text.slice(start, index + 1));
+        break;
+      }
+    }
+  }
+
+  return fragments;
+};
+
+const normalizeSsePayload = (text: string): string | null => {
+  if (!text) {
+    return null;
+  }
+
+  const sanitizedLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      if (!/^data:/i.test(line)) {
+        return line;
+      }
+      const withoutPrefix = line.replace(/^data:\s*/i, "");
+      return withoutPrefix.trim() === "[DONE]" ? "" : withoutPrefix;
+    })
+    .filter((line) => line.length > 0);
+
+  return sanitizedLines.length > 0 ? sanitizedLines.join("\n") : null;
+};
+
+export const parseEvaluation = (raw: string): Evaluation => {
   const trimmed = (raw || "").trim();
+  const candidates = new Set<string>();
+
   if (trimmed) {
     candidates.add(trimmed);
-    const jsonStart = trimmed.indexOf("{");
-    const jsonEnd = trimmed.lastIndexOf("}");
-    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-      candidates.add(trimmed.slice(jsonStart, jsonEnd + 1));
+    const normalizedSse = normalizeSsePayload(trimmed);
+    if (normalizedSse) {
+      candidates.add(normalizedSse);
     }
+    extractJsonFragments(trimmed).forEach((fragment) => candidates.add(fragment));
   }
 
   for (const candidate of candidates) {
@@ -92,7 +141,9 @@ const parseEvaluation = (raw: string): Evaluation => {
     }
   }
 
-  throw new ScreeningError(500, "Could not parse evaluation response");
+  throw new ScreeningError(500, "Could not parse evaluation response", {
+    body: raw,
+  });
 };
 
 export function sanitizeProposalInput(
