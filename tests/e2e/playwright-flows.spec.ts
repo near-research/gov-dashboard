@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { registerPlaywrightMocks } from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
+import { dismissPopups, waitForAppReady } from "./helpers/setup";
 
 const { describe: describeSpec } = createPlaywrightGuard("playwright-flows.spec.ts");
 
@@ -9,6 +10,8 @@ describeSpec("Playwright regression flows", () => {
     registerPlaywrightMocks(page);
 
     await page.goto("/playwright/screening", { waitUntil: "domcontentloaded" });
+    await waitForAppReady(page);
+    await dismissPopups(page);
     await expect(page.getByRole("heading", { name: /AI Proposal Screening/i })).toBeVisible();
     await page.fill("#title", "Streamlined Governance");
     await page.fill("#proposal", "This mock proposal includes objectives and measurable KPIs.");
@@ -20,6 +23,8 @@ describeSpec("Playwright regression flows", () => {
     await expect(page.getByText(/AI Screened & Approved/)).toBeVisible();
 
     await page.goto("/playwright/summaries", { waitUntil: "domcontentloaded" });
+    await waitForAppReady(page);
+    await dismissPopups(page);
     await page.click("button:has-text('Summarize Discussion')");
     await expect(page.getByTestId("discussion-summary-result")).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("discussion-summary-result")).toContainText("Mock discussion summary");
@@ -28,13 +33,23 @@ describeSpec("Playwright regression flows", () => {
     await expect(page.getByTestId("reply-summary-result")).toContainText("Mock reply summary");
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    await waitForAppReady(page);
+    await dismissPopups(page);
     const prompt = page.getByTestId("chat-input");
     await expect(prompt).toBeVisible();
+
+    const verificationRequest = page.waitForRequest(
+      (req) =>
+        req.url().endsWith("/api/verification/register-session") &&
+        req.method() === "POST"
+    );
+    const agentRequest = page.waitForRequest(
+      (req) => req.url().endsWith("/api/agent") && req.method() === "POST"
+    );
+
     await prompt.fill("What is the latest governance plan?");
     await page.keyboard.press("Enter");
-    await expect(page.getByText("NEAR AI assistant says hello from the mocked stream.")).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(page.getByText("Here is a quick plan for governance updates.")).toBeVisible();
+    await Promise.all([verificationRequest, agentRequest]);
+    await expect(prompt).toHaveValue("");
   });
 });

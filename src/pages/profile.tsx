@@ -109,12 +109,14 @@ export default function Profile() {
   }, []);
 
   const loadProfile = useCallback(async () => {
-    if (!nearAccountId) return;
+    if (!nearAccountId && !user?.id) {
+      return;
+    }
 
     try {
-      const linkData = await client.discourse.getLinkage({
-        nearAccount: nearAccountId,
-      });
+      const linkData = await client.discourse.getLinkage(
+        nearAccountId ? { nearAccount: nearAccountId } : {}
+      );
       setDiscourseLink(linkData);
       if ((linkData as any)?.userApiKey) {
         saveDiscourseUserApiKey((linkData as any).userApiKey);
@@ -124,7 +126,7 @@ export default function Profile() {
       console.log("Discourse plugin server not available");
       setDiscourseCheckFailed(true);
     }
-  }, [nearAccountId]);
+  }, [nearAccountId, user?.id]);
 
   useEffect(() => {
     if (!nearAccountId || !provider) {
@@ -188,7 +190,7 @@ export default function Profile() {
         setBadges(badgeNames);
         const user = data.user ?? {};
         const avatarUrl = user.avatar_template
-          ? `${servicesConfig.discourseUrl}${user.avatar_template.replace(
+          ? `${servicesConfig.discourseBaseUrl}${user.avatar_template.replace(
               "{size}",
               "120"
             )}`
@@ -223,10 +225,8 @@ export default function Profile() {
   }, [discourseLink?.discourseUsername]);
 
   useEffect(() => {
-    if (nearAccountId) {
-      loadProfile();
-    }
-  }, [nearAccountId, loadProfile]);
+    loadProfile();
+  }, [loadProfile]);
 
   const getInitials = (accountId: string) => {
     return accountId.slice(0, 2).toUpperCase();
@@ -254,6 +254,172 @@ export default function Profile() {
       setUnlinking(false);
     }
   };
+
+  const discourseIntegrationCard = (
+    <Card className="rounded-2xl border border-slate-200 shadow-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <MessageCircle className="h-5 w-5 text-primary" />
+          Discourse Integration
+        </CardTitle>
+        <CardDescription className="text-base text-slate-600">
+          Link your NEAR account to participate in governance discussions.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {discourseCheckFailed ? (
+          <Alert className="border-amber-200 bg-amber-50">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800">
+              Plugin Unavailable
+            </AlertTitle>
+            <AlertDescription className="text-amber-700">
+              <p>
+                Discourse plugin server is not running. Start it to check
+                linkage status and publish proposals.
+              </p>
+              <code className="mt-2 block rounded bg-amber-100 px-2 py-1 text-sm">
+                cd discourse-plugin && bun run dev
+              </code>
+            </AlertDescription>
+          </Alert>
+        ) : discourseLink?.discourseUsername ? (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-white">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <div title="Discourse Connected" aria-label="Discourse Connected">
+                <p className="text-lg font-semibold">Linked to Discourse</p>
+                <p className="text-sm text-emerald-900/80">
+                  @{discourseLink.discourseUsername}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+              >
+                <a
+                  href={`https://gov.near.org/u/${discourseLink.discourseUsername}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Profile
+                </a>
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleUnlinkDiscourse}
+                disabled={unlinking}
+              >
+                {unlinking ? "Unlinking..." : "Unlink"}
+              </Button>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-sm font-semibold text-slate-900">
+                Discourse Badges
+              </p>
+              {badgesLoading ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="h-6 w-16 animate-pulse rounded-full bg-slate-200" />
+                  <span className="h-6 w-20 animate-pulse rounded-full bg-slate-200" />
+                  <span className="h-6 w-14 animate-pulse rounded-full bg-slate-200" />
+                </div>
+              ) : badgesError ? (
+                <p className="mt-2 text-sm text-slate-500">{badgesError}</p>
+              ) : badges.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {badges.map((badge) => (
+                    <span
+                      key={badge}
+                      className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">
+                  No badges earned yet.
+                </p>
+              )}
+            </div>
+
+            {discourseProfile && (
+              <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Trust Level
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {discourseProfile.trustLevel ?? "--"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Badges Earned
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {discourseProfile.badgeCount ?? badges.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Posts
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {discourseProfile.postCount ?? "--"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Time Read
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {discourseProfile.timeReadHours ?? "--"}
+                    {discourseProfile.timeReadHours !== null && " hrs"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Last Seen
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {formatDate(discourseProfile.lastSeenAt)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Member Since
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {formatDate(discourseProfile.createdAt)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <DiscourseConnect
+            onLinked={(result) => {
+              setDiscourseLink(result);
+            }}
+            onError={(error) => {
+              console.error("Discourse linking error:", error);
+            }}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
 
   if (!mounted || isPending) {
     return (
@@ -288,6 +454,7 @@ export default function Profile() {
             />
           </CardContent>
         </Card>
+        {discourseIntegrationCard}
       </div>
     );
   }
@@ -374,173 +541,7 @@ export default function Profile() {
         </CardContent>
       </Card>
 
-      {/* Discourse Integration */}
-      <Card className="rounded-2xl border border-slate-200 shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <MessageCircle className="h-5 w-5 text-primary" />
-            Discourse Integration
-          </CardTitle>
-          <CardDescription className="text-base text-slate-600">
-            Link your NEAR account to participate in governance discussions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {discourseCheckFailed ? (
-            <Alert className="border-amber-200 bg-amber-50">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-800">
-                Plugin Unavailable
-              </AlertTitle>
-              <AlertDescription className="text-amber-700">
-                <p>
-                  Discourse plugin server is not running. Start it to check
-                  linkage status and publish proposals.
-                </p>
-                <code className="mt-2 block rounded bg-amber-100 px-2 py-1 text-sm">
-                  cd discourse-plugin && bun run dev
-                </code>
-              </AlertDescription>
-            </Alert>
-          ) : discourseLink?.discourseUsername ? (
-            <>
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-white">
-                  <CheckCircle2 className="h-6 w-6" />
-                </div>
-                <div
-                  title="Discourse Connected"
-                  aria-label="Discourse Connected"
-                >
-                  <p className="text-lg font-semibold">Linked to Discourse</p>
-                  <p className="text-sm text-emerald-900/80">
-                    @{discourseLink.discourseUsername}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
-                >
-                  <a
-                    href={`https://gov.near.org/u/${discourseLink.discourseUsername}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    View Profile
-                  </a>
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleUnlinkDiscourse}
-                  disabled={unlinking}
-                >
-                  {unlinking ? "Unlinking..." : "Unlink"}
-                </Button>
-              </div>
-
-              <div className="border-t border-slate-100 pt-4">
-                <p className="text-sm font-semibold text-slate-900">
-                  Discourse Badges
-                </p>
-                {badgesLoading ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="h-6 w-16 animate-pulse rounded-full bg-slate-200" />
-                    <span className="h-6 w-20 animate-pulse rounded-full bg-slate-200" />
-                    <span className="h-6 w-14 animate-pulse rounded-full bg-slate-200" />
-                  </div>
-                ) : badgesError ? (
-                  <p className="mt-2 text-sm text-slate-500">{badgesError}</p>
-                ) : badges.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {badges.map((badge) => (
-                      <span
-                        key={badge}
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
-                      >
-                        {badge}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-500">
-                    No badges earned yet.
-                  </p>
-                )}
-              </div>
-
-              {discourseProfile && (
-                <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Trust Level
-                    </p>
-                    <p className="text-lg font-semibold text-slate-900">
-                      {discourseProfile.trustLevel ?? "--"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Badges Earned
-                    </p>
-                    <p className="text-lg font-semibold text-slate-900">
-                      {discourseProfile.badgeCount ?? badges.length}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Posts
-                    </p>
-                    <p className="text-lg font-semibold text-slate-900">
-                      {discourseProfile.postCount ?? "--"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Time Read
-                    </p>
-                    <p className="text-lg font-semibold text-slate-900">
-                      {discourseProfile.timeReadHours ?? "--"}
-                      {discourseProfile.timeReadHours !== null && " hrs"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Last Seen
-                    </p>
-                    <p className="text-lg font-semibold text-slate-900">
-                      {formatDate(discourseProfile.lastSeenAt)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Member Since
-                    </p>
-                    <p className="text-lg font-semibold text-slate-900">
-                      {formatDate(discourseProfile.createdAt)}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <DiscourseConnect
-              onLinked={(result) => {
-                setDiscourseLink(result);
-              }}
-              onError={(error) => {
-                console.error("Discourse linking error:", error);
-              }}
-            />
-          )}
-        </CardContent>
-      </Card>
+      {discourseIntegrationCard}
     </div>
   );
 }

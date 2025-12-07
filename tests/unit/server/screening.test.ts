@@ -12,6 +12,7 @@ import {
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
 import { verify as verifyNearToken } from "near-sign-verify";
 import * as verificationSessions from "@/verification/server";
+import { siwnRecipient } from "@/config/siwn";
 
 const mockChatCompletions = vi.fn();
 const registerVerificationSessionSpy = vi.spyOn(
@@ -83,7 +84,7 @@ describe("screening", () => {
     expect(mockedVerify).toHaveBeenCalledWith(
       "test-token",
       expect.objectContaining({
-        expectedRecipient: "social.near",
+        expectedRecipient: siwnRecipient,
       })
     );
   });

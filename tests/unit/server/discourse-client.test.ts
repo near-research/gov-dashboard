@@ -1,9 +1,9 @@
 import "../../vi-compat";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ORPCError } from "@orpc/server";
 import { DISCOURSE_RENDER_LIMIT } from "@/config/discourse";
 
-const mockRouter = {
+const mockClient = vi.hoisted(() => ({
   search: vi.fn(),
   getLatestTopics: vi.fn(),
   getTopic: vi.fn(),
@@ -12,21 +12,27 @@ const mockRouter = {
   getCategories: vi.fn(),
   getCategory: vi.fn(),
   getTags: vi.fn(),
-};
+}));
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("every-plugin", () => ({
-  createPluginRuntime: () => ({
-    usePlugin: vi.fn().mockResolvedValue({ router: mockRouter }),
-  }),
+vi.mock("@/server/plugins/discourse", () => ({
+  discourseClient: mockClient,
+  discourseRouter: {},
+  DiscourseRouter: {},
+  DiscourseClient: {},
 }));
 
-const importClient = async () => {
-  vi.resetModules();
-  (globalThis as any).__mockDiscourseRouter = mockRouter;
-  return await import("@/server/plugins/discourse-client");
-};
+import {
+  discourseCategories,
+  discourseLatestTopics,
+  discourseReplies,
+  discourseSearch,
+  discourseTags,
+  discourseTopic,
+  discoursePost,
+  discourseCategory,
+} from "@/server/plugins/discourse-client";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -34,13 +40,11 @@ beforeEach(() => {
 
 describe("discourse client", () => {
   it("validates search input before calling plugin", async () => {
-    const { discourseSearch } = await importClient();
-
     const invalid = await discourseSearch({ query: "   " } as any);
     expect(invalid.error).toBeDefined();
-    expect(mockRouter.search).not.toHaveBeenCalled();
+    expect(mockClient.search).not.toHaveBeenCalled();
 
-    mockRouter.search.mockResolvedValueOnce({
+    mockClient.search.mockResolvedValueOnce({
       posts: [
         {
           topicTitle: "Hello",
@@ -117,16 +121,15 @@ describe("discourse client", () => {
       hasMore: false,
       nextPage: null,
     });
+
     const valid = await discourseSearch({ query: " hello ", page: 2, limit: 1 });
     expect(valid.data?.posts).toHaveLength(1);
     expect(valid.data?.topics).toHaveLength(1);
-    expect(mockRouter.search).toHaveBeenCalledWith({ query: "hello", page: 2 });
+    expect(mockClient.search).toHaveBeenCalledWith({ query: "hello", page: 2 });
   });
 
   it("maps ORPC errors to status codes", async () => {
-    const { discoursePost } = await importClient();
-
-    mockRouter.getPost.mockRejectedValueOnce(
+    mockClient.getPost.mockRejectedValueOnce(
       new ORPCError("NOT_FOUND", { message: "missing" })
     );
 
@@ -136,9 +139,7 @@ describe("discourse client", () => {
   });
 
   it("validates latest topics responses", async () => {
-    const { discourseLatestTopics } = await importClient();
-
-    mockRouter.getLatestTopics.mockResolvedValueOnce({
+    mockClient.getLatestTopics.mockResolvedValueOnce({
       topics: [
         {
           id: 1,
@@ -165,15 +166,13 @@ describe("discourse client", () => {
     expect(ok.error).toBeUndefined();
     expect(ok.data?.topics).toHaveLength(1);
 
-    mockRouter.getLatestTopics.mockResolvedValueOnce({ foo: "bar" });
+    mockClient.getLatestTopics.mockResolvedValueOnce({ foo: "bar" });
     const bad = await discourseLatestTopics({ page: 0, order: "default" });
     expect(bad.error).toContain("Invalid latest topics response");
   });
 
   it("validates post and replies payloads", async () => {
-    const { discoursePost, discourseReplies } = await importClient();
-
-    mockRouter.getPost.mockResolvedValueOnce({
+    mockClient.getPost.mockResolvedValueOnce({
       post: {
         id: 99,
         topicId: 1,
@@ -212,7 +211,7 @@ describe("discourse client", () => {
     expect(postResult.error).toBeUndefined();
     expect(postResult.data?.post.raw).toBe("raw");
 
-    mockRouter.getPostReplies.mockResolvedValueOnce({
+    mockClient.getPostReplies.mockResolvedValueOnce({
       replies: [
         {
           id: 100,
@@ -236,16 +235,13 @@ describe("discourse client", () => {
     expect(replies.error).toBeUndefined();
     expect(replies.data?.posts).toHaveLength(1);
 
-    mockRouter.getPostReplies.mockResolvedValueOnce({ foo: "bar" });
+    mockClient.getPostReplies.mockResolvedValueOnce({ foo: "bar" });
     const invalidReplies = await discourseReplies({ postId: 5 });
     expect(invalidReplies.error).toContain("Invalid replies response");
   });
 
   it("caps renderable collections using shared limits", async () => {
-    const { discourseSearch, discourseLatestTopics, discourseReplies } =
-      await importClient();
-
-    mockRouter.search.mockResolvedValueOnce({
+    mockClient.search.mockResolvedValueOnce({
       posts: Array.from({ length: 50 }).map((_, index) => ({
         topicTitle: `Topic ${index}`,
         blurb: "Example",
@@ -290,7 +286,7 @@ describe("discourse client", () => {
     expect(searchResult.data?.posts).toHaveLength(DISCOURSE_RENDER_LIMIT);
     expect(searchResult.data?.topics).toHaveLength(DISCOURSE_RENDER_LIMIT);
 
-    mockRouter.getLatestTopics.mockResolvedValueOnce({
+    mockClient.getLatestTopics.mockResolvedValueOnce({
       topics: Array.from({ length: 50 }).map((_, index) => ({
         id: index + 1,
         title: `Topic ${index}`,
@@ -314,7 +310,7 @@ describe("discourse client", () => {
     const latest = await discourseLatestTopics({ page: 0, order: "default" });
     expect(latest.data?.topics).toHaveLength(DISCOURSE_RENDER_LIMIT);
 
-    mockRouter.getPostReplies.mockResolvedValueOnce({
+    mockClient.getPostReplies.mockResolvedValueOnce({
       replies: Array.from({ length: 50 }).map((_, index) => ({
         id: index + 1,
         topicId: 1,
@@ -337,10 +333,7 @@ describe("discourse client", () => {
   });
 
   it("validates categories and tags payloads", async () => {
-    const { discourseCategories, discourseTags, discourseCategory } =
-      await importClient();
-
-    mockRouter.getCategories.mockResolvedValueOnce({
+    mockClient.getCategories.mockResolvedValueOnce({
       categories: [
         {
           id: 1,
@@ -358,7 +351,7 @@ describe("discourse client", () => {
     const cats = await discourseCategories();
     expect(cats.data?.categories[0].name).toBe("c");
 
-    mockRouter.getTags.mockResolvedValueOnce({
+    mockClient.getTags.mockResolvedValueOnce({
       tags: [
         {
           id: 1,
@@ -374,7 +367,7 @@ describe("discourse client", () => {
     const tags = await discourseTags();
     expect(tags.data?.tags[0].name).toBe("tag");
 
-    mockRouter.getCategory.mockResolvedValueOnce({
+    mockClient.getCategory.mockResolvedValueOnce({
       category: {
         id: 1,
         name: "c",
@@ -390,5 +383,15 @@ describe("discourse client", () => {
     });
     const category = await discourseCategory({ idOrSlug: 1 });
     expect(category.error).toBeUndefined();
+  });
+
+  it("returns a client error when fetching tags fails", async () => {
+    mockClient.getTags.mockRejectedValueOnce(
+      new TypeError('File URL host must be "localhost" or empty on darwin')
+    );
+
+    const result = await discourseTags();
+    expect(result.data).toBeUndefined();
+    expect(result.error).toBe("Unexpected error—please try again.");
   });
 });

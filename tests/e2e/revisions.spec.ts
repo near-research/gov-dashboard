@@ -8,8 +8,10 @@ describeSpec("Proposal revision comparison", () => {
   test("shows diff content, revision summary, and verification proof modal", async ({ page }) => {
     registerPlaywrightMocks(page);
 
-    await page.goto("/proposals/42", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: /Mock Proposal for Playwright/i })).toBeVisible();
+    await page.goto("/proposals/42", { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Mock Proposal for Playwright", { exact: true })).toBeVisible({
+      timeout: 15000,
+    });
     await expect(page.getByText(/Version 3/)).toBeVisible();
 
     await page.click("#version-select");

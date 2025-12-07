@@ -43,7 +43,7 @@ const ensureVerificationSession = (
 const proposalSummarizeLimiter = createRateLimiter(
   rateLimitConfig.proposalSummary
 );
-const DISCOURSE_URL = servicesConfig.discourseUrl;
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 /**
  * POST /api/proposals/[id]/summarize

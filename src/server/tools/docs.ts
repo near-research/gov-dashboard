@@ -149,6 +149,10 @@ function setCachedDoc(key: string, doc: CachedDoc): void {
   docsCache.set(key, doc);
 }
 
+export function clearDocsCache(): void {
+  docsCache.clear();
+}
+
 // ============================================================================
 // Content Fetching
 // ============================================================================

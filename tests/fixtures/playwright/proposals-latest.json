@@ -1,8 +1,8 @@
 {
   "latest_posts": [
     {
-      "id": 12,
-      "topic_id": 12,
+      "id": 42,
+      "topic_id": 42,
       "topic_slug": "mock-proposal",
       "title": "Mock Proposal for Playwright",
       "username": "playwright-bot",

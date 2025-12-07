@@ -1,21 +1,13 @@
 import { useEffect } from "react";
 import { Chat } from "@/components/chat/Chat";
-import { useGovernanceAnalytics } from "@/lib/analytics";
 
 export default function AgentPage() {
-  const track = useGovernanceAnalytics();
-
   useEffect(() => {
-    track("agent_chat_opened", {
-      props: { path: "/" },
-    });
-
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prevOverflow;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

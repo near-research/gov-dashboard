@@ -1,63 +1,102 @@
 import "server-only";
 
-import { createPluginRuntime } from "every-plugin";
-import { protectedProcedure, publicProcedure } from "./procedures";
+import { desc, eq } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
-import { wrapDiscoursePluginError } from "@/server/plugins/discourse-errors";
+import { db, type DrizzleClient } from "@/lib/db";
+import { discourseAccount, nearAccount as nearAccountTable } from "@/lib/db/schema";
+import { discourseRouter } from "@/server/plugins/discourse";
+import { protectedProcedure, publicProcedure } from "./procedures";
 
-const runtime = createPluginRuntime({
-  registry: {
-    "discourse-plugin": {
-      remoteUrl:
-        "https://jlwaugh-54-discourse-plugin-discourse-plugin-near-4c12399ef-ze.zephyrcloud.app/remoteEntry.js",
-    },
-  },
-  secrets: {
-    DISCOURSE_API_KEY: process.env.DISCOURSE_API_KEY!,
-  },
-});
-
-type DiscourseRuntimeResult = Awaited<ReturnType<typeof runtime.usePlugin>>;
-
-let discourseRouter: DiscourseRuntimeResult["router"];
-
-try {
-  const { router } = await runtime.usePlugin("discourse-plugin", {
-    variables: {
-      discourseUrl: process.env.DISCOURSE_URL || "https://gov.near.org",
-      discourseApiUsername: process.env.DISCOURSE_API_USERNAME || "gov",
-      clientId: process.env.DISCOURSE_CLIENT_ID || "discourse-plugin",
-    },
-    secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
-  });
-  discourseRouter = router;
-} catch (error) {
-  wrapDiscoursePluginError(error);
-}
-
-const proxyPublic =
-  (fn: (input: unknown) => Promise<unknown>) =>
+const proxyPublic = (fn: (input: unknown) => Promise<unknown>) =>
   publicProcedure.handler(async ({ input }) => fn(input));
 
-const proxyProtected =
-  (fn: (input: unknown) => Promise<unknown>) =>
+const proxyProtected = (fn: (input: unknown) => Promise<unknown>) =>
   protectedProcedure.handler(async ({ input }) => fn(input));
+
+const parseNearAccountInput = (input: unknown): string | null => {
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    "nearAccount" in input
+  ) {
+    const candidate = (input as Record<string, unknown>).nearAccount;
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      return trimmed.length ? trimmed : null;
+    }
+  }
+  return null;
+};
+
+const getDiscourseLinkageFromDb = async (
+  nearAccount: string | null,
+  userId: string | null
+) => {
+  const drizzleClient = db as DrizzleClient;
+  if (typeof drizzleClient.select !== "function") {
+    return null;
+  }
+
+  if (!nearAccount && !userId) {
+    return null;
+  }
+
+  const clause =
+    nearAccount !== null
+      ? eq(nearAccountTable.accountId, nearAccount)
+      : userId
+      ? eq(discourseAccount.userId, userId)
+      : undefined;
+
+  if (!clause) {
+    return null;
+  }
+
+  const result = await drizzleClient
+    .select({
+      discourseUsername: discourseAccount.discourseUsername,
+      discourseUserId: discourseAccount.discourseUserId,
+      nearAccountId: nearAccountTable.accountId,
+    })
+    .from(discourseAccount)
+    .leftJoin(
+      nearAccountTable,
+      eq(nearAccountTable.userId, discourseAccount.userId)
+    )
+    .where(clause)
+    .orderBy(desc(discourseAccount.updatedAt))
+    .limit(1);
+
+  if (!result[0]) {
+    return null;
+  }
+
+  return {
+    discourseUsername: result[0].discourseUsername,
+    discourseUserId: result[0].discourseUserId,
+    nearAccount: result[0].nearAccountId ?? undefined,
+  };
+};
 
 export const router = publicProcedure.router({
   healthCheck: publicProcedure.handler(() => "OK"),
   discourse: publicProcedure.router({
     getUserApiAuthUrl: proxyPublic((input) =>
-      discourseRouter.getUserApiAuthUrl(input as any),
+      discourseRouter.getUserApiAuthUrl(input as any)
     ),
     completeLink: proxyPublic((input) =>
-      discourseRouter.completeLink(input as any),
+      discourseRouter.completeLink(input as any)
     ),
-    getLinkage: proxyPublic((input) =>
-      discourseRouter.getLinkage(input as any),
-    ),
+    getLinkage: publicProcedure.handler(async ({ input, context }) => {
+      const nearAccount = parseNearAccountInput(input);
+      return getDiscourseLinkageFromDb(
+        nearAccount,
+        context.session?.user?.id ?? null
+      );
+    }),
     ping: proxyPublic((input) => discourseRouter.ping(input as any)),
     createPost: proxyProtected((input) =>
-      discourseRouter.createPost(input as any),
+      discourseRouter.createPost(input as any)
     ),
     unlink: protectedProcedure.handler(async ({ input }) => {
       const nearAccount =

@@ -121,6 +121,7 @@ export const ChatInput = ({
         {/* Input */}
         <div className="flex gap-5 pb-2">
           <textarea
+            data-testid="chat-input"
             ref={inputRef}
             value={inputValue}
             onChange={handleInputChange}

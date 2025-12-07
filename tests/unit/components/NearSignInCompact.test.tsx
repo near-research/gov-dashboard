@@ -1,8 +1,9 @@
 import "../../vi-compat";
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { siwnRecipient } from "@/config/siwn";
 
-const { render, screen, fireEvent, act } = await import("@testing-library/react");
+const { render, screen, fireEvent, act, waitFor } = await import("@testing-library/react");
 let toast: any;
 
 const walletSignIn = vi.fn();
@@ -52,6 +53,16 @@ const currentAuthState = {
   walletAccountId: null as string | null,
 };
 
+const createDeferred = <T = void>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: any) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
 describe("NearSignInCompact", () => {
   beforeEach(async () => {
     toast = (await import("sonner")).toast as any;
@@ -95,6 +106,57 @@ describe("NearSignInCompact", () => {
     await act(async () => fireEvent.click(screen.getByRole("button")));
 
     expect(signIn).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the button in loading state while retrying nonce failures", async () => {
+    const NearSignInCompact = await loadComponent();
+    currentAuthState.walletAccountId = "alice.testnet";
+    let attempt = 0;
+    requestSignIn.mockImplementation((_args, handlers) => handlers.onSuccess());
+    const completion = createDeferred();
+    signIn.mockImplementation((_args, handlers) => {
+      attempt += 1;
+      if (attempt === 1) {
+        handlers.onError?.({ code: "NONCE_NOT_FOUND" });
+      } else {
+        completion.promise.then(() => {
+          handlers.onSuccess();
+        });
+      }
+    });
+
+    render(<NearSignInCompact />);
+    const button = screen.getByRole("button");
+
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveTextContent("Connecting HOT Wallet...");
+
+    completion.resolve();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Signed in"));
+
+    expect(signIn).toHaveBeenCalledTimes(2);
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveTextContent("Sign in with HOT Wallet");
+  });
+
+  it("passes the configured SIWN recipient when requesting/signing in", async () => {
+    const NearSignInCompact = await loadComponent();
+    currentAuthState.walletAccountId = "alice.testnet";
+    requestSignIn.mockImplementation((args, handlers) => {
+      expect(args).toEqual({ recipient: siwnRecipient });
+      handlers.onSuccess();
+    });
+    signIn.mockImplementation((args, handlers) => {
+      expect(args).toEqual({ recipient: siwnRecipient });
+      handlers.onSuccess();
+    });
+
+    render(<NearSignInCompact />);
+    await act(async () => fireEvent.click(screen.getByRole("button")));
+
+    expect(requestSignIn).toHaveBeenCalled();
+    expect(signIn).toHaveBeenCalled();
   });
 
   it("disconnects wallet on fatal auth error", async () => {
@@ -156,6 +218,29 @@ describe("NearSignInCompact", () => {
     expect(authClientMock.near.disconnect).not.toHaveBeenCalled();
     expect(walletSignOut).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith("Wallet connection cancelled");
+  });
+
+  it("shows connecting state and recovers after wallet rejection", async () => {
+    const NearSignInCompact = await loadComponent();
+    const connect = createDeferred();
+    walletSignIn.mockImplementation(() => connect.promise);
+
+    render(<NearSignInCompact />);
+    const button = screen.getByRole("button");
+
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveTextContent("Connecting HOT Wallet...");
+
+    await act(async () => {
+      connect.reject(new Error("User rejected"));
+    });
+
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+      expect(button).toHaveTextContent("Sign in with HOT Wallet");
+      expect(toast.error).toHaveBeenCalledWith("Wallet connection cancelled");
+    });
   });
 
   it("disconnects after repeated nonce failures and surfaces error message", async () => {

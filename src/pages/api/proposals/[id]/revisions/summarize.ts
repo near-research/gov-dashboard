@@ -50,7 +50,7 @@ const ensureVerificationSession = (
 const proposalRevisionLimiter = createRateLimiter(
   rateLimitConfig.proposalRevisions
 );
-const DISCOURSE_URL = servicesConfig.discourseUrl;
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 /**
  * POST /api/proposals/[id]/revisions/summarize

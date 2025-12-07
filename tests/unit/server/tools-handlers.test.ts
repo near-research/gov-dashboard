@@ -22,7 +22,12 @@ import {
   handleSummarizeDiscussion,
   handleSummarizeReply,
 } from "@/server/tools/discourse";
-import { handleGetDoc, DOC_PATHS } from "@/server/tools/docs";
+import {
+  handleGetDoc,
+  handleSearchDocs,
+  clearDocsCache,
+  DOC_PATHS,
+} from "@/server/tools/docs";
 
 const runtimeBaseUrl = "https://example.com";
 
@@ -39,6 +44,7 @@ describe("server tools handlers", () => {
       .spyOn(discourseClient, "discourseReplies")
       .mockResolvedValue({} as any);
     vi.stubGlobal("fetch", vi.fn());
+    clearDocsCache();
   });
 
   afterAll(() => {
@@ -414,6 +420,34 @@ describe("server tools handlers", () => {
       expect(result.success).toBe(true);
       expect(result.content).toContain("Title");
       expect(result.cached).toBeFalsy();
+    });
+
+    it("falls back when the docs fetch fails", async () => {
+      const firstKey = Object.keys(DOC_PATHS)[0] as keyof typeof DOC_PATHS;
+      const fetchMock = vi.fn().mockRejectedValue(new Error("network failure"));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = await handleGetDoc({ doc_key: firstKey });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to fetch documentation");
+      expect(fetchMock).toHaveBeenCalled();
+    });
+
+    it("returns results from multiple docs when searching with large topic", async () => {
+      const topic = "e"; // matches many keys, will limit to 3
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue("<p>Doc content</p>"),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { result } = await handleSearchDocs({ topic });
+
+      expect(result.docs.length).toBeGreaterThanOrEqual(1);
+      expect(result.docs.length).toBeLessThanOrEqual(3);
+      expect(fetchMock).toHaveBeenCalledTimes(result.docs.length);
+      expect(result.docs.every((doc) => doc.success)).toBe(true);
     });
   });
 

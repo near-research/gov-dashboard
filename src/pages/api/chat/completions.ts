@@ -3,10 +3,15 @@ import {
   extractVerificationMetadata,
 } from "@/verification/normalize";
 import { normalizeVerificationPayload } from "@/verification/server";
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { registerVerificationSession } from "@/verification/server";
 import { getNearAIClient } from "@/lib/near-ai/client";
-import type { ChatCompletionRequest, ToolChoice } from "@/lib/near-ai/types";
+import { NearAIError, NearAITimeoutError } from "@/lib/near-ai/errors";
+import type {
+  ChatCompletionRequest,
+  ChatCompletionResponse,
+  ToolChoice,
+} from "@/lib/near-ai/types";
 import { z } from "zod";
 
 type ChatMessage = {
@@ -335,83 +340,60 @@ export default async function handler(
       }
       return;
     } else {
-      // Non-streaming response
-      let response: Response;
-      let timeoutId: NodeJS.Timeout | undefined;
       try {
-        const { baseUrl, apiKey } = client.getConfig();
-        const controller = new AbortController();
-        const timeoutMs = parsedBody.data?.timeout ?? 120000;
-        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-        response = await fetch(`${baseUrl}/v1/chat/completions`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "X-Request-Id": randomUUID(),
-            ...(verificationId ? { "X-Verification-Id": verificationId } : {}),
-            ...(verificationNonce ? { "X-Nonce": verificationNonce } : {}),
-          },
-          body: requestBodyString,
-          signal: controller.signal,
+        const responseData = await client.chatCompletions(requestBody, {
+          verificationId,
+          verificationNonce,
+          timeout: parsedBody.data?.timeout,
         });
 
-        clearTimeout(timeoutId);
-      } catch (error) {
-        if (timeoutId) clearTimeout(timeoutId);
-        // Ensure any pending timeout is cleared
-        console.error("NEAR AI Cloud API error:", error);
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        const statusCode = error instanceof Error && "statusCode" in error
-          ? (error as { statusCode?: number }).statusCode || 500
-          : 500;
-        return res.status(statusCode).json({
-          error: `NEAR AI Cloud API Error: ${statusCode}`,
-          details: errorMessage,
-        });
-      }
+        const responseText = JSON.stringify(responseData);
+        const responseHash = createHash("sha256").update(responseText).digest("hex");
 
-      const responseText = await response.text();
-      if (!response.ok) {
-        let errorDetails: string | undefined;
-        try {
-          const parsedError = JSON.parse(responseText);
-          errorDetails =
-            parsedError?.error || parsedError?.message || responseText;
-        } catch {
-          errorDetails = responseText;
+        const rawVerification = extractVerificationMetadata(responseData);
+        const { verification, verificationId: normalizedVerificationId } =
+          normalizeVerificationPayload(rawVerification, responseData?.id);
+
+        const payload = responseData as ChatCompletionResponse & Record<string, unknown>;
+        if (verification) {
+          payload.verification = verification;
         }
-        return res.status(response.status).json({
-          error: `NEAR AI Cloud API Error: ${response.status}`,
-          details: errorDetails,
+        if (normalizedVerificationId) {
+          payload.verificationId = normalizedVerificationId;
+          registerVerificationSession(
+            normalizedVerificationId,
+            undefined,
+            requestHash,
+            responseHash
+          );
+        }
+
+        res.status(200).json(payload);
+      } catch (error: unknown) {
+        console.error("NEAR AI Cloud API error:", error);
+
+        if (error instanceof NearAITimeoutError) {
+          return res.status(504).json({
+            error: "Request timeout",
+            details: error.message,
+          });
+        }
+
+        if (error instanceof NearAIError) {
+          const statusCode = error.statusCode ?? 500;
+          return res.status(statusCode).json({
+            error: `NEAR AI Cloud API Error: ${statusCode}`,
+            details: error.message,
+          });
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        return res.status(500).json({
+          error: "NEAR AI Cloud API Error",
+          details: message,
         });
       }
-
-      const responseHash = createHash("sha256").update(responseText).digest("hex");
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        return res.status(502).json({
-          error: "Failed to parse NEAR AI response",
-          details: "NEAR AI returned non-JSON response for chat completions",
-        });
-      }
-
-      const rawVerification = extractVerificationMetadata(data);
-      const { verification, verificationId: normalizedVerificationId } = normalizeVerificationPayload(
-        rawVerification,
-        data?.id
-      );
-      if (verification) {
-        (data as any).verification = verification;
-      }
-      if (normalizedVerificationId) {
-        (data as any).verificationId = normalizedVerificationId;
-        registerVerificationSession(normalizedVerificationId, undefined, requestHash, responseHash);
-      }
-      res.status(200).json(data);
     }
   } catch (error: unknown) {
     console.error("Proxy error:", error);

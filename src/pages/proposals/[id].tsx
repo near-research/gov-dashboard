@@ -18,7 +18,7 @@ import { servicesConfig } from "@/config/services";
 import { useNear } from "@/hooks/useNear";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 
-const DISCOURSE_URL = servicesConfig.discourseUrl;
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 const getDaysSinceActivity = (lastPostedAt: string) => {
   const now = new Date();
@@ -276,7 +276,7 @@ export default function ProposalDetail() {
               </Card>
 
               <DiscussionSection
-                discourseUrl={DISCOURSE_URL}
+                discourseBaseUrl={DISCOURSE_URL}
                 replies={proposal.replies ?? []}
                 discussionSummary={discussionSummary}
                 discussionSummaryVisible={discussionSummaryVisible}

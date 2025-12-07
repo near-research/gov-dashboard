@@ -69,7 +69,7 @@ async function createClientWithRetry() {
 const shouldSkipDb =
   process.env.NODE_ENV === "test" && process.env.TEST_USE_DATABASE !== "1";
 
-type DrizzleClient = ReturnType<typeof drizzle>;
+export type DrizzleClient = ReturnType<typeof drizzle>;
 
 let db: DrizzleClient;
 if (shouldSkipDb) {

@@ -2,6 +2,10 @@ import { auth } from "@/lib/auth";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Readable } from "stream";
 
+type AuthProxyRequestInit = RequestInit & {
+  duplex?: "half";
+};
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -61,11 +65,17 @@ export default async function handler(
     }
   }
 
-  const webRequest = new Request(url, {
+  const requestInit: AuthProxyRequestInit = {
     method: req.method,
     headers: new Headers(req.headers as Record<string, string>),
     body,
-  });
+  };
+
+  if (body && typeof requestInit.duplex === "undefined") {
+    requestInit.duplex = "half";
+  }
+
+  const webRequest = new Request(url, requestInit);
 
   const response = await auth.handler(webRequest);
 

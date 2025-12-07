@@ -45,7 +45,7 @@ const ensureVerificationSession = (
 };
 
 const replyLimiter = createRateLimiter(rateLimitConfig.replySummary);
-const DISCOURSE_URL = servicesConfig.discourseUrl;
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 /**
  * POST /api/discourse/replies/[id]/summarize

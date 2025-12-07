@@ -91,13 +91,13 @@ export function EditorPane({
       <div className="space-y-2">
         {viewMode === "editor" ? (
           <>
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="title" className="text-sm font-medium">
+          <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="proposal-title" className="text-sm font-medium">
                 Title
               </Label>
-              <Button
-                variant="ghost"
-                size="sm"
+             <Button
+               variant="ghost"
+               size="sm"
                 className="gap-1"
                 onClick={() => navigator.clipboard.writeText(title || "")}
               >
@@ -106,7 +106,7 @@ export function EditorPane({
               </Button>
             </div>
             <Input
-              id="title"
+              id="proposal-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={disabled}
@@ -124,10 +124,10 @@ export function EditorPane({
       {/* Editor View */}
       {viewMode === "editor" && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="title" className="text-sm font-medium">
-              Content
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="proposal-content" className="text-sm font-medium">
+                Content
+              </Label>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -156,6 +156,7 @@ export function EditorPane({
             />
           ) : (
             <Textarea
+              id="proposal-content"
               value={content}
               onChange={(e) => setContent(e.target.value)}
               disabled={disabled}

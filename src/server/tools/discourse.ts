@@ -494,7 +494,7 @@ export async function handleGetDiscourseTopic(args: {
         created_at: renderPosts[0]?.createdAt ?? data.topic.createdAt ?? "",
         last_posted_at:
           data.topic.lastPostedAt ?? renderPosts[0]?.createdAt ?? "",
-        url: `${servicesConfig.discourseUrl}/t/${data.topic.slug}/${data.topic.id}`,
+        url: `${servicesConfig.discourseBaseUrl}/t/${data.topic.slug}/${data.topic.id}`,
         posts: renderPosts.map((post) => ({
           id: post.id,
           post_number: post.postNumber,
@@ -504,7 +504,7 @@ export async function handleGetDiscourseTopic(args: {
           like_count: post.likeCount ?? 0,
           reply_to_post_number: post.replyToPostNumber ?? undefined,
           reply_to_user: undefined,
-          url: `${servicesConfig.discourseUrl}/t/${data.topic.slug}/${data.topic.id}/${post.postNumber}`,
+          url: `${servicesConfig.discourseBaseUrl}/t/${data.topic.slug}/${data.topic.id}/${post.postNumber}`,
         })),
       },
     };
@@ -564,21 +564,21 @@ export async function handleGetLatestTopics(
       result: {
         type: "proposal_list",
         description: `Latest ${limit} proposals by recent activity.`,
-          topics:
-            data.topics?.slice(0, renderLimit).map((topic) => ({
-              id: topic.id,
-              title: topic.title,
-              slug: topic.slug,
-              excerpt: stripHtml(topic.excerpt ?? "").slice(0, 400),
-              author: topic.username ?? "unknown",
-              posts_count: topic.postsCount,
-              reply_count: topic.replyCount,
-              views: topic.views,
-              like_count: topic.likeCount,
-              created_at: topic.createdAt ?? "",
-              last_posted_at: topic.lastPostedAt ?? "",
-              url: `${servicesConfig.discourseUrl}/t/${topic.slug}/${topic.id}`,
-            })) || [],
+        topics:
+          data.topics?.slice(0, renderLimit).map((topic) => ({
+            id: topic.id,
+            title: topic.title,
+            slug: topic.slug,
+            excerpt: stripHtml(topic.excerpt ?? "").slice(0, 400),
+            author: topic.username ?? "unknown",
+            posts_count: topic.postsCount,
+            reply_count: topic.replyCount,
+            views: topic.views,
+            like_count: topic.likeCount,
+            created_at: topic.createdAt ?? "",
+            last_posted_at: topic.lastPostedAt ?? "",
+            url: `${servicesConfig.discourseBaseUrl}/t/${topic.slug}/${topic.id}`,
+          })) || [],
         total_count: data.topics?.length || 0,
       },
     };
@@ -632,7 +632,7 @@ export async function handleSummarizeDiscussion(
         summary: summaryData.summary,
         reply_count: summaryData.replyCount,
         engagement: summaryData.engagement,
-        url: `${servicesConfig.discourseUrl}/t/${topic_id}`,
+        url: `${servicesConfig.discourseBaseUrl}/t/${topic_id}`,
       },
     };
   } catch (error) {

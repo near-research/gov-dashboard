@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import Head from "next/head";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -112,6 +112,8 @@ const formatRevisionTimeline = (
 };
 
 export default function SettingsPage() {
+  const promptSelectLabelId = useId();
+  const modelSelectLabelId = useId();
   const promptOptions = [
     { label: "Custom", key: "custom" },
     { label: "Screen Proposal", key: "screenProposal" },
@@ -489,7 +491,10 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                <label
+                  id={promptSelectLabelId}
+                  className="block text-sm font-medium text-muted-foreground mb-2"
+                >
                   Select Prompt
                 </label>
                 <Select
@@ -508,7 +513,7 @@ export default function SettingsPage() {
                     setShowLoadCard(false);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-labelledby={promptSelectLabelId}>
                     <SelectValue placeholder="Select prompt" />
                   </SelectTrigger>
                   <SelectContent>
@@ -521,14 +526,17 @@ export default function SettingsPage() {
                 </Select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                <label
+                  id={modelSelectLabelId}
+                  className="block text-sm font-medium text-muted-foreground mb-2"
+                >
                   Choose Model
                 </label>
                 <Select
                   value={selectedModel}
                   onValueChange={(value) => setSelectedModel(value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-labelledby={modelSelectLabelId}>
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
                   <SelectContent>

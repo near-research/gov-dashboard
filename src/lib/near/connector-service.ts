@@ -66,6 +66,18 @@ let connectorInstance: NearConnector | null = null;
 let connectorListenersAttached = false;
 const isDevEnv = process.env.NODE_ENV !== "production";
 
+const shouldSimulateHarnessRejection = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const harness = (window as any).__NEAR_TEST_HARNESS__;
+  if (!harness?.rejectConnection) {
+    return false;
+  }
+  harness.rejectConnection = false;
+  return true;
+};
+
 type DevInstrumentation = {
   connectorInitCount: number;
   initPromiseCreations: number;
@@ -265,6 +277,12 @@ export async function sharedSignIn() {
   const connector = sharedState.connector;
   if (!connector) {
     throw new Error("Connector not initialized (not in browser)");
+  }
+
+  if (shouldSimulateHarnessRejection()) {
+    const rejectionError = new Error("User rejected the wallet connection");
+    rejectionError.name = "NearUserRejected";
+    throw rejectionError;
   }
 
   try {

@@ -10,7 +10,7 @@ import type { ReplySummaryResponse } from "@/types/summaries";
 
 interface ReplyCardProps {
   reply: ProposalReply;
-  discourseUrl: string;
+  discourseBaseUrl: string;
   summary?: ReplySummaryResponse;
   loading?: boolean;
   error?: string;
@@ -20,7 +20,7 @@ interface ReplyCardProps {
 
 export function ReplyCard({
   reply,
-  discourseUrl,
+  discourseBaseUrl,
   summary,
   loading,
   error,
@@ -29,10 +29,13 @@ export function ReplyCard({
 }: ReplyCardProps) {
   const sanitizedReplyHtml = DOMPurify.sanitize(
     reply.cooked
-      .replace(/href="\/u\//g, `href="${discourseUrl}/u/"`)
-      .replace(/href="\/t\//g, `href="${discourseUrl}/t/"`)
-      .replace(/href="\/c\//g, `href="${discourseUrl}/c/"`)
-      .replace(/src="\/user_avatar\//g, `src="${discourseUrl}/user_avatar/"`),
+      .replace(/href="\/u\//g, `href="${discourseBaseUrl}/u/"`)
+      .replace(/href="\/t\//g, `href="${discourseBaseUrl}/t/"`)
+      .replace(/href="\/c\//g, `href="${discourseBaseUrl}/c/"`)
+      .replace(
+        /src="\/user_avatar\//g,
+        `src="${discourseBaseUrl}/user_avatar/"`
+      ),
     {
       ALLOWED_TAGS: [
         "p",
@@ -135,7 +138,7 @@ export function ReplyCard({
             {reply.avatar_template ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
-                src={`${discourseUrl}${reply.avatar_template.replace(
+                src={`${discourseBaseUrl}${reply.avatar_template.replace(
                   "{size}",
                   "48"
                 )}`}

@@ -39,7 +39,7 @@ interface ChatMessagesProps {
 
 const TypingIndicator = () => {
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start" data-testid="typing-indicator">
       <div className="bg-muted rounded-2xl px-4 py-3 rounded-bl-sm">
         <div className="flex gap-1">
           <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
@@ -420,6 +420,7 @@ export const ChatMessages = ({
     <div className="relative h-full">
       <div
         ref={scrollRef}
+        data-testid="chat-feed"
         className="absolute inset-x-0 top-0 overflow-y-scroll px-4 sm:px-6 pt-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
         style={{
           bottom: `${footerHeight}px`,

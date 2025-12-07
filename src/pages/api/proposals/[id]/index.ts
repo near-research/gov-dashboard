@@ -42,7 +42,7 @@ export default async function handler(
   }
 
   try {
-    const DISCOURSE_URL = servicesConfig.discourseUrl;
+    const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
     const headers: HeadersInit = {
       "Content-Type": "application/json",

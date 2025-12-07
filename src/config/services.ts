@@ -17,5 +17,5 @@ if (!process.env.NEXT_PUBLIC_DISCOURSE_URL && !process.env.DISCOURSE_URL) {
 }
 
 export const servicesConfig = {
-  discourseUrl: resolvedDiscourse.replace(/\/$/, ""),
+  discourseBaseUrl: resolvedDiscourse.replace(/\/$/, ""),
 };

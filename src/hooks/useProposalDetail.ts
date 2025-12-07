@@ -43,6 +43,11 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
   });
   const screeningAbortController = useRef<AbortController | null>(null);
   const proposalAbortController = useRef<AbortController | null>(null);
+  const trackRef = useRef<GovernanceTrackFn>(track);
+
+  useEffect(() => {
+    trackRef.current = track;
+  }, [track]);
 
   const fetchScreening = useCallback(
     async (topicId: string, revisionNumber: number) => {
@@ -98,7 +103,7 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
           return;
         }
         console.warn("[screening] fetch failed", { topicId, revisionNumber, err });
-        track("proposal_screening_failed", {
+        trackRef.current("proposal_screening_failed", {
           props: {
             topic_id: topicId,
             revision: revisionNumber,
@@ -113,7 +118,7 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
         }
       }
     },
-    [track]
+    []
   );
 
   const fetchProposal = useCallback(
@@ -137,7 +142,7 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
         setCurrentRevision(initialRevision);
         fetchScreening(id, initialRevision);
 
-        track("proposal_viewed", {
+        trackRef.current("proposal_viewed", {
           props: {
             topic_id: id,
             category: data.metadata?.category ?? null,
@@ -152,7 +157,7 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
         setLoading(false);
       }
     },
-    [fetchScreening, track]
+    [fetchScreening]
   );
 
   const fetchRevisions = useCallback(

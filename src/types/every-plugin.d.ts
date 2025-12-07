@@ -7,7 +7,7 @@ import type contract from "../../discourse-plugin";
 // `usePlugin` strongly typed without pulling the implementation into the repo.
 type DiscourseVariables = z.ZodObject<
   {
-    discourseUrl: z.ZodString;
+    discourseBaseUrl: z.ZodString;
     discourseApiUsername: z.ZodString;
     clientId: z.ZodString;
   },

@@ -186,4 +186,30 @@ describe("NearAIClient", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("streams responses with verification headers and enforces the stream flag", async () => {
+    const mockResponse = { ok: true, status: 200, body: {} };
+    fetchMock.mockResolvedValue(mockResponse);
+
+    const client = new NearAIClient({ apiKey: "stream-key" });
+    const response = await client.chatCompletionsStream(
+      { model: "stream-model", messages: [] },
+      {
+        verificationId: "ver",
+        verificationNonce: "nonce",
+      }
+    );
+
+    expect(response).toBe(mockResponse);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe("POST");
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer stream-key");
+    expect(headers["X-Verification-Id"]).toBe("ver");
+    expect(headers["X-Nonce"]).toBe("nonce");
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe("stream-model");
+    expect(body.stream).toBe(true);
+  });
 });

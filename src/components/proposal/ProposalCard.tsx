@@ -55,7 +55,7 @@ export default function ProposalCard({
     e.stopPropagation();
     e.preventDefault();
     window.open(
-      `${servicesConfig.discourseUrl}/t/${topic_slug}/${topic_id}`,
+      `${servicesConfig.discourseBaseUrl}/t/${topic_slug}/${topic_id}`,
       "_blank",
       "noopener,noreferrer"
     );

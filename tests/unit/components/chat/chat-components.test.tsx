@@ -10,7 +10,14 @@ const verificationProps: any[] = [];
 vi.mock("@/components/verification/VerificationProof", () => ({
   VerificationProof: (props: any) => {
     verificationProps.push(props);
-    return <div data-testid="verification-proof" />;
+    return (
+      <div data-testid="verification-proof">
+        <button data-testid="verification-copy">Copy</button>
+        <button data-testid="verification-retry">
+          {props.triggerLabel ?? "Verify"}
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -80,6 +87,76 @@ describe("Chat components", () => {
     expect(quick).toBeDisabled();
     const send = screen.getByRole("button", { name: /send/i });
     expect(send).toBeDisabled();
+  });
+
+  it("clears the field on Enter send, shows the loader when active, and respects loading/disabled states", () => {
+    const onSend = vi.fn();
+    const onClear = vi.fn();
+    const { rerender } = render(
+      <ChatInput
+        onSend={onSend}
+        onClear={onClear}
+        isLoading={false}
+        error={null}
+        canClear
+      />
+    );
+
+    const textarea = screen.getByTestId("chat-input");
+    fireEvent.change(textarea, { target: { value: "  trimmed  " } });
+    fireEvent.keyPress(textarea, {
+      key: "Enter",
+      code: "Enter",
+      charCode: 13,
+    });
+
+    expect(onSend).toHaveBeenCalledWith("trimmed");
+    expect(textarea).toHaveValue("");
+
+    const sendButton = screen.getByRole("button", { name: /send message/i });
+    expect(sendButton).toBeDisabled();
+
+    rerender(
+      <ChatInput
+        onSend={onSend}
+        onClear={onClear}
+        isLoading
+        error={null}
+        canClear
+      />
+    );
+
+    const loadingButton = screen.getByRole("button", { name: /send message/i });
+    expect(loadingButton).toBeDisabled();
+    expect(
+      loadingButton.querySelector("svg.animate-spin")
+    ).toBeInTheDocument();
+  });
+
+  it("does not send when disabled or when Shift+Enter is pressed", () => {
+    const onSend = vi.fn();
+
+    render(
+      <ChatInput
+        onSend={onSend}
+        onClear={() => {}}
+        isLoading={false}
+        error={null}
+        disabled
+      />
+    );
+
+    const textarea = screen.getByTestId("chat-input");
+    fireEvent.change(textarea, { target: { value: "cannot send" } });
+    fireEvent.keyPress(textarea, { key: "Enter", code: "Enter", charCode: 13 });
+    fireEvent.keyPress(textarea, {
+      key: "Enter",
+      code: "Enter",
+      charCode: 13,
+      shiftKey: true,
+    });
+
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("Message renders labels by role and triggers verification proof for assistant", async () => {
@@ -171,6 +248,98 @@ describe("Chat components", () => {
     expect(document.querySelectorAll(".animate-bounce").length).toBeGreaterThan(
       0
     );
+  });
+
+  it("renders user, assistant, and tool messages with verification/tool history UI", () => {
+    const events = [
+      {
+        kind: "message",
+        id: "user-message",
+        role: "user",
+        content: "Hello there",
+        status: "completed",
+        timestamp: new Date("2024-01-01T01:00:00Z"),
+        turnNumber: 1,
+      },
+      {
+        kind: "message",
+        id: "assistant-plain",
+        role: "assistant",
+        content: "Standard agent reply",
+        status: "completed",
+        timestamp: new Date("2024-01-01T01:00:01Z"),
+        turnNumber: 1,
+      },
+      {
+        kind: "tool_call",
+        id: "tool-1",
+        toolCallId: "tool-1",
+        toolName: "Discourse Fetch",
+        status: "completed",
+        timestamp: new Date("2024-01-01T01:00:02Z"),
+        turnNumber: 2,
+        input: JSON.stringify({ query: "governance" }),
+        output: JSON.stringify({
+          type: "proposal_list",
+          description: "Choices from tool",
+          topics: [
+            {
+              id: 1,
+              title: "Upgrade",
+              excerpt: "More funding",
+              created_at: 1672531200,
+              author: "gov",
+              topic: "1",
+              slug: "upgrade",
+              reply_count: 0,
+              views: 0,
+              last_posted_at: 1672531200,
+            },
+          ],
+        }),
+      },
+      {
+        kind: "message",
+        id: "assistant-suppressed",
+        role: "assistant",
+        content:
+          "Here is a proposal list:\n```json\n{\"type\":\"proposal_list\",\"description\":\"Choices\",\"topics\":[{\"id\":1,\"title\":\"Upgrade\",\"excerpt\":\"More funding\",\"created_at\":1672531200,\"author\":\"gov\",\"topic\":\"1\",\"slug\":\"upgrade\",\"reply_count\":0,\"views\":0,\"last_posted_at\":1672531200}]}\n```",
+        status: "completed",
+        timestamp: new Date("2024-01-01T01:00:03Z"),
+        turnNumber: 2,
+        messageId: "msg-2",
+        verification: { source: "near-ai-cloud", status: "pending", messageId: "v1" },
+        proof: {
+          verificationId: "v1",
+          stage: "initial_reasoning",
+          requestHash: "req",
+          responseHash: "res",
+        },
+      },
+    ];
+
+    render(
+      <ChatMessages
+        events={events as any}
+        isLoading={false}
+        isInitialized
+        showTypingIndicator={false}
+        welcomeMessage="Hi"
+        markdown={markdown}
+        isAtBottom
+        onNearBottomChange={() => {}}
+      />
+    );
+
+    expect(screen.getByText(/you/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/agent/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Discourse Fetch")).toBeInTheDocument();
+    expect(screen.getByText("Tools Used")).toBeInTheDocument();
+    expect(screen.getByTestId("proposal-card")).toBeInTheDocument();
+    expect(screen.getByTestId("verification-proof")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("verification-copy"));
+    fireEvent.click(screen.getByTestId("verification-retry"));
   });
 
   it("ChatMessages keeps streaming assistant updates appended instead of replacing earlier content", () => {

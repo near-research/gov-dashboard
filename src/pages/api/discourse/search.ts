@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { DiscourseSearchResponse } from "../../../../discourse-plugin";
 import {
-  DISCOURSE_DEFAULT_CATEGORY_ID,
+  DISCOURSE_PROPOSALS_CATEGORY_ID,
   clampPageSize,
   clampRenderLimit,
 } from "@/config/discourse";
@@ -23,7 +23,9 @@ const SUPPORTED_PARAMS = new Set([
   "userApiKey",
 ]);
 
-const parsePositiveInt = (value: string | string[] | undefined): number | null => {
+const parsePositiveInt = (
+  value: string | string[] | undefined
+): number | null => {
   if (value === undefined) return null;
   if (Array.isArray(value)) return null;
   const parsed = Number.parseInt(value, 10);
@@ -85,18 +87,21 @@ export default async function handler(
 
   const tagsParam = req.query.tags;
   if (Array.isArray(tagsParam)) {
-    return res.status(400).json({ error: "Use a comma-separated `tags` string" });
+    return res
+      .status(400)
+      .json({ error: "Use a comma-separated `tags` string" });
   }
 
   const limit = clampPageSize(limitParam);
   const renderLimit = clampRenderLimit(limitParam);
   const headers = req.headers ?? {};
   const userApiKey =
-    typeof req.query.userApiKey === "string" && req.query.userApiKey.trim().length > 0
+    typeof req.query.userApiKey === "string" &&
+    req.query.userApiKey.trim().length > 0
       ? req.query.userApiKey
       : typeof headers["x-discourse-user-api-key"] === "string"
-        ? headers["x-discourse-user-api-key"]
-        : undefined;
+      ? headers["x-discourse-user-api-key"]
+      : undefined;
 
   const { data, error, status } = await discourseSearch({
     query: trimmedQuery,
@@ -105,8 +110,9 @@ export default async function handler(
     category:
       typeof req.query.category === "string"
         ? req.query.category
-        : DISCOURSE_DEFAULT_CATEGORY_ID.toString(),
-    username: typeof req.query.username === "string" ? req.query.username : undefined,
+        : DISCOURSE_PROPOSALS_CATEGORY_ID.toString(),
+    username:
+      typeof req.query.username === "string" ? req.query.username : undefined,
     tags: tagsParam
       ? tagsParam
           .split(",")
@@ -122,9 +128,15 @@ export default async function handler(
         : undefined,
     status:
       typeof req.query.status === "string" &&
-      ["closed", "open", "public", "archived", "noreplies", "solved", "unsolved"].includes(
-        req.query.status
-      )
+      [
+        "closed",
+        "open",
+        "public",
+        "archived",
+        "noreplies",
+        "solved",
+        "unsolved",
+      ].includes(req.query.status)
         ? (req.query.status as
             | "closed"
             | "open"

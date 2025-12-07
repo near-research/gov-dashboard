@@ -2,7 +2,7 @@ export const DISCOURSE_MAX_PER_PAGE = 30;
 export const DISCOURSE_MIN_PER_PAGE = 1;
 export const DISCOURSE_RENDER_LIMIT = 20;
 
-export const DISCOURSE_DEFAULT_CATEGORY_ID = Number(
+export const DISCOURSE_PROPOSALS_CATEGORY_ID = Number(
   process.env.DISCOURSE_PROPOSALS_CATEGORY_ID || 168
 );
 

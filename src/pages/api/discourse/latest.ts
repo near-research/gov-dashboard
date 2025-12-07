@@ -4,7 +4,7 @@ import type {
   DiscourseLatestPostsResponse,
 } from "../../../../discourse-plugin";
 import {
-  DISCOURSE_DEFAULT_CATEGORY_ID,
+  DISCOURSE_PROPOSALS_CATEGORY_ID,
   DISCOURSE_MAX_PER_PAGE,
   clampPageSize,
   clampRenderLimit,
@@ -59,10 +59,7 @@ export default async function handler(
   }
 
   const perPageInput = parsePositiveInt(req.query.per_page);
-  const perPage =
-    perPageInput === null
-      ? null
-      : clampPageSize(perPageInput);
+  const perPage = perPageInput === null ? null : clampPageSize(perPageInput);
   if (req.query.per_page !== undefined && perPage === null) {
     return res.status(400).json({ error: "Invalid `per_page` parameter" });
   }
@@ -82,7 +79,8 @@ export default async function handler(
   ] as const;
   type AllowedOrder = (typeof allowedOrders)[number];
   const order: AllowedOrder | undefined =
-    typeof req.query.order === "string" && allowedOrders.includes(req.query.order as AllowedOrder)
+    typeof req.query.order === "string" &&
+    allowedOrders.includes(req.query.order as AllowedOrder)
       ? (req.query.order as AllowedOrder)
       : undefined;
   if (req.query.order !== undefined && !order) {
@@ -102,7 +100,7 @@ export default async function handler(
   const { data, error, status } = await discourseLatestTopics({
     page: page ?? undefined,
     order,
-    categoryId: categoryId ?? DISCOURSE_DEFAULT_CATEGORY_ID,
+    categoryId: categoryId ?? DISCOURSE_PROPOSALS_CATEGORY_ID,
   });
 
   if (error || !data) {

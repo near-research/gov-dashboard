@@ -21,7 +21,7 @@ import {
 import { ReplyCard } from "./ReplyCard";
 
 interface DiscussionSectionProps {
-  discourseUrl: string;
+  discourseBaseUrl: string;
   replies: ProposalReply[];
   discussionSummary: DiscussionSummaryResponse | null;
   discussionSummaryVisible: boolean;
@@ -38,7 +38,7 @@ interface DiscussionSectionProps {
 }
 
 export function DiscussionSection({
-  discourseUrl,
+  discourseBaseUrl,
   replies,
   discussionSummary,
   discussionSummaryVisible,
@@ -204,7 +204,7 @@ export function DiscussionSection({
                 <ReplyCard
                   key={reply.id}
                   reply={reply}
-                  discourseUrl={discourseUrl}
+                  discourseBaseUrl={discourseBaseUrl}
                   summary={replySummaries[reply.id]}
                   loading={replySummaryLoading[reply.id]}
                   error={replySummaryErrors[reply.id]}

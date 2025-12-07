@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 // Allow overriding port/host; fall back to a higher, less contended port for local dev.
 const port = process.env.PLAYWRIGHT_PORT || process.env.PORT || "3000";
-const host = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
+const host = process.env.PLAYWRIGHT_HOST || "localhost";
 const hostForBrowser = host === "0.0.0.0" ? "127.0.0.1" : host;
 const baseURL =
   process.env.PLAYWRIGHT_BASE_URL || `http://${hostForBrowser}:${port}`;

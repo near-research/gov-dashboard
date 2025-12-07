@@ -121,7 +121,7 @@ describe("POST /api/chat/completions", () => {
     expect(chatSpy).not.toHaveBeenCalled();
   });
 
-  it("proxies valid non-streaming requests", async () => {
+  it("proxies valid non-streaming requests through the NearAI client", async () => {
     const reqBody = {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
@@ -130,16 +130,54 @@ describe("POST /api/chat/completions", () => {
     const req = createRequest(reqBody);
     const res = createResponse();
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => JSON.stringify({ id: "abc", choices: [] }),
-      headers: new Headers({ "content-type": "application/json" }),
-    } as any);
+    await handler(req as any, res as any);
+
+    expect(chatSpy).toHaveBeenCalledWith(reqBody, {
+      verificationId: undefined,
+      verificationNonce: undefined,
+      timeout: undefined,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.id).toBe("abc");
+  });
+
+  it("registers verification hashes when NearAI returns metadata", async () => {
+    const reqBody = {
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+      stream: false,
+    };
+    const verificationPayload = {
+      status: "verified",
+      messageId: "resp-123",
+    };
+    const responseData = {
+      id: "resp-123",
+      choices: [],
+      verification: verificationPayload,
+    };
+    chatSpy.mockResolvedValue(responseData);
+
+    const req = createRequest(reqBody);
+    const res = createResponse();
+
+    const requestHash = createHash("sha256")
+      .update(JSON.stringify(reqBody))
+      .digest("hex");
+    const responseHash = createHash("sha256")
+      .update(JSON.stringify(responseData))
+      .digest("hex");
 
     await handler(req as any, res as any);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body?.id).toBe("abc");
+    expect(registerSpy).toHaveBeenCalledWith(
+      "resp-123",
+      undefined,
+      requestHash,
+      responseHash
+    );
+    expect(res.body?.verificationId).toBe("resp-123");
+    expect(res.body?.verification?.status).toBe("verified");
   });
 
   it("streams responses with upstream content-type and hashes streamed payloads", async () => {

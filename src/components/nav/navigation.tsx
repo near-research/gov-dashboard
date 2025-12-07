@@ -269,12 +269,15 @@ export const Navigation = () => {
                     )}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/profile" className="cursor-pointer">
-                      <User className="mr-2 h-4 w-4" />
-                      Profile
-                    </Link>
-                  </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    router.push("/profile");
+                  }}
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
@@ -288,6 +291,7 @@ export const Navigation = () => {
                 onClick={handleSignIn}
                 disabled={isLoading}
                 className="gap-2"
+                aria-label={`Sign in with ${walletAccountId}`}
               >
                 <span className="hidden sm:inline-block max-w-[100px] truncate">
                   {walletAccountId}

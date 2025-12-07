@@ -239,16 +239,6 @@ export const DiscourseConnect = ({
     );
   };
 
-  if (!nearAccountId) {
-    return (
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <p className="text-slate-600">
-          Connect your NEAR wallet to link Discourse.
-        </p>
-      </div>
-    );
-  }
-
   if (step === "idle") {
     return (
       <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
@@ -262,10 +252,23 @@ export const DiscourseConnect = ({
             collaborate with the governance community.
           </p>
         </div>
-        <Button onClick={startLinking} className="w-full">
-          <ExternalLink className="mr-2 h-4 w-4" />
-          Connect to Discourse
-        </Button>
+        {!nearAccountId && (
+          <Alert className="border-slate-200 bg-slate-50">
+            <AlertDescription>
+              Connect your NEAR wallet before starting the Discourse linking
+              flow.
+            </AlertDescription>
+          </Alert>
+        )}
+        {nearAccountId && (
+          <Button onClick={startLinking} className="w-full">
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Connect to Discourse
+          </Button>
+        )}
+        {localError && (
+          <p className="text-sm text-red-600">{localError}</p>
+        )}
       </div>
     );
   }

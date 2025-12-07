@@ -255,3 +255,11 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+.nextjs-portal {
+  pointer-events: none;
+}
+
+.nextjs-portal > * {
+  pointer-events: auto;
+}

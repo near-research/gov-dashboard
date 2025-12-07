@@ -6,7 +6,7 @@ import ProposalCard from "@/components/proposal/ProposalCard";
 const { render, screen, fireEvent } = await import("@testing-library/react");
 
 vi.mock("@/config/services", () => ({
-  servicesConfig: { discourseUrl: "https://gov.test" },
+  servicesConfig: { discourseBaseUrl: "https://gov.test" },
 }));
 
 const baseProps = () => ({

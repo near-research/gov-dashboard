@@ -50,6 +50,7 @@ export interface WalletTestHarness {
     throwError?: boolean;
     accountId?: string;
   }) => Promise<void>;
+  rejectConnection?: boolean;
 }
 
 declare global {

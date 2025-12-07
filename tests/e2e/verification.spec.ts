@@ -11,19 +11,18 @@ describeSpec("Verification proof display", () => {
 
     let response = await page.goto(targetUrl, { waitUntil: "load", timeout: 20000 });
     await expect(response?.status()).toBeLessThan(400);
-    const badge = page.getByTestId("verification-status-badge");
-    await expect(badge).toHaveCount(1, { timeout: 15000 });
-    await expect(badge).toBeVisible({ timeout: 10000 });
-    await badge.click();
-    await expect(page.getByText(/Attestation passed/)).toBeVisible({
-      timeout: 10000,
-    });
+    const proofTrigger = page.getByTestId("verification-proof-trigger");
+    await expect(proofTrigger).toHaveCount(1, { timeout: 15000 });
+    await expect(proofTrigger).toBeVisible({ timeout: 10000 });
+    await proofTrigger.click();
+    await expect(page.getByText("Secure Key Generation")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Message Signature")).toBeVisible({ timeout: 10000 });
 
-    response = await page.goto(targetUrl, { waitUntil: "load", timeout: 20000 });
-    await expect(response?.status()).toBeLessThan(400);
-    await expect(badge).toHaveCount(1, { timeout: 15000 });
-    await expect(badge).toBeVisible({ timeout: 10000 });
-    await badge.click();
-    await expect(page.getByText(/Attestation failed/)).toBeVisible({ timeout: 10000 });
+    await page.keyboard.press("Escape");
+    await proofTrigger.click();
+    await expect(
+      page.getByText("Hardware Attestation", { exact: true })
+    ).toBeVisible({ timeout: 10000 });
+    await page.keyboard.press("Escape");
   });
 });

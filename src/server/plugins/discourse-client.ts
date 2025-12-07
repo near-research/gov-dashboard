@@ -5,10 +5,7 @@ import("server-only").catch(() => {
 
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
-import {
-  DISCOURSE_RENDER_LIMIT,
-  clampRenderLimit,
-} from "@/config/discourse";
+import { DISCOURSE_RENDER_LIMIT, clampRenderLimit } from "@/config/discourse";
 import {
   CategorySchema,
   categoryInputSchema,
@@ -20,6 +17,7 @@ import {
   searchInputSchema,
   SearchResultSchema,
   TagSchema,
+  TopicSchema,
   TopicResultSchema,
   topicInputSchema,
   type Category,
@@ -32,10 +30,9 @@ import {
   type Topic,
 } from "./discourse-schemas";
 import {
-  runtimeRouterFactory,
-  type DiscourseRouter,
-  type DiscourseRouterFactory,
-} from "./discourse-config";
+  discourseClient as importedDiscourseClient,
+  type DiscourseClient,
+} from "./discourse";
 
 export type {
   Topic,
@@ -72,7 +69,9 @@ const parseOutput = <T extends z.ZodTypeAny>(
   message: string
 ): { data: z.infer<T> | null; error?: ClientResult<never> } => {
   const parsed = schema.safeParse(data);
-  return parsed.success ? { data: parsed.data } : { data: null, error: validationFailure(message) };
+  return parsed.success
+    ? { data: parsed.data }
+    : { data: null, error: validationFailure(message) };
 };
 
 const capCollection = <T>(items: T[] | undefined, limit: number) =>
@@ -103,6 +102,8 @@ const friendlyMessageForCode: Record<string, string> = {
 function toClientError(error: unknown): ClientResult<never> {
   const defaultMessage = "Unexpected error—please try again.";
 
+  console.error("[discourse-client] Error:", error);
+
   if (error instanceof ORPCError) {
     const status = statusForCode[error.code] ?? 500;
     const message = friendlyMessageForCode[error.code] ?? defaultMessage;
@@ -116,6 +117,14 @@ function toClientError(error: unknown): ClientResult<never> {
       error: message,
       status,
     };
+  }
+
+  if (
+    error instanceof TypeError &&
+    error.message.includes("is not a function")
+  ) {
+    console.error("[discourse-client] Method not found:", error.message);
+    return { error: "Service configuration error", status: 500 };
   }
 
   if (error instanceof Error) {
@@ -135,19 +144,39 @@ function validationFailure(issueMessage: string): ClientResult<never> {
 // Client factory
 // ---------------------------------------------------------------------------
 
-export const createDiscourseClient = (
-  routerFactory: DiscourseRouterFactory
+export const createDiscourseClientWrapper = (
+  clientFactory: () => Promise<DiscourseClient>
 ) => {
-  let routerPromise: Promise<DiscourseRouter> | null = null;
+  let clientPromise: Promise<DiscourseClient> | null = null;
 
-  const getRouter = async () => {
-    if (!routerPromise) {
-      routerPromise = routerFactory();
+  const getClient = async () => {
+    if (!clientPromise) {
+      clientPromise = clientFactory();
     }
     try {
-      return await routerPromise;
+      const client = await clientPromise;
+
+      const requiredMethods = [
+        "search",
+        "getLatestTopics",
+        "getTopic",
+        "getPost",
+        "getPostReplies",
+        "getCategories",
+        "getCategory",
+        "getTags",
+      ];
+
+      for (const method of requiredMethods) {
+        if (typeof (client as Record<string, unknown>)[method] !== "function") {
+          console.error(`[discourse-client] Missing method: ${method}`);
+          throw new Error(`Discourse client missing method: ${method}`);
+        }
+      }
+
+      return client;
     } catch (error) {
-      routerPromise = null;
+      clientPromise = null;
       throw error;
     }
   };
@@ -162,13 +191,17 @@ export const createDiscourseClient = (
     const renderLimit = clampRenderLimit(limit);
 
     try {
-      const router = await getRouter();
+      const client = await getClient();
       const routerInput: Record<string, unknown> = {
         ...searchParams,
         page: parsed.data.page,
       };
-      const data = await router.search(routerInput);
-      const parsedData = parseOutput(SearchResultSchema, data, "Invalid search response");
+      const data = await client.search(routerInput);
+      const parsedData = parseOutput(
+        SearchResultSchema,
+        data,
+        "Invalid search response"
+      );
       if (!parsedData.data) return parsedData.error!;
 
       const { posts, topics, ...rest } = parsedData.data;
@@ -191,8 +224,8 @@ export const createDiscourseClient = (
     if (!parsed.data) return parsed.error!;
 
     try {
-      const router = await getRouter();
-      const data = await router.getLatestTopics(parsed.data);
+      const client = await getClient();
+      const data = await client.getLatestTopics(parsed.data);
       const parsedData = parseOutput(
         PaginatedTopicsSchema,
         data,
@@ -202,7 +235,10 @@ export const createDiscourseClient = (
         ? {
             data: {
               ...parsedData.data,
-              topics: capCollection(parsedData.data.topics, DISCOURSE_RENDER_LIMIT),
+              topics: capCollection(
+                parsedData.data.topics,
+                DISCOURSE_RENDER_LIMIT
+              ),
             },
           }
         : parsedData.error!;
@@ -218,8 +254,8 @@ export const createDiscourseClient = (
     if (!parsed.data) return parsed.error!;
 
     try {
-      const router = await getRouter();
-      const data = await router.getTopic(parsed.data);
+      const client = await getClient();
+      const data = await client.getTopic(parsed.data);
       const parsedData = parseOutput(
         TopicResultSchema,
         data,
@@ -227,7 +263,10 @@ export const createDiscourseClient = (
       );
       if (!parsedData.data) return parsedData.error!;
 
-      const posts = capCollection(parsedData.data.posts, DISCOURSE_RENDER_LIMIT);
+      const posts = capCollection(
+        parsedData.data.posts,
+        DISCOURSE_RENDER_LIMIT
+      );
       return { data: posts ? { ...parsedData.data, posts } : parsedData.data };
     } catch (error) {
       return toClientError(error);
@@ -241,8 +280,8 @@ export const createDiscourseClient = (
     if (!parsed.data) return parsed.error!;
 
     try {
-      const router = await getRouter();
-      const data = await router.getPost(parsed.data);
+      const client = await getClient();
+      const data = await client.getPost(parsed.data);
       const parsedData = parseOutput(
         PostResultSchema,
         data,
@@ -261,8 +300,8 @@ export const createDiscourseClient = (
     if (!parsed.data) return parsed.error!;
 
     try {
-      const router = await getRouter();
-      const data = await router.getPostReplies(parsed.data);
+      const client = await getClient();
+      const data = await client.getPostReplies(parsed.data);
       const parsedData = parseOutput(
         RepliesResultSchema,
         data,
@@ -271,7 +310,10 @@ export const createDiscourseClient = (
       return parsedData.data
         ? {
             data: {
-              posts: capCollection(parsedData.data.replies, DISCOURSE_RENDER_LIMIT),
+              posts: capCollection(
+                parsedData.data.replies,
+                DISCOURSE_RENDER_LIMIT
+              ),
               hasMore: parsedData.data.hasMore ?? false,
               nextPage: parsedData.data.nextPage ?? null,
             },
@@ -286,8 +328,8 @@ export const createDiscourseClient = (
     ClientResult<{ categories: Category[] }>
   > => {
     try {
-      const router = await getRouter();
-      const data = await router.getCategories();
+      const client = await getClient();
+      const data = await client.getCategories();
       const parsed = parseOutput(
         z.object({ categories: z.array(CategorySchema) }),
         data,
@@ -308,8 +350,8 @@ export const createDiscourseClient = (
     if (!parsed.data) return parsed.error!;
 
     try {
-      const router = await getRouter();
-      const data = await router.getCategory(parsed.data);
+      const client = await getClient();
+      const data = await client.getCategory(parsed.data);
       const parsedData = parseOutput(
         z.object({
           category: CategorySchema,
@@ -327,8 +369,9 @@ export const createDiscourseClient = (
 
   const discourseTags = async (): Promise<ClientResult<{ tags: Tag[] }>> => {
     try {
-      const router = await getRouter();
-      const data = await router.getTags();
+      const client = await getClient();
+      const data = await client.getTags();
+
       const parsed = parseOutput(
         z.object({ tags: z.array(TagSchema) }),
         data,
@@ -352,7 +395,9 @@ export const createDiscourseClient = (
   };
 };
 
-const discourseClient = createDiscourseClient(runtimeRouterFactory);
+const discourseClientWrapper = createDiscourseClientWrapper(() =>
+  Promise.resolve(importedDiscourseClient)
+);
 
 export const {
   search: discourseSearch,
@@ -363,6 +408,6 @@ export const {
   categories: discourseCategories,
   category: discourseCategory,
   tags: discourseTags,
-} = discourseClient;
+} = discourseClientWrapper;
 
-export default discourseClient;
+export default discourseClientWrapper;

@@ -1,15 +1,12 @@
-// components/chat/Chatbot.tsx
-import { useMemo, useState } from "react";
-import MarkdownIt from "markdown-it";
-import { ChatMessages } from "./ChatMessages";
-import { ChatInput } from "./ChatInput";
-import { useChatSession } from "@/hooks/useChatSession";
+import { AgentChatPanel } from "./AgentChatPanel";
+import type { ChatQuickAction } from "./ChatInput";
 
 interface ChatbotProps {
   model?: string;
   className?: string;
   placeholder?: string;
   welcomeMessage?: string;
+  quickActions?: ChatQuickAction[];
 }
 
 export const Chatbot = ({
@@ -17,61 +14,16 @@ export const Chatbot = ({
   className = "",
   placeholder = "Ask me anything...",
   welcomeMessage = "Welcome to NEAR AI Assistant. How can I help you today?",
+  quickActions = [],
 }: ChatbotProps) => {
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const [inputHeight, setInputHeight] = useState(220);
-
-  const markdown = useMemo(
-    () =>
-      new MarkdownIt({
-        html: false,
-        linkify: true,
-        breaks: true,
-      }),
-    []
-  );
-
-  const {
-    events,
-    uiEvents,
-    handleSend,
-    clearChat,
-    isInitialized,
-    isLoading,
-    shouldShowTypingIndicator,
-    error,
-  } = useChatSession({ model });
-
-  const handleNearBottomChange = (nearBottom: boolean) => {
-    setIsAtBottom(nearBottom);
-  };
-
   return (
-    <div className={`flex h-full min-h-0 flex-col ${className}`}>
-      <div className="flex-1 min-h-0">
-        <ChatMessages
-          events={uiEvents}
-          isLoading={isLoading}
-          isInitialized={isInitialized}
-          showTypingIndicator={shouldShowTypingIndicator}
-          welcomeMessage={welcomeMessage}
-          model={model}
-          markdown={markdown}
-          isAtBottom={isAtBottom}
-          onNearBottomChange={handleNearBottomChange}
-          bottomOffset={inputHeight}
-        />
-      </div>
-
-      <ChatInput
-        onSend={handleSend}
-        onClear={clearChat}
-        isLoading={isLoading}
-        error={error}
-        placeholder={placeholder}
-        canClear={events.length > 0}
-        onHeightChange={setInputHeight}
-      />
-    </div>
+    <AgentChatPanel
+      model={model}
+      className={className}
+      placeholder={placeholder}
+      welcomeMessage={welcomeMessage}
+      quickActions={quickActions}
+      trackingPath="/chat"
+    />
   );
 };

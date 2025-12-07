@@ -47,7 +47,7 @@ const ensureVerificationSession = (
 };
 
 const discussionLimiter = createRateLimiter(rateLimitConfig.discussionSummary);
-const DISCOURSE_URL = servicesConfig.discourseUrl;
+const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
 
 interface ReplyWithEngagement extends DiscoursePost {
   likeCount: number;

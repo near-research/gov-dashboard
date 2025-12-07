@@ -1,5 +1,11 @@
 import { useEffect } from "react";
 import { Chatbot } from "@/components/chat/Chatbot";
+import type { ChatQuickAction } from "@/components/chat/ChatInput";
+
+const chatQuickActions: ChatQuickAction[] = [
+  { label: "Recent proposals", message: "list recent proposals" },
+  { label: "Quick summary", message: "summarize the latest discussion" },
+];
 
 export default function ChatPage() {
   useEffect(() => {
@@ -18,6 +24,7 @@ export default function ChatPage() {
             welcomeMessage="I can help you participate in the House of Stake."
             placeholder="Ask about proposals, policies, processes, etc."
             className="h-full"
+            quickActions={chatQuickActions}
           />
         </div>
       </div>

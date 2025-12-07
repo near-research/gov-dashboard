@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import { JSDOM } from "jsdom";
+import React from "react";
 
 if (!process.env.NODE_ENV) {
   (process.env as any).NODE_ENV = "test";
@@ -61,6 +62,9 @@ const ensureDom = () => {
 };
 
 ensureDom();
+if (!(globalThis as any).React) {
+  (globalThis as any).React = React;
+}
 
 await import("@testing-library/jest-dom/vitest");
 const { cleanup } = await import("@testing-library/react");

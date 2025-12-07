@@ -5,15 +5,12 @@ import { extractVerificationMetadata } from "@/verification/normalize";
 import { normalizeVerificationPayload } from "@/verification/server";
 import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
 import { createHash, randomBytes } from "crypto";
-import {
-  verify,
-  type VerificationResult,
-  type VerifyOptions,
-} from "near-sign-verify";
+import { verify, type VerificationResult, type VerifyOptions } from "near-sign-verify";
 import { getNearAIClient } from "@/lib/near-ai/client";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
 import { registerVerificationSession } from "@/verification/server";
 import { z } from "zod";
+import { siwnRecipient } from "@/config/siwn";
 
 type ScreeningErrorDetails = {
   code?: string;
@@ -207,7 +204,7 @@ export async function verifyNearAuth(
 
   try {
     const verifyOptions = {
-      expectedRecipient: "social.near",
+      expectedRecipient: siwnRecipient,
       nonceMaxAge: 5 * 60 * 1000,
       ...(options || {}),
     } as VerifyOptions;
