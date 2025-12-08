@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import type { Page, Route } from "@playwright/test";
 import type { AGUIEvent } from "@/types/agui-events";
+import { EventType } from "@/types/agui-events";
 import proposalsFixture from "../../fixtures/playwright/proposals-latest.json";
 import screeningFixture from "../../fixtures/playwright/screening-response.json";
 import topicSummaryFixture from "../../fixtures/playwright/discourse-topic-summary.json";
@@ -18,11 +19,29 @@ type PageWithAuthOverride = Page & {
 export const markPageWithCustomAuthRoutes = (page: Page) => {
   (page as PageWithAuthOverride).__hasCustomAuthRoutes__ = true;
 };
+export async function mockProposalRevisions(page: Page, proposalId: number | string) {
+  await page.route(`**/api/proposals/${proposalId}/revisions`, (route) => {
+    logRouteHit("api/proposals/:id/revisions (mock helper)", route);
+    if (route.request().method() === "GET") {
+      const payload = {
+        ...proposalRevisionsFixture,
+        post_id: Number.isFinite(Number(proposalId))
+          ? Number(proposalId)
+          : proposalRevisionsFixture.post_id,
+      };
+      respondWithJson(route, payload);
+      return;
+    }
+    route.continue();
+  });
+}
 const logRouteHit = (label: string, route: Route) => {
   if (!shouldLogMocks) return;
   const request = route.request();
   console.debug(`[playwright mock] ${label} ${request.method()} ${request.url()}`);
 };
+
+const apiRoute = (path: string) => `**${path}`;
 
 const respondWithJson = (route: Route, payload: unknown) => {
   route.fulfill({
@@ -32,10 +51,49 @@ const respondWithJson = (route: Route, payload: unknown) => {
   });
 };
 
-const createSsePayload = (events: Record<string, unknown>[]) =>
+const createSsePayload = (events: unknown[]) =>
   `${events
     .map((event) => `data: ${JSON.stringify(event)}\n\n`)
     .join("")}data: [DONE]\n\n`;
+
+const defaultChatCompletionChunks = [
+  {
+    choices: [
+      {
+        delta: {
+          role: "assistant",
+          content: "NEAR AI assistant says hello from the mocked stream.",
+        },
+        index: 0,
+        finish_reason: null,
+      },
+    ],
+  },
+  {
+    choices: [
+      {
+        delta: {
+          role: "assistant",
+          content: "Here is a quick plan for governance updates.",
+        },
+        index: 0,
+        finish_reason: null,
+      },
+    ],
+  },
+  {
+    choices: [
+      {
+        delta: {
+          role: "assistant",
+          content: "Final thought from NEAR AI.",
+        },
+        index: 0,
+        finish_reason: "stop",
+      },
+    ],
+  },
+];
 
 type VerificationSessionData = {
   nonce: string;
@@ -246,9 +304,46 @@ export const registerPlaywrightMocks = (
     });
   });
 
-  page.route("/api/screen", (route) => {
+  page.route(apiRoute("/api/screen"), (route) => {
     logRouteHit("api/screen", route);
     respondWithJson(route, screeningFixture);
+  });
+
+  page.route(/\/api\/discourse\/topics\/\d+$/, (route) => {
+    logRouteHit("api/discourse/topics/:id", route);
+    const topicRevisions = [
+      { version: 1, created_at: "2024-01-01T00:00:00Z" },
+      { version: 2, created_at: "2024-01-02T00:00:00Z" },
+      { version: 3, created_at: "2024-01-03T00:00:00Z" },
+    ];
+    const topicId = proposalDetailFixture.topic_id ?? 42;
+    const topicSlug = proposalDetailFixture.topic_slug ?? "test-proposal";
+    const topicUrl = `https://gov.near.org/t/${topicSlug}/${topicId}`;
+    const currentTopicRevision = 3;
+    route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: topicId,
+        title: proposalDetailFixture.title,
+        slug: topicSlug,
+        url: topicUrl,
+        current_revision: currentTopicRevision,
+        post_stream: {
+          posts: [
+            {
+              id: 1,
+              version: currentTopicRevision,
+              revisions: currentTopicRevision,
+              cooked: "<p>v3 content</p>",
+              username: proposalDetailFixture.username,
+              created_at: "2024-01-03T00:00:00Z",
+            },
+          ],
+        },
+        revisions: topicRevisions,
+      }),
+    });
   });
 
   page.route(/\/api\/discourse\/topics\/\d+\/summarize/, (route) => {
@@ -262,98 +357,89 @@ export const registerPlaywrightMocks = (
   });
 
   if (!options?.skipChatCompletionsStream) {
-    page.route("/api/chat/completions", (route) => {
+    page.route(apiRoute("/api/chat/completions"), (route) => {
       logRouteHit("api/chat/completions", route);
       route.fulfill({
         status: 200,
         headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
-        body: createSsePayload([
-          {
-            id: "mock-chat-message-1",
-            object: "chat.completion.chunk",
-            choices: [
-              {
-                delta: {
-                  role: "assistant",
-                  content: "NEAR AI assistant says hello from the mocked stream.",
-                },
-                index: 0,
-                finish_reason: null,
-              },
-            ],
-          },
-          {
-            id: "mock-chat-message-2",
-            object: "chat.completion.chunk",
-            choices: [
-              {
-                delta: {
-                  role: "assistant",
-                  content: "Here is a quick plan for governance updates.",
-                },
-                index: 0,
-                finish_reason: null,
-              },
-            ],
-          },
-          {
-            id: "mock-chat-message-3",
-            object: "chat.completion.chunk",
-            choices: [
-              {
-                delta: {
-                  role: "assistant",
-                  content: "Final thought from NEAR AI.",
-                },
-                index: 0,
-                finish_reason: "stop",
-              },
-            ],
-          },
-        ]),
+        body: createSsePayload(defaultChatCompletionChunks),
       });
     });
   }
 
-  page.route("/api/agent", (route) => {
+  const buildDefaultAgentEvents = (): AGUIEvent[] => {
+    const now = Date.now();
+    const messageId = `mock-agent-${now}`;
+    const runId = `run-${now}`;
+    const threadId = `thread-${now}`;
+
+    return [
+      {
+        type: EventType.RUN_STARTED,
+        threadId,
+        runId,
+        timestamp: now,
+      },
+      {
+        type: EventType.TEXT_MESSAGE_START,
+        messageId,
+        role: "assistant",
+        timestamp: now + 1,
+      },
+      {
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId,
+        delta: "NEAR AI assistant says hello from the mocked stream.",
+        timestamp: now + 2,
+      },
+      {
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId,
+        delta: "Here is a quick plan for governance updates.",
+        timestamp: now + 3,
+      },
+      {
+        type: EventType.STATE_DELTA,
+        delta: [
+          { op: "replace", path: "/title", value: "AI-augmented title" },
+          {
+            op: "replace",
+            path: "/content",
+            value: "Agent suggested content with KPIs and a clearer objective.",
+          },
+        ],
+        timestamp: now + 4,
+      },
+      {
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId,
+        delta: "Final thought from NEAR AI.",
+        timestamp: now + 5,
+      },
+      {
+        type: EventType.TEXT_MESSAGE_END,
+        messageId,
+        timestamp: now + 6,
+      },
+      {
+        type: EventType.RUN_FINISHED,
+        threadId,
+        runId,
+        timestamp: now + 7,
+      },
+    ];
+  };
+
+  page.route(apiRoute("/api/agent"), (route) => {
     logRouteHit("api/agent", route);
     route.fulfill({
       status: 200,
       headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
-      body: createSsePayload([
-        {
-          id: "mock-agent-message-1",
-          object: "chat.completion.chunk",
-          choices: [
-            {
-              delta: {
-                role: "assistant",
-                content: "Agent flow returns a tool-assisted verdict.",
-              },
-              index: 0,
-              finish_reason: null,
-            },
-          ],
-        },
-        {
-          id: "mock-agent-message-2",
-          object: "chat.completion.chunk",
-          choices: [
-            {
-              delta: {
-                role: "assistant",
-                content: "Agent final report ready.",
-              },
-              index: 0,
-              finish_reason: "stop",
-            },
-          ],
-        },
-      ]),
+      body: createSsePayload(buildDefaultAgentEvents()),
     });
   });
 
-  page.route("/api/verification/proof", (route) => {
+  page.route(apiRoute("/api/verification/proof"), (route) => {
     logRouteHit("api/verification/proof", route);
     respondWithJson(route, {
       signature: { text: "mock-signature" },
@@ -367,7 +453,7 @@ export const registerPlaywrightMocks = (
     });
   });
 
-  page.route("/api/verification/register-session", (route) => {
+  page.route(apiRoute("/api/verification/register-session"), (route) => {
     logRouteHit("api/verification/register-session", route);
     const body = parseJsonBody(route);
     const verificationId = typeof body.verificationId === "string" ? body.verificationId : "";
@@ -400,7 +486,7 @@ export const registerPlaywrightMocks = (
     });
   });
 
-  page.route("/api/verification/session", (route) => {
+  page.route(apiRoute("/api/verification/session"), (route) => {
     logRouteHit("api/verification/session", route);
     const body = parseJsonBody(route);
     const verificationId = typeof body.verificationId === "string" ? body.verificationId : "";

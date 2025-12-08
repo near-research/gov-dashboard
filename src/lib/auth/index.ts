@@ -1,8 +1,8 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { siwn } from "better-near-auth";
-import { db } from "./db";
-import * as authSchema from "./db/schema";
+import { db } from "@/lib/db";
+import * as authSchema from "@/lib/db/schema";
 import { siwnRecipient } from "@/config/siwn";
 
 if (!process.env.BETTER_AUTH_SECRET) {

@@ -20,6 +20,7 @@ export const fetchVerificationProof = async ({
 }: FetchVerificationProofParams): Promise<RemoteProof> => {
   const response = await fetch("/api/verification/proof", {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       verificationId,
@@ -83,6 +84,7 @@ export const verifyWithNrasService = async ({
 }: VerifyNrasRequest) => {
   const response = await fetch("/api/verification/nras", {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       verificationId,

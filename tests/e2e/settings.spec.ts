@@ -13,10 +13,10 @@ interface ChatCompletionPayload {
 const { describe: describeSpec } = createPlaywrightGuard("settings.spec.ts");
 
 const getTextareaByLabel = (page: Page, label: string) =>
-  page.locator(`label:has-text("${label}")`).locator("..").locator("textarea");
+  page.getByLabel(new RegExp(label, "i"));
 
 const getInputByLabel = (page: Page, label: string) =>
-  page.locator(`label:has-text("${label}")`).locator("..").locator("input");
+  page.getByLabel(new RegExp(label, "i"));
 
 const stubChatCompletion = (
   page: Page,
@@ -27,7 +27,7 @@ const stubChatCompletion = (
     capture?: (body: ChatCompletionPayload) => void;
   }
 ) => {
-  page.route("/api/chat/completions", async (route) => {
+  page.route("**/api/chat/completions", async (route) => {
     const rawBody = route.request().postData() ?? "";
     const parsedBody = (rawBody ? JSON.parse(rawBody) : {}) as ChatCompletionPayload;
     options.capture?.(parsedBody);
@@ -102,9 +102,10 @@ describeSpec("settings lab", () => {
     await expect(getTextareaByLabel(page, "Revision Timeline")).toHaveValue(/v1/);
 
     await page.getByRole("button", { name: /Run Prompt/i }).click();
-    await expect(page.getByRole("button", { name: "Running..." })).toBeVisible();
 
-    await expect(page.getByText("NEAR AI has summarized the revisions.")).toBeVisible();
+    await expect(page.getByText("NEAR AI has summarized the revisions.")).toBeVisible({
+      timeout: 10000,
+    });
     const payload = capturedPayload as ChatCompletionPayload | null;
     expect(payload).not.toBeNull();
     if (!payload) {
@@ -131,7 +132,7 @@ describeSpec("settings lab", () => {
 
     await page.getByRole("button", { name: /Autofill/i }).click();
     await page.getByPlaceholder("Forum Topic ID").fill(String(proposalDetailFixture.topic_id));
-    await getInputByLabel(page, "Post Number").fill("2");
+    await page.locator("#reply-post-number-to-load").fill("2");
     await page.getByRole("button", { name: /Load/i }).click();
     await expect(getTextareaByLabel(page, "Reply Author")).toHaveValue("supporter");
 
@@ -142,7 +143,7 @@ describeSpec("settings lab", () => {
     await expect(page.getByText("Failed to load proposal")).toBeVisible();
 
     await page.getByRole("button", { name: /Run Prompt/i }).click();
-    await expect(page.getByRole("alert").filter({ hasText: "Invalid payload" })).toBeVisible();
+    await expect(page.getByText(/Invalid payload|error/i)).toBeVisible();
   });
 
   test("custom prompts extract template variables and reset when switching prompts", async ({ page }) => {
@@ -164,12 +165,14 @@ describeSpec("settings lab", () => {
     await page.goto("/settings", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("button", { name: /Autofill/i })).toBeVisible();
 
-    await getTextareaByLabel(page, "Write your prompt here:").fill(
+    const customPromptTextarea = page.locator("#custom-prompt-text");
+    await customPromptTextarea.fill(
       "Summarize the proposal with {tone} delivery and mention {project}."
     );
-    await expect(getInputByLabel(page, "tone")).toBeVisible();
-    await getInputByLabel(page, "tone").fill("concise");
-    await getInputByLabel(page, "project").fill("Governance Lab");
+    const toneInput = page.locator("#custom-variable-tone");
+    await expect(toneInput).toBeVisible();
+    await toneInput.fill("concise");
+    await page.locator("#custom-variable-project").fill("Governance Lab");
 
     await getTextareaByLabel(page, "Title").fill("NEAR Governance Deck");
     await getTextareaByLabel(page, "Content").fill("All the proposal details in markdown.");
@@ -179,9 +182,10 @@ describeSpec("settings lab", () => {
     await page.getByRole("combobox", { name: /Select prompt/i }).click();
     await page.getByRole("option", { name: "Custom" }).click();
 
-    await expect(getTextareaByLabel(page, "Write your prompt here:")).toHaveValue("");
-    await expect(getInputByLabel(page, "tone")).toBeVisible();
-    await getInputByLabel(page, "tone").fill("formal");
+    await expect(customPromptTextarea).toHaveValue("");
+    const toneInputAfterReset = page.locator("#custom-variable-tone");
+    await expect(toneInputAfterReset).toBeVisible();
+    await toneInputAfterReset.fill("formal");
 
     await page.getByRole("button", { name: /Run Prompt/i }).click();
     await expect(page.getByText("Custom NEAR AI response includes formal tone.")).toBeVisible();

@@ -164,15 +164,6 @@ describe("verification/proof end-to-end chain (integration, mocked fetch)", () =
             mr_config: "db669af634b75c7f298400f3b6c2aa8ba54998bac83e23d10ab4eaadc4b50ccf",
             report_data: `nonce=${sessionNonce};signer=${attestedAddress}`,
           }),
-      })
-      // Sigstore provenance
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          repository: "near/nearai-cloud-api",
-          tag: "v1.0.0",
-          workflow: "release.yml",
-        }),
       });
 
     vi.stubGlobal("fetch", fetchSpy);
@@ -254,7 +245,7 @@ describe("verification/proof end-to-end chain (integration, mocked fetch)", () =
 
     await handler(req, res);
     expect(state.status).toBe(400);
-    expect(state.body?.error).toBe("Verification failed");
+    expect(state.body?.error).toContain("Verification failed");
   });
 
   it("fails when the verification session disappears between registration and proof", async () => {

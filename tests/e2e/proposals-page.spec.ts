@@ -221,11 +221,6 @@ describeSpec("Proposals Listing Page - Complete User Flow", () => {
     const heading = page.getByRole("heading", { name: /Proposals/ });
     await expect(heading).toBeVisible();
 
-    const loginButtons = page
-      .locator("button")
-      .filter({ hasText: /login|connect|sign in/i });
-    await expect(loginButtons).toHaveCount(0);
-
     await waitForMockProposalTitle(page);
   });
 

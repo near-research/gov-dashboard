@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders } from "http";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { GetServerSidePropsContext } from "next";
-import { auth } from "./auth";
+import { auth } from "@/lib/auth";
 
 type VerificationContext = {
   verificationId?: string;

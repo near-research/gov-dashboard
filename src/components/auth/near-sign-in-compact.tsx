@@ -1,12 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
-import { authClient } from "@/lib/auth-client";
+import { useState } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "sonner";
-import { siwnRecipient } from "@/config/siwn";
 import { isUserRejected } from "@/lib/auth/retry";
-import { nearSignInWithRetry } from "@/lib/auth/near-sign-in";
 
 export function NearSignInCompact() {
   const {
@@ -19,50 +16,20 @@ export function NearSignInCompact() {
   } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleAuth = async () => {
+  const handleSignIn = async () => {
     if (isLoading) return;
     setIsLoading(true);
 
     try {
-      const result = await nearSignInWithRetry({
-        walletAccountId,
-        connectWallet: walletSignIn,
-        requestSignIn: () =>
-          new Promise<void>((resolve, reject) => {
-            authClient.requestSignIn.near(
-              { recipient: siwnRecipient },
-              { onSuccess: resolve, onError: reject }
-            );
-          }),
-        signIn: () =>
-          new Promise<void>((resolve, reject) => {
-            authClient.signIn.near(
-              { recipient: siwnRecipient },
-              { onSuccess: resolve, onError: reject }
-            );
-          }),
-        disconnectOnError: async () => {
-          await authClient.near.disconnect();
-          await walletSignOut();
-        },
-        retryBaseDelayMs: 0,
-      });
-
-      if (result.status === "success") {
-        toast.success("Signed in");
-        return;
-      }
-
-      toast.error(result.message);
+      await walletSignIn();
+      toast.success("Signed in");
     } catch (err: any) {
       const rejected = isUserRejected(err);
       const message = rejected
-        ? "Wallet connection cancelled"
-        : err?.message || "Authentication failed";
-      toast.error(message);
+        ? "Sign in cancelled"
+        : err?.message || "Failed to sign in";
       if (!rejected) {
-        await authClient.near.disconnect();
-        await walletSignOut();
+        toast.error(message);
       }
     } finally {
       setIsLoading(false);
@@ -70,23 +37,14 @@ export function NearSignInCompact() {
   };
 
   const handleSignOut = async () => {
+    if (isLoading) return;
     setIsLoading(true);
+
     try {
-      await authClient.signOut({
-        fetchOptions: {
-          onSuccess: async () => {
-            await authClient.near.disconnect();
-            await walletSignOut();
-          },
-        },
-      });
+      await walletSignOut();
       toast.success("Signed out");
     } catch (err) {
       console.error("Sign out error:", err);
-      // Still try to disconnect wallets
-      await authClient.near.disconnect();
-      await walletSignOut();
-      toast.error("Signed out locally, but session logout failed");
     } finally {
       setIsLoading(false);
     }
@@ -97,11 +55,7 @@ export function NearSignInCompact() {
   }
 
   if (user) {
-    const contact =
-      typeof user === "object" && user
-        ? (user as { name?: string | null; email?: string | null })
-        : null;
-    const displayName = nearAccountId || contact?.name || contact?.email;
+    const displayName = nearAccountId || walletAccountId;
 
     return (
       <div className="flex items-center gap-3">
@@ -110,7 +64,8 @@ export function NearSignInCompact() {
         </span>
         <button
           onClick={handleSignOut}
-          className="text-sm text-gray-500 hover:text-gray-700 transition"
+          disabled={isLoading}
+          className="text-sm text-gray-500 hover:text-gray-700 transition disabled:opacity-50"
         >
           Sign out
         </button>
@@ -120,11 +75,11 @@ export function NearSignInCompact() {
 
   return (
     <button
-      onClick={handleAuth}
+      onClick={handleSignIn}
       disabled={isLoading}
       className="px-4 py-2 bg-black text-white text-sm rounded-lg hover:bg-gray-800 transition disabled:opacity-50"
     >
-      {isLoading ? "Connecting HOT Wallet..." : "Sign in with HOT Wallet"}
+      {isLoading ? "Signing in..." : "Sign in"}
     </button>
   );
 }

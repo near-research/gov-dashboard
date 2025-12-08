@@ -1,29 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "sonner";
-import { siwnRecipient } from "@/config/siwn";
 import { isUserRejected } from "@/lib/auth/retry";
-import { nearSignInWithRetry } from "@/lib/auth/near-sign-in";
 
 export function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const {
-    user,
-    isPending,
-    walletAccountId,
-    walletSignIn,
-    walletSignOut,
-  } = useAuth();
+  const { user, isPending, walletAccountId, walletSignIn, walletSignOut } =
+    useAuth();
   const redirect = searchParams.get("redirect") || "/";
 
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasRedirected, setHasRedirected] = useState(false);
 
@@ -34,92 +24,34 @@ export function SignInForm() {
     }
   }, [user, isPending, hasRedirected, router, redirect]);
 
-  // Step 1: Connect wallet using useNear (hot-labs/near-connect)
-  const handleConnectWallet = async () => {
+  const handleSignIn = async () => {
+    if (isConnecting) return;
     setIsConnecting(true);
     setError(null);
 
     try {
       await walletSignIn();
-      toast.success("Wallet connected");
+      toast.success("Signed in successfully");
     } catch (err: any) {
       const rejected = isUserRejected(err);
-      const message = rejected ? "Wallet connection cancelled" : err?.message || "Failed to connect wallet";
+      const message = rejected
+        ? "Sign in cancelled"
+        : err?.message || "Failed to sign in";
       setError(message);
-      toast.error(message);
+      if (!rejected) {
+        toast.error(message);
+      }
     } finally {
       setIsConnecting(false);
     }
   };
 
-  // Step 2: Authenticate with Better Auth (creates session)
-  const handleSignIn = async () => {
-    if (isSigningIn) return;
-    setIsSigningIn(true);
-    setError(null);
-
-    try {
-      const result = await nearSignInWithRetry({
-        walletAccountId,
-        connectWallet: walletSignIn,
-        requestSignIn: () =>
-          new Promise<void>((resolve, reject) => {
-            authClient.requestSignIn.near(
-              { recipient: siwnRecipient },
-              { onSuccess: resolve, onError: reject }
-            );
-          }),
-        signIn: () =>
-          new Promise<void>((resolve, reject) => {
-            authClient.signIn.near(
-              { recipient: siwnRecipient },
-              { onSuccess: resolve, onError: reject }
-            );
-          }),
-        disconnectOnError: async () => {
-          await authClient.near.disconnect();
-          await walletSignOut();
-        },
-        retryBaseDelayMs: 0,
-      });
-
-      if (result.status === "success") {
-        toast.success(
-          `Signed in as ${walletAccountId || "your connected wallet"}`
-        );
-        router.push(redirect);
-        return;
-      }
-
-      setError(result.message);
-      toast.error(result.message);
-    } catch (err: any) {
-      const rejected = isUserRejected(err);
-      const message = rejected ? "Wallet connection cancelled" : err?.message || "Authentication failed";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
-  // Disconnect both wallets and sign out
   const handleDisconnect = async () => {
-    setIsDisconnecting(true);
     try {
-      try {
-        await authClient.signOut();
-      } catch (err: any) {
-        toast.error(err?.message || "Failed to sign out from session");
-      }
-
-      await authClient.near.disconnect();
       await walletSignOut();
       toast.success("Disconnected");
     } catch (err) {
       console.error("Disconnect error:", err);
-    } finally {
-      setIsDisconnecting(false);
     }
   };
 
@@ -131,7 +63,6 @@ export function SignInForm() {
     );
   }
 
-  // Already signed in
   if (user && hasRedirected) {
     return null;
   }
@@ -145,37 +76,27 @@ export function SignInForm() {
         </div>
 
         <div className="space-y-4">
-          {!walletAccountId ? (
+          {!user ? (
             <button
-              onClick={handleConnectWallet}
+              onClick={handleSignIn}
               disabled={isConnecting}
               className="w-full py-3 px-4 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50"
             >
-              {isConnecting ? "Connecting HOT Wallet..." : "Connect HOT Wallet"}
+              {isConnecting ? "Connecting & Signing..." : "Connect Wallet"}
             </button>
           ) : (
             <div className="space-y-4">
               <div className="p-3 bg-gray-50 rounded-lg text-center">
-                <p className="text-sm text-gray-500">Connected wallet</p>
-                <p className="font-mono font-medium">{walletAccountId}</p>
+                <p className="text-sm text-gray-500">Signed in as</p>
+                <p className="font-mono font-medium">
+                  {walletAccountId || "Connected wallet"}
+                </p>
               </div>
-
-              <button
-                onClick={handleSignIn}
-                disabled={isSigningIn}
-                className="w-full py-3 px-4 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50"
-              >
-                {isSigningIn
-                  ? "Sign message in HOT Wallet..."
-                  : "Sign In with HOT Wallet"}
-              </button>
-
               <button
                 onClick={handleDisconnect}
-                disabled={isDisconnecting}
-                className="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition disabled:opacity-50"
+                className="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition"
               >
-                {isDisconnecting ? "Disconnecting..." : "Disconnect Wallet"}
+                Sign Out
               </button>
             </div>
           )}

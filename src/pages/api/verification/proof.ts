@@ -9,6 +9,7 @@ import { deriveVerificationState } from "@/utils/attestation";
 import {
   decodeJwtPayload,
   normalizeHashPair,
+  normalizeHashValue,
   validateHashPair,
 } from "@/utils/verification/shared";
 import {
@@ -29,7 +30,6 @@ import {
   extractMrConfig,
   hashComposeManifest,
 } from "@/utils/verification/intel";
-import { verifyComposeProvenance } from "@/utils/verification/sigstore";
 
 const NEAR_API_BASE = verificationConfig.nearApiBase;
 const PROOF_FETCH_TIMEOUT_MS = verificationConfig.nearRequestTimeoutMs;
@@ -49,7 +49,21 @@ type ProofError = {
     hardwareExpectations?: boolean;
   };
   retryAfter?: number;
+  logId?: string;
 };
+
+const createLogId = (label: string) =>
+  `${label}-${Date.now()}-${Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, "0")}`;
+
+const respondWithLogId = (
+  res: NextApiResponse<VerificationProofResponse | ProofError>,
+  status: number,
+  message: string,
+  logId: string,
+  details?: string
+) => res.status(status).json({ error: message, logId, details });
 
 async function safeFetch(url: string, headers: HeadersInit) {
   const controller = new AbortController();
@@ -280,6 +294,9 @@ export default async function handler(
     expectedMeasurements,
   } = req.body ?? {};
 
+  const clientRequestHash = normalizeHashValue(req.body?.requestHash);
+  const clientResponseHash = normalizeHashValue(req.body?.responseHash);
+
   if (!verificationId || typeof verificationId !== "string") {
     return res.status(400).json({
       error: "verificationId is required",
@@ -300,18 +317,54 @@ export default async function handler(
       ? registerVerificationSession(
           verificationId,
           clientProvidedNonce,
-          req.body?.requestHash,
-          req.body?.responseHash
+          clientRequestHash,
+          clientResponseHash
         )
       : null);
 
-  if (req.body?.requestHash || req.body?.responseHash) {
-    updateVerificationHashes(verificationId, {
-      requestHash: req.body.requestHash,
-      responseHash: req.body.responseHash,
-    });
+  const hasClientHash =
+    Boolean(clientRequestHash) || Boolean(clientResponseHash);
+  if (hasClientHash && session) {
+    const existingRequestHash = normalizeHashValue(session.requestHash);
+    const existingResponseHash = normalizeHashValue(session.responseHash);
 
-    session = getVerificationSession(verificationId) || session;
+    if (
+      clientRequestHash &&
+      existingRequestHash &&
+      existingRequestHash !== clientRequestHash
+    ) {
+      return res.status(400).json({
+        error:
+          "Provided request hash conflicts with the hash stored for this verification session.",
+      });
+    }
+
+    if (
+      clientResponseHash &&
+      existingResponseHash &&
+      existingResponseHash !== clientResponseHash
+    ) {
+      return res.status(400).json({
+        error:
+          "Provided response hash conflicts with the hash stored for this verification session.",
+      });
+    }
+
+    const hashesToAccept: {
+      requestHash?: string | null;
+      responseHash?: string | null;
+    } = {};
+
+    if (clientRequestHash && !existingRequestHash) {
+      hashesToAccept.requestHash = clientRequestHash;
+    }
+    if (clientResponseHash && !existingResponseHash) {
+      hashesToAccept.responseHash = clientResponseHash;
+    }
+    if (Object.keys(hashesToAccept).length > 0) {
+      updateVerificationHashes(verificationId, hashesToAccept);
+      session = getVerificationSession(verificationId) || session;
+    }
   }
 
   let expectedNonce = session?.nonce;
@@ -494,10 +547,10 @@ export default async function handler(
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
-  const origin =
-    req.headers.origin ||
+  const baseUrl =
     process.env.NEXT_PUBLIC_SITE_URL ||
     `http://${req.headers.host || "localhost:3000"}`;
+  const nrasUrl = new URL("/api/verification/nras", baseUrl).toString();
 
   try {
     const attestationPromise = fetchWithBackoff(() =>
@@ -562,9 +615,20 @@ export default async function handler(
           expectedNonce: normalizedExpectedNonce,
           requestNonces,
         });
-        return res.status(502).json({
-          error: "Verification failed",
+        const attNonceLogId = createLogId("attestation-nonce");
+        console.warn("[verification/proof] Attestation nonce mismatch", {
+          verificationId,
+          logId: attNonceLogId,
+          expectedNonce: normalizedExpectedNonce,
+          requestNonces,
         });
+        return respondWithLogId(
+          res,
+          502,
+          `Verification failed (logId: ${attNonceLogId})`,
+          attNonceLogId,
+          "Attestation request nonce mismatch"
+        );
       }
     } else {
       proof.attestation = null;
@@ -596,9 +660,20 @@ export default async function handler(
           expected: normalizedExpectedNonce,
           gatewayNonce,
         });
-        return res.status(502).json({
-          error: "Verification failed",
+        const gatewayLogId = createLogId("gateway-nonce");
+        console.warn("[verification/proof] Gateway nonce mismatch", {
+          verificationId,
+          logId: gatewayLogId,
+          expected: normalizedExpectedNonce,
+          gatewayNonce,
         });
+        return respondWithLogId(
+          res,
+          502,
+          `Verification failed (logId: ${gatewayLogId})`,
+          gatewayLogId,
+          "Gateway attestation nonce mismatch"
+        );
       }
 
       if (!gatewayAtt?.intel_quote || !gatewayAtt?.event_log) {
@@ -650,13 +725,14 @@ export default async function handler(
           });
         }
 
+        let aggregatedReasons: string[] = [];
+        let aggregatedVerified = true;
+        let primaryNras: any = null;
+
         if (nvidiaPayloads.length > 0 && !hardwareExpectationsMissing) {
-          let aggregatedReasons: string[] = [];
-          let aggregatedVerified = true;
-          let primaryNras: any = null;
 
           for (const payload of nvidiaPayloads) {
-            const nrasResp = await fetch(`${origin}/api/verification/nras`, {
+            const nrasResp = await fetch(nrasUrl, {
               headers: {
                 Accept: "application/json",
                 "Content-Type": "application/json",
@@ -735,14 +811,27 @@ export default async function handler(
               }
             }
           }
+        }
 
-          if (primaryNras) {
-            primaryNras.verified = aggregatedVerified;
-            if (!aggregatedVerified) {
-              primaryNras.reasons = aggregatedReasons;
-            }
-            proof.nras = primaryNras as any;
+        if (primaryNras) {
+          primaryNras.verified = aggregatedVerified;
+          if (!aggregatedVerified) {
+            primaryNras.reasons = aggregatedReasons;
           }
+          proof.nras = primaryNras as any;
+          const nrasClaims = primaryNras.claims || {};
+          const nrasLogId = createLogId("nras-summary");
+          console.warn("[verification/proof] NRAS attestation result", {
+            verificationId,
+            logId: nrasLogId,
+            overallAttestationResult:
+              nrasClaims["x-nvidia-overall-att-result"],
+            eatNonce:
+              nrasClaims["x-nvidia-eat-nonce"] ||
+              nrasClaims.eat_nonce ||
+              null,
+            verified: primaryNras.verified,
+          });
         }
       } catch (nrasError) {
         console.error("[proof] NRAS auto-verification error:", nrasError);
@@ -947,7 +1036,10 @@ export default async function handler(
           proof.intel.error = undefined;
         }
 
-        // Compose manifest vs mr_config check
+        // Gateway verification proves:
+        // - Intel TDX verifies the TEE hardware and mr_config binding.
+        // - Compose manifest hash must match the mr_config measurement.
+        // Source provenance (Sigstore) is not independently verified.
         const manifest = extractComposeManifest(proof.attestation);
         const mrConfig = extractMrConfig(proof.intel.raw);
         if (manifest && mrConfig) {
@@ -959,16 +1051,6 @@ export default async function handler(
               "Compose manifest hash does not match mr_config",
             ];
             proof.intel.error = "Intel verification failed";
-          } else {
-            const provenance = await verifyComposeProvenance(manifest);
-            if (!provenance.verified) {
-              proof.intel.verified = false;
-              proof.intel.reasons = [
-                ...(proof.intel.reasons || []),
-                ...provenance.reasons,
-              ];
-              proof.intel.error = "Compose provenance verification failed";
-            }
           }
         } else {
           proof.intel.verified = false;
@@ -1216,9 +1298,20 @@ export default async function handler(
           expected: `${effectiveRequestHash}:${effectiveResponseHash}`,
           received: signaturePayload.text,
         });
-        return res.status(400).json({
-          error: "Verification failed",
+        const hashLogId = createLogId("hash-mismatch");
+        console.warn("[verification/proof] Hash mismatch", {
+          verificationId,
+          logId: hashLogId,
+          expected: `${effectiveRequestHash}:${effectiveResponseHash}`,
+          received: signaturePayload.text,
         });
+        return respondWithLogId(
+          res,
+          400,
+          `Verification failed (logId: ${hashLogId})`,
+          hashLogId,
+          "Signed hashes do not match the stored session hashes"
+        );
       }
     }
 
@@ -1241,6 +1334,17 @@ export default async function handler(
       trustedAddresses: attestedSigningAddresses,
     });
 
+    let signatureFailureLogId: string | null = null;
+    if (state.steps.signature.status === "error") {
+      signatureFailureLogId = createLogId("signature-failure");
+      console.warn("[verification/proof] Signature recovery failure", {
+        verificationId,
+        logId: signatureFailureLogId,
+        recoveredAddress: state.recoveredAddress,
+        attestedAddresses: attestedSigningAddresses,
+      });
+    }
+
     proof.results = {
       verified: state.overall === "verified",
       reasons: [...(state.reasons || []), ...missingReasons, ...hashMismatchReasons],
@@ -1260,14 +1364,24 @@ export default async function handler(
     };
 
     if (process.env.NODE_ENV !== "test" && state.overall !== "verified") {
+      const failureLogId =
+        signatureFailureLogId ?? createLogId("verification-failure");
       console.error("[verification/proof] Verification failed", {
         verificationId,
         reasons: proof.results.reasons,
         steps: Object.fromEntries(
           Object.entries(state.steps).map(([k, v]) => [k, v.status])
         ),
+        logId: failureLogId,
       });
-      return res.status(400).json({ error: "Verification failed" });
+      const errorMessage =
+        signatureFailureLogId !== null
+          ? `Signature verification failed (logId: ${signatureFailureLogId})`
+          : `Verification failed (logId: ${failureLogId})`;
+      return res.status(400).json({
+        error: errorMessage,
+        logId: signatureFailureLogId ?? failureLogId,
+      });
     }
 
     if (configMissing) {

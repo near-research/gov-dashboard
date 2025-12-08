@@ -46,7 +46,7 @@ export const DiscourseConnect = ({
   onLinked,
   onError,
 }: DiscourseConnectProps) => {
-  const { wallet, nearAccountId } = useAuth();
+  const { nearClient, nearAccountId } = useAuth();
 
   const [step, setStep] = useState<
     "idle" | "authorizing" | "signing" | "completing"
@@ -93,7 +93,7 @@ export const DiscourseConnect = ({
   };
 
   const startLinking = async () => {
-    if (!wallet || !nearAccountId) {
+    if (!nearAccountId) {
       handleError("Please connect your wallet first.");
       return;
     }
@@ -138,7 +138,7 @@ export const DiscourseConnect = ({
       return;
     }
 
-    if (!wallet) {
+    if (!nearClient) {
       handleError("Wallet not connected. Please reconnect.");
       setStep("idle");
       return;
@@ -156,7 +156,7 @@ export const DiscourseConnect = ({
     try {
       // Sign message using near-sign-verify with the useNear wallet
       const authToken = await sign("Link my NEAR account to Discourse", {
-        signer: wallet,
+        signer: nearClient,
         recipient: "social.near",
       });
 
@@ -254,10 +254,9 @@ export const DiscourseConnect = ({
         </div>
         {!nearAccountId && (
           <Alert className="border-slate-200 bg-slate-50">
-            <AlertDescription>
-              Connect your NEAR wallet before starting the Discourse linking
-              flow.
-            </AlertDescription>
+      <AlertDescription>
+        Connect your NEAR wallet to Discourse
+      </AlertDescription>
           </Alert>
         )}
         {nearAccountId && (

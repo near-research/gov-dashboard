@@ -1,12 +1,20 @@
+type LinkedAccount = {
+  providerId: string;
+  accountId?: string;
+};
+
 /**
  * Extract NEAR accountId from linked accounts
  */
-export function getNearAccountId(linkedAccounts: any[]): string | null {
+export function getNearAccountId(
+  linkedAccounts: LinkedAccount[]
+): string | null {
   const nearAccount = linkedAccounts?.find(
     (account) => account.providerId === "siwn"
   );
   const accountId = nearAccount?.accountId;
-  return accountId ? accountId.split(":")[0] : null;
+  // Handle "accountId:network" format if present
+  return accountId?.split(":")[0] ?? null;
 }
 
 /**
@@ -81,7 +89,9 @@ export function handleAccountLinkRefresh(
     urlParams.has("callbackUrl");
 
   if (hasCallback) {
-    const cleanUrl = `${win.location?.pathname || ""}${win.location?.hash || ""}`;
+    const cleanUrl = `${win.location?.pathname || ""}${
+      win.location?.hash || ""
+    }`;
     win.history.replaceState(null, "", cleanUrl);
 
     setTimeout(() => {

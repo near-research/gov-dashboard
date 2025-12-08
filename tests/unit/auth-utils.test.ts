@@ -4,7 +4,7 @@ import {
   getProviderConfig,
   handleAccountLinkRefresh,
   hasNearLinked,
-} from "@/lib/auth-utils";
+} from "@/lib/auth/auth-utils";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 describe("auth-utils", () => {
@@ -54,9 +54,9 @@ describe("auth-utils", () => {
       expect(hasNearLinked([{ providerId: "siwn", accountId: "" }])).toBe(
         false
       );
-      expect(hasNearLinked([{ providerId: "github", accountId: "octocat" }])).toBe(
-        false
-      );
+      expect(
+        hasNearLinked([{ providerId: "github", accountId: "octocat" }])
+      ).toBe(false);
     });
   });
 
@@ -116,7 +116,11 @@ describe("auth-utils", () => {
     it("returns refresher without scheduling when callback params are absent", async () => {
       fakeWindow.location.pathname = "/profile";
 
-      const returned = handleAccountLinkRefresh(refreshAccounts, fakeWindow as any, 0);
+      const returned = handleAccountLinkRefresh(
+        refreshAccounts,
+        fakeWindow as any,
+        0
+      );
 
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(refreshAccounts).toHaveBeenCalledTimes(1);

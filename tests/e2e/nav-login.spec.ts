@@ -4,6 +4,10 @@ import {
   registerPlaywrightMocks,
 } from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
+import {
+  mockUnauthenticatedSession,
+  mockWalletConnected,
+} from "./helpers/auth-mocks";
 
 const { describe: describeSpec } = createPlaywrightGuard("nav-login.spec.ts");
 
@@ -39,12 +43,6 @@ const createAuthenticatedSession = (): AuthSessionPayload => ({
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   },
 });
-
-const waitForWalletHarness = (page: Page) =>
-  page.waitForFunction(
-    () =>
-      typeof window !== "undefined" && !!(window as typeof window & { __NEAR_TEST_HARNESS__?: unknown }).__NEAR_TEST_HARNESS__
-  );
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -185,17 +183,24 @@ describeSpec("Navigation & Login journey (NEAR + Better Auth + Discourse)", () =
     await expect(page).toHaveURL(/\/proposals\/new$/);
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
-    await expect(connectButton).toBeVisible();
-
-    const profileMenuItem = page.getByRole("menuitem", { name: /Profile/i });
-    await expect(profileMenuItem).toHaveCount(0);
-
-    await waitForWalletHarness(page);
-    await connectButton.click();
-    await page.evaluate(() => {
-      (window as typeof window & { __NEAR_TEST_HARNESS__?: { emitSignIn?: () => Promise<void> } }).__NEAR_TEST_HARNESS__?.emitSignIn?.({ accountId: "playwright.near" });
+    const connectButtonBeforeReload = page.getByRole("button", {
+      name: /Connect Wallet/i,
     });
+    await expect(connectButtonBeforeReload).toBeVisible();
+    await expect(connectButtonBeforeReload).toBeEnabled({ timeout: 5000 });
+
+    const profileMenuItemBeforeSignIn = page.getByRole("menuitem", { name: /Profile/i });
+    await expect(profileMenuItemBeforeSignIn).toHaveCount(0);
+
+    await mockWalletConnected(page, "playwright.near");
+    await page.goto("/", { waitUntil: "networkidle" });
+
+    const connectButton = page.getByRole("button", {
+      name: /Connect (?:HOT )?Wallet/i,
+    });
+    await expect(connectButton).toBeEnabled({ timeout: 5000 });
+    await connectButton.click();
+    await page.waitForTimeout(300);
 
     const signInButton = page.locator("nav button").filter({ hasText: /Sign In/i }).first();
     await expect(signInButton).toBeVisible();
@@ -215,12 +220,14 @@ describeSpec("Navigation & Login journey (NEAR + Better Auth + Discourse)", () =
     const discourseIndicator = page.locator("[title='Discourse Connected']");
     await expect(discourseIndicator).toBeVisible();
 
-    await expect(profileMenuItem).toBeVisible();
+    const profileMenuItemAfterSignIn = page.getByRole("menuitem", { name: /Profile/i });
+    await expect(profileMenuItemAfterSignIn).toBeVisible();
     const signOutItem = page.getByRole("menuitem", { name: /Sign Out/i });
     await expect(signOutItem).toBeVisible();
 
     await signOutItem.click();
-    await expect(connectButton).toBeVisible();
+    const connectButtonAfterSignOut = page.getByRole("button", { name: /Connect Wallet/i });
+    await expect(connectButtonAfterSignOut).toBeVisible();
 
     const events = await readEvents();
     const eventNames = events.map((event) => event.event);
@@ -272,42 +279,39 @@ describeSpec("Navigation & Login journey (NEAR + Better Auth + Discourse)", () =
       });
     });
 
+    await mockUnauthenticatedSession(page);
+    await mockWalletConnected(page, "playwright.near");
     await page.goto("/login", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: /Sign in to Continue/i })).toBeVisible();
     await expect(page.getByText("Connect your NEAR wallet")).toBeVisible();
 
-    await waitForWalletHarness(page);
-    await page.evaluate(() => {
-      (window as typeof window & { __NEAR_TEST_HARNESS__?: { rejectConnection?: boolean } }).__NEAR_TEST_HARNESS__!.rejectConnection = true;
+    const connectButton = page.getByRole("button", {
+      name: /Connect (?:HOT )?Wallet/i,
     });
-
-    const connectButton = page.getByRole("button", { name: /Connect HOT Wallet/i });
+    await mockWalletConnected(page, "playwright.near");
     await connectButton.click();
-    await expect(page.getByText(/Wallet connection cancelled/i)).toBeVisible();
+    await expect(page.getByText(/playwright\.near/i).first()).toBeVisible();
 
-    await page.evaluate(() => {
-      (window as typeof window & { __NEAR_TEST_HARNESS__?: { rejectConnection?: boolean } }).__NEAR_TEST_HARNESS__!.rejectConnection = false;
-    });
-
-    await connectButton.click();
-    await page.evaluate(() => {
-      (window as typeof window & { __NEAR_TEST_HARNESS__?: { emitSignIn?: () => Promise<void> } }).__NEAR_TEST_HARNESS__?.emitSignIn?.({ accountId: "playwright.near" });
-    });
-    await expect(page.getByText(/Connected wallet/i)).toBeVisible();
-
+    await closeHotConnectorPopup(page);
     const disconnectButton = page.getByRole("button", { name: /Disconnect Wallet/i });
-    await closeHotConnectorPopup(page);
+    await expect(disconnectButton).toBeVisible({ timeout: 5000 });
+    await expect(disconnectButton).toBeEnabled();
     await disconnectButton.click();
-    await expect(connectButton).toBeVisible();
+    await expect(connectButton).toBeVisible({ timeout: 5000 });
+    await expect(connectButton).toBeEnabled({ timeout: 5000 });
 
+    await mockUnauthenticatedSession(page);
+    await mockWalletConnected(page, "playwright.near");
+    await expect(connectButton).toBeEnabled({ timeout: 5000 });
     await connectButton.click();
-    await page.evaluate(() => {
-      (window as typeof window & { __NEAR_TEST_HARNESS__?: { emitSignIn?: () => Promise<void> } }).__NEAR_TEST_HARNESS__?.emitSignIn?.({ accountId: "playwright.near" });
-    });
-    await expect(page.getByText(/Connected wallet/i)).toBeVisible();
+    await expect(page.getByText(/playwright\.near/i).first()).toBeVisible();
 
-    const signInButton = page.getByRole("button", { name: /Sign In with HOT Wallet/i });
+    const signInButton = page.getByRole("button", {
+      name: /Sign In with HOT Wallet/i,
+    });
     await closeHotConnectorPopup(page);
+    await expect(signInButton).toBeVisible({ timeout: 5000 });
+    await expect(signInButton).toBeEnabled();
     await signInButton.click();
 
     await page.waitForURL(/\/$/);

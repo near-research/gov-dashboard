@@ -11,6 +11,7 @@ import { type PublishStep } from "@/components/editor/PublishBar";
 import type { GovernanceTrackFn } from "@/lib/analytics";
 import type { VerificationMetadata } from "@/types/agui-events";
 import { client } from "@/lib/orpc";
+import type { Near } from "near-kit";
 
 type UseProposalFlowStateArgs = {
   state: ProposalEditorState;
@@ -21,7 +22,7 @@ type UseProposalFlowStateArgs = {
   setEvaluationVerification: (v?: VerificationMetadata) => void;
   setEvaluationChatId: (id?: string) => void;
   signedAccountId?: string | null;
-  wallet: unknown;
+  nearClient: Near | null;
   track: GovernanceTrackFn;
   isRunning: boolean;
   originalStateRef: RefObject<ProposalState | null>;
@@ -36,7 +37,7 @@ export const useProposalFlowState = ({
   setEvaluationVerification,
   setEvaluationChatId,
   signedAccountId,
-  wallet,
+  nearClient,
   track,
   isRunning,
   originalStateRef,
@@ -72,7 +73,7 @@ export const useProposalFlowState = ({
     publishToDiscourse,
   } = useProposalPublishing({
     client,
-    wallet,
+    nearClient,
     signedAccountId,
     isPassing,
     title: localTitle,

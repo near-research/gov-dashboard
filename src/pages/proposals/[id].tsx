@@ -35,7 +35,7 @@ export default function ProposalDetail() {
   const router = useRouter();
   const { id } = router.query;
   const track = useGovernanceAnalytics();
-  const { wallet, signedAccountId } = useNear();
+  const { signedAccountId } = useNear();
   const [isDesktop, setIsDesktop] = useState(false);
   const [showReplies, setShowReplies] = useState(true);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
@@ -308,7 +308,6 @@ export default function ProposalDetail() {
                 {screeningChecked &&
                   (!screening ||
                     screening.revisionNumber !== selectedVersion) &&
-                  wallet &&
                   signedAccountId && (
                     <ScreeningButton
                       topicId={id as string}
@@ -324,7 +323,7 @@ export default function ProposalDetail() {
                 {screeningChecked &&
                   (!screening ||
                     screening.revisionNumber !== selectedVersion) &&
-                  (!wallet || !signedAccountId) && (
+                  !signedAccountId && (
                     <Card>
                       <CardContent className="pt-6">
                         <p className="text-sm text-muted-foreground">

@@ -3,60 +3,12 @@ import proposalsFixture from "../../fixtures/playwright/proposals-latest.json";
 import proposalDetailFixture from "../../fixtures/playwright/proposal-detail.json";
 import replySummaryFixture from "../../fixtures/playwright/discourse-reply-summary.json";
 import topicSummaryFixture from "../../fixtures/playwright/discourse-topic-summary.json";
-import { markPageWithCustomAuthRoutes } from "./playwright-mocks";
-
-type AuthSessionPayload = {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-  };
-  session: {
-    id: string;
-    token: string;
-    expiresAt: string;
-  };
-};
-
-type SetupAuthenticatedUserOptions = {
-  accountId?: string;
-  session?: AuthSessionPayload;
-  linkedAccounts?: Array<Record<string, unknown>>;
-  authenticatedSelectors?: string[];
-};
-
-const DEFAULT_ACCOUNT_ID = "playwright.testnet";
-
-const DEFAULT_SESSION: AuthSessionPayload = {
-  user: {
-    id: "playwright-user",
-    email: "playwright@near.org",
-    name: "Playwright Tester",
-  },
-  session: {
-    id: "session-1",
-    token: "token-123",
-    expiresAt: new Date(Date.now() + 60_000).toISOString(),
-  },
-};
-
-const defaultAccounts = (accountId: string, userId: string) => [
-  {
-    id: "linked-playwright-1",
-    providerId: "siwn",
-    accountId,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    userId,
-    scopes: ["basic"],
-  },
-];
-
-const defaultAuthSelectors = [
-  "text=Connected wallet",
-  "text=Sign In",
-  "text=Disconnect Wallet",
-];
+import {
+  mockAuthenticatedSession,
+  mockSignInFailure,
+  mockUnauthenticatedSession,
+  mockWalletConnected,
+} from "./auth-mocks";
 
 const respondWithJson = (route: Route, payload: unknown, status = 200) => {
   route.fulfill({
@@ -68,73 +20,56 @@ const respondWithJson = (route: Route, payload: unknown, status = 200) => {
   });
 };
 
-const waitForHarness = async (page: Page) => {
-  await page.waitForFunction(
-    () =>
-      typeof window !== "undefined" &&
-      typeof (window as any).__NEAR_TEST_HARNESS__ !== "undefined",
-    { timeout: 10_000 }
-  );
-};
-
-const waitForAnySelector = async (
-  page: Page,
-  selectors: string[],
-  timeout = 3_000
-) => {
-  for (const selector of selectors) {
-    try {
-      await page.waitForSelector(selector, { timeout });
-      return;
-    } catch {
-      // try next selector
-    }
-  }
-  throw new Error(
-    `setupAuthenticatedUser: none of the auth selectors became visible (${selectors.join(
-      ", "
-    )})`
-  );
+const navigateHome = async (page: Page) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
 };
 
 export const setupAuthenticatedUser = async (
   page: Page,
-  options?: SetupAuthenticatedUserOptions
+  accountId?: string
 ) => {
-  const accountId = options?.accountId ?? DEFAULT_ACCOUNT_ID;
-  const session = options?.session ?? DEFAULT_SESSION;
-  const selectors = options?.authenticatedSelectors ?? defaultAuthSelectors;
+  await mockAuthenticatedSession(page, accountId);
+  await navigateHome(page);
+};
 
-  markPageWithCustomAuthRoutes(page);
+export const setupUnauthenticatedUser = async (page: Page) => {
+  await mockUnauthenticatedSession(page);
+  await navigateHome(page);
+};
 
-  const accountsPayload =
-    options?.linkedAccounts ??
-    defaultAccounts(accountId, session.user.id ?? DEFAULT_SESSION.user.id);
+export const setupWalletRejection = async (
+  page: Page,
+  accountId?: string
+) => {
+  await mockWalletConnected(page, accountId);
+  await mockSignInFailure(page, "Wallet connection cancelled by user");
+  await navigateHome(page);
+};
 
-  await page.route("**/api/auth/session", (route) => {
-    respondWithJson(route, session);
+export const setupNonceError = async (page: Page) => {
+  await mockUnauthenticatedSession(page);
+
+  let attempt = 0;
+  await page.route("**/api/auth/near/nonce", (route) => {
+    attempt += 1;
+    if (attempt === 1) {
+      route.fulfill({
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: "NONCE_NOT_FOUND",
+          message: "Mock nonce error",
+        }),
+      });
+      return;
+    }
+    respondWithJson(route, { nonce: "retry-nonce-1" });
   });
-  await page.route("**/api/auth/list-accounts", (route) => {
-    respondWithJson(route, { data: accountsPayload });
-  });
-  await page.route("**/api/auth/accounts", (route) => {
-    respondWithJson(route, { data: accountsPayload });
-  });
 
-  await waitForHarness(page);
-
-  await page.evaluate(
-    ([account]) => {
-      return (window as typeof window & {
-        __NEAR_TEST_HARNESS__?: {
-          emitSignIn?: (options?: { accountId?: string }) => Promise<void>;
-        };
-      }).__NEAR_TEST_HARNESS__?.emitSignIn?.({ accountId: account });
-    },
-    [accountId]
-  );
-
-  await waitForAnySelector(page, selectors);
+  await navigateHome(page);
 };
 
 type MockDiscourseOptions = {

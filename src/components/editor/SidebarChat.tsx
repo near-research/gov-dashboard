@@ -179,8 +179,11 @@ export function SidebarChat({
                 </Card>
               ))}
 
-              {isRunning && !currentMessage && activeToolCalls.size === 0 && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      {isRunning && !currentMessage && activeToolCalls.size === 0 && (
+        <div
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+          data-testid="typing-indicator"
+        >
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Thinking…
                 </div>

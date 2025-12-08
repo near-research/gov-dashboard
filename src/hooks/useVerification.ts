@@ -179,6 +179,7 @@ export function useVerification({
         try {
           const res = await fetch("/api/verification/proof", {
             method: "POST",
+            credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               verificationId,

@@ -1,13 +1,19 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { registerPlaywrightMocks } from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
 import screeningFixture from "../fixtures/playwright/screening-response.json";
 import { EventType } from "@/types/agui-events";
+import {
+  mockAuthenticatedSession,
+  mockWalletConnected,
+} from "./helpers/auth-mocks";
 
 const { describe: describeSpec } = createPlaywrightGuard("draft-workflow.spec.ts");
 
 const createSsePayload = (events: unknown[]) =>
   `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const addAnalyticsStub = async (page: Page) => {
   await page.addInitScript(() => {
@@ -24,12 +30,19 @@ const readAnalyticsEvents = async (page: Page) =>
 const deductPlausibleEvent = (events: Array<{ event: string }>, name: string) =>
   events.some((entry) => entry.event === name);
 
+const shouldLogMocks = (process.env.PLAYWRIGHT_TEST ?? "").trim().toLowerCase() === "true";
+const logMockRoute = (label: string, route: Route) => {
+  if (!shouldLogMocks) return;
+  const request = route.request();
+  console.log(`[draft-workflow mock] ${label} ${request.method()} ${request.url()}`);
+};
+
 describeSpec("Draft workflow", () => {
   test("editor/preview tabs, quick actions, and AI diff warnings stay in sync", async ({ page }) => {
     await addAnalyticsStub(page);
     registerPlaywrightMocks(page);
 
-    await page.unroute("/api/agent");
+    await page.unroute("**/api/agent");
     const agentEvents = [
       { type: EventType.RUN_STARTED, threadId: "draft-thread", runId: "run-1" },
       { type: EventType.TEXT_MESSAGE_START, messageId: "msg-agent", role: "assistant" },
@@ -58,16 +71,17 @@ describeSpec("Draft workflow", () => {
       { type: EventType.RUN_FINISHED, threadId: "draft-thread", runId: "run-1" },
     ];
 
-    await page.route("/api/agent", (route) =>
-      route.fulfill({
+    await page.route("**/api/agent", (route) => {
+      logMockRoute("api/agent override", route);
+      return route.fulfill({
         status: 200,
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
         },
         body: createSsePayload(agentEvents),
-      })
-    );
+      });
+    });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const draftButton = page.getByRole("button", { name: "Draft" });
@@ -104,7 +118,9 @@ describeSpec("Draft workflow", () => {
     registerPlaywrightMocks(page);
     let evaluationCall = 0;
 
-    await page.route("/api/evaluateDraft", (route) => {
+    await page.route("**/api/evaluateDraft", async (route) => {
+      logMockRoute("api/evaluateDraft (rate limit)", route);
+      await pause(180);
       evaluationCall += 1;
       if (evaluationCall === 1) {
         route.fulfill({
@@ -162,16 +178,17 @@ describeSpec("Draft workflow", () => {
     await addAnalyticsStub(page);
     registerPlaywrightMocks(page);
 
-    await page.route("/api/evaluateDraft", (route) =>
-      route.fulfill({
+    await page.route("**/api/evaluateDraft", (route) => {
+      logMockRoute("api/evaluateDraft (pass)", route);
+      return route.fulfill({
         status: 200,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(screeningFixture),
-      })
-    );
+      });
+    });
 
     let linkageEnabled = false;
-    await page.route("/api/rpc/discourse/getLinkage", async (route) => {
+    await page.route("**/api/rpc/discourse/getLinkage", async (route) => {
       const payload = JSON.parse(route.request().postData() || "{}");
       route.fulfill({
         status: 200,
@@ -187,7 +204,7 @@ describeSpec("Draft workflow", () => {
       });
     });
 
-    await page.route("/api/rpc/discourse/getUserApiAuthUrl", (route) =>
+    await page.route("**/api/rpc/discourse/getUserApiAuthUrl", (route) =>
       route.fulfill({
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -201,7 +218,7 @@ describeSpec("Draft workflow", () => {
       })
     );
 
-    await page.route("/api/rpc/discourse/completeLink", (route) => {
+    await page.route("**/api/rpc/discourse/completeLink", (route) => {
       linkageEnabled = true;
       route.fulfill({
         status: 200,
@@ -217,7 +234,7 @@ describeSpec("Draft workflow", () => {
     });
 
     let publishCount = 0;
-    await page.route("/api/rpc/discourse/createPost", (route) => {
+    await page.route("**/api/rpc/discourse/createPost", (route) => {
       publishCount += 1;
       if (publishCount === 1) {
         route.fulfill({
@@ -255,12 +272,10 @@ describeSpec("Draft workflow", () => {
     await expect(publishButton).toBeDisabled();
     await expect(page.getByRole("button", { name: /Connect NEAR account/ })).toBeVisible();
 
-    await page.waitForFunction(
-      () => typeof window !== "undefined" && !!(window as any).__NEAR_TEST_HARNESS__
-    );
     const connectButton = page.getByRole("button", { name: /Connect NEAR account/ });
+    await mockWalletConnected(page, "playwright.testnet");
     await connectButton.click();
-    await page.evaluate(() => (window as any).__NEAR_TEST_HARNESS__?.emitSignIn?.());
+    await mockAuthenticatedSession(page, "playwright.testnet");
     await expect(page.getByRole("button", { name: /Link Discourse account/ })).toBeVisible();
 
     await page.evaluate(() => {

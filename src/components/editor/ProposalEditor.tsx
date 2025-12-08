@@ -65,7 +65,7 @@ function ProposalEditorInner() {
 }
 
 function useProposalEditorController() {
-  const { signedAccountId, wallet, signIn } = useNear();
+  const { signedAccountId, nearClient, signIn } = useNear();
   const trackEvent = useGovernanceAnalytics();
   const { state, dispatch } = useProposalEditorContext();
   const { viewMode, setViewMode } = useViewModeToggle();
@@ -118,7 +118,7 @@ function useProposalEditorController() {
       setEvaluationVerification,
       setEvaluationChatId,
       signedAccountId,
-      wallet,
+      nearClient,
       track: trackEvent,
       isRunning,
       originalStateRef,

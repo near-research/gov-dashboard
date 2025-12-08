@@ -14,10 +14,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
-import { authClient } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth/auth-client";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 import { client } from "@/lib/orpc";
-import { shouldRetryNonce } from "@/lib/auth/retry";
+import { isUserRejected, shouldRetryNonce } from "@/lib/auth/retry";
 import { Loader2, LogOut, User, Plus } from "lucide-react";
 import NearLogo from "/public/near-logo.svg";
 import { siwnRecipient } from "@/config/siwn";
@@ -35,6 +35,8 @@ const formatAuthError = (err: any) => {
 
 export const Navigation = () => {
   const router = useRouter();
+  const isOnLoginPage =
+    router.pathname === "/login" || router.asPath.startsWith("/login");
   const {
     user,
     nearAccountId,
@@ -89,95 +91,61 @@ export const Navigation = () => {
     setIsSigningIn(true);
     let retriedNonce = false;
 
+    const reportSuccess = () => {
+      const accountId =
+        authClient.near.getAccountId() || walletAccountId || "unknown";
+      track("wallet_connect_succeeded", {
+        props: { account_id: accountId },
+      });
+      toast.success("Signed in successfully");
+    };
+
+    const attemptSignIn = async () => {
+      await walletSignIn();
+      reportSuccess();
+    };
+
     try {
-      // Step 1: Connect wallet if not connected
-      if (!walletAccountId) {
-        await walletSignIn();
+      await attemptSignIn();
+      return;
+    } catch (initialError: any) {
+      let errorToReport = initialError;
+      if (shouldRetryNonce(initialError) && !retriedNonce) {
+        retriedNonce = true;
+        try {
+          await attemptSignIn();
+          return;
+        } catch (retryError: any) {
+          errorToReport = retryError;
+        }
       }
 
-      const attemptSignIn = async () => {
-        await authClient.requestSignIn.near(
-          { recipient: siwnRecipient },
-          {
-            onSuccess: async () => {
-              await authClient.signIn.near(
-                { recipient: siwnRecipient },
-                {
-                  onSuccess: () => {
-                    setIsSigningIn(false);
-                    track("wallet_connect_succeeded", {
-                      props: { account_id: walletAccountId || "unknown" },
-                    });
-                    toast.success("Signed in successfully");
-                  },
-                  onError: async (err: any) => {
-                    if (shouldRetryNonce(err) && !retriedNonce) {
-                      retriedNonce = true;
-                      await attemptSignIn();
-                      return;
-                    }
-                    setIsSigningIn(false);
-                    const message = formatAuthError(err);
-                    track("wallet_connect_failed", {
-                      props: { message, code: err?.code },
-                    });
-                    toast.error(message);
-                  },
-                }
-              );
-            },
-            onError: async (err: any) => {
-              if (shouldRetryNonce(err) && !retriedNonce) {
-                retriedNonce = true;
-                await attemptSignIn();
-                return;
-              }
-              setIsSigningIn(false);
-              const message = formatAuthError(err);
-              track("wallet_connect_failed", {
-                props: { message, code: err?.code },
-              });
-              toast.error(message);
-            },
-          }
-        );
-      };
-
-      await attemptSignIn();
-    } catch (error) {
-      setIsSigningIn(false);
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to connect wallet. Please try again.";
-
-      // Don't show error for user rejection
-      if (!message.toLowerCase().includes("user rejected")) {
-        track("wallet_connect_failed", { props: { message } });
+      const message = formatAuthError(errorToReport);
+      if (isUserRejected(errorToReport)) {
+        try {
+          await walletSignOut();
+        } catch (resetError) {
+          console.error("Failed to reset wallet after rejection:", resetError);
+        }
+      } else {
+        track("wallet_connect_failed", {
+          props: { message, code: errorToReport?.code },
+        });
         toast.error(message);
       }
+    } finally {
+      setIsSigningIn(false);
     }
   };
 
   const handleSignOut = async () => {
     track("wallet_disconnect_clicked");
     try {
-      // Sign out from Better Auth session
-      await authClient.signOut();
-      // Disconnect Better Auth's embedded wallet
-      await authClient.near.disconnect();
-      // Disconnect useNear wallet
       await walletSignOut();
       toast.success("Signed out");
     } catch (error) {
       console.error("Failed to sign out:", error);
-      // Still try to disconnect wallets even if session sign-out fails
-      try {
-        await authClient.near.disconnect();
-        await walletSignOut();
-      } catch (e) {
-        console.error("Failed to disconnect wallets:", e);
-      }
+      toast.error("Failed to sign out");
     }
   };
 
@@ -269,15 +237,15 @@ export const Navigation = () => {
                     )}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    router.push("/profile");
-                  }}
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
-                </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      router.push("/profile");
+                    }}
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
@@ -299,11 +267,11 @@ export const Navigation = () => {
                 <span className="sm:hidden">Sign In</span>
                 <span className="hidden sm:inline">→ Sign In</span>
               </Button>
-            ) : (
+            ) : !isOnLoginPage ? (
               <Button size="sm" onClick={handleSignIn} disabled={isLoading}>
                 Connect Wallet
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vites
 import handler from "@/pages/api/verification/proof";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { verifiedProofMock, mockNonce } from "../../fixtures/verification";
+import { verifyMessage } from "ethers";
 import * as requestHashUtils from "@/verification/hashes";
 import * as screening from "@/server/screening";
 import {
@@ -42,6 +43,41 @@ const gatewayAttestation = {
   },
   intel_quote: { eat_nonce: fixedNonce },
   event_log: [{}],
+};
+
+const baseVerificationPayload = {
+  verificationId: "id1",
+  nonce: fixedNonce,
+  expectedArch: "HOPPER",
+  expectedDeviceCertHash: "hash",
+  expectedRimHash: "rim",
+  expectedUeid: "ueid",
+  expectedMeasurements: ["m1"],
+};
+const createVerificationBody = (overrides: Record<string, any> = {}) => ({
+  ...baseVerificationPayload,
+  ...overrides,
+});
+
+const defaultNrasResponse = {
+  verified: true,
+  claims: {
+    "x-nvidia-overall-att-result": true,
+    "x-nvidia-eat-nonce": fixedNonce,
+  },
+};
+
+const stubStandardFetch = (nrasResponse = defaultNrasResponse) => {
+  const fetchSpy = vi.fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ gateway_attestation: gatewayAttestation }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.signature })
+    .mockResolvedValueOnce({
+      ok: true,
+      text: async () => JSON.stringify(nrasResponse),
+    });
+  vi.stubGlobal("fetch", fetchSpy);
+  return fetchSpy;
 };
 
 function mockReqRes(body: any) {
@@ -139,6 +175,65 @@ describe("verification/proof API (mock)", () => {
     expect(state.body?.error).toMatch(/verification failed/i);
     process.env.NEAR_AI_CLOUD_API_KEY = "mock-key";
   });
+
+  it("rejects when client request hash conflicts with stored session hash", async () => {
+    const { req, res, state } = mockReqRes(
+      createVerificationBody({ requestHash: "different" })
+    );
+    await handler(req, res);
+    expect(state.status).toBe(400);
+    expect(state.body?.error).toMatch(/Provided request hash conflicts/i);
+  });
+
+  it("rejects when client response hash conflicts with stored session hash", async () => {
+    const { req, res, state } = mockReqRes(
+      createVerificationBody({ responseHash: "different" })
+    );
+    await handler(req, res);
+    expect(state.status).toBe(400);
+    expect(state.body?.error).toMatch(/Provided response hash conflicts/i);
+  });
+
+  it("accepts matching client hashes and proceeds", async () => {
+    const { req, res, state } = mockReqRes(
+      createVerificationBody({
+        requestHash: "REQ",
+        responseHash: "RES",
+      })
+    );
+    await handler(req, res);
+    expect(state.status).toBe(200);
+  });
+
+  it("stores client hashes when session is missing them", async () => {
+    clearVerificationSession("id1");
+    registerVerificationSession("id1", fixedNonce);
+
+    const { req, res, state } = mockReqRes(
+      createVerificationBody({
+        requestHash: "NEWREQ",
+        responseHash: "NEWRES",
+      })
+    );
+    await handler(req, res);
+    expect(state.status).toBe(200);
+
+    const session = getVerificationSession("id1");
+    expect(session?.requestHash).toBe("newreq");
+    expect(session?.responseHash).toBe("newres");
+  });
+
+  it("reuses existing session hashes when client provides none", async () => {
+    const { req, res, state } = mockReqRes(
+      createVerificationBody({ requestHash: undefined, responseHash: undefined })
+    );
+    await handler(req, res);
+    expect(state.status).toBe(200);
+
+    const session = getVerificationSession("id1");
+    expect(session?.requestHash).toBe("req");
+    expect(session?.responseHash).toBe("res");
+  });
 });
 
 describe("verification/proof API (mocked fetch)", () => {
@@ -197,6 +292,66 @@ describe("verification/proof API (mocked fetch)", () => {
     expect(state.body?.results?.verified).toBe(true);
     expect(state.body?.nras?.verified).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it("never uses the Origin header when proxying NRAS", async () => {
+    const fetchSpy = stubStandardFetch();
+    const { req, res, state } = mockReqRes({
+      ...createVerificationBody({ model: "m" }),
+    });
+    req.headers.origin = "https://attacker.com";
+    await handler(req, res);
+    expect(state.status).toBe(200);
+    const nrasCall = fetchSpy.mock.calls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes("/api/verification/nras")
+    );
+    expect(nrasCall?.[0]).toBe("http://localhost:3000/api/verification/nras");
+  });
+
+  it("rejects internal origin values when building NRAS URL", async () => {
+    const fetchSpy = stubStandardFetch();
+    const { req, res, state } = mockReqRes({
+      ...createVerificationBody({ model: "m" }),
+    });
+    req.headers.origin = "http://internal-service:8080";
+    await handler(req, res);
+    expect(state.status).toBe(200);
+    const nrasCall = fetchSpy.mock.calls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes("/api/verification/nras")
+    );
+    expect(nrasCall?.[0]).toBe("http://localhost:3000/api/verification/nras");
+  });
+
+  it("falls back to NEXT_PUBLIC_SITE_URL when Origin is absent", async () => {
+    const previousUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://dashboard.near.ai";
+    try {
+      const fetchSpy = stubStandardFetch();
+      const { req, res, state } = mockReqRes({
+        ...createVerificationBody({ model: "m" }),
+      });
+      delete req.headers.origin;
+      await handler(req, res);
+      expect(state.status).toBe(200);
+      const nrasCall = fetchSpy.mock.calls.find(
+        (call) =>
+          typeof call[0] === "string" &&
+          call[0].includes("/api/verification/nras")
+      );
+      expect(nrasCall?.[0]).toBe(
+        "https://dashboard.near.ai/api/verification/nras"
+      );
+    } finally {
+      if (previousUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_SITE_URL;
+      } else {
+        process.env.NEXT_PUBLIC_SITE_URL = previousUrl;
+      }
+    }
   });
 
   it("fetches ed25519 signatures when requested", async () => {
@@ -325,6 +480,43 @@ describe("verification/proof API (mocked fetch)", () => {
     if (typeof signatureUrl === "string") {
       expect(signatureUrl).toContain("signing_algo=ed25519");
     }
+  });
+
+  it("fails verification when the signer is not attested", async () => {
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => verifiedProofMock.attestation })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ gateway_attestation: gatewayAttestation }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ...verifiedProofMock.signature,
+          signing_address: "0x00000000000000000000000000000000DeAdBeE7",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify(verifiedProofMock.nras),
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+    const verifyMessageMock = vi.mocked(verifyMessage);
+    verifyMessageMock.mockReturnValue("0x00000000000000000000000000000000DeAdBeE7");
+
+    const { req, res, state } = mockReqRes({
+      verificationId: "id1",
+      nonce: fixedNonce,
+      model: "m",
+      expectedArch: "HOPPER",
+      expectedDeviceCertHash: "hash",
+      expectedRimHash: "rim",
+      expectedUeid: "ueid",
+      expectedMeasurements: ["m1"],
+    });
+
+    await handler(req, res);
+    expect(state.status).toBe(200);
+    expect(state.body?.results?.verified).toBe(false);
+    expect(state.body?.results?.reasons).toContain("Signer does not match attested key");
+    verifyMessageMock.mockReturnValue("0x856039d8a60613528d1DBEc3dc920f5FE96a31A0");
   });
 
   it("fails when attested or NRAS nonce does not match session nonce", async () => {

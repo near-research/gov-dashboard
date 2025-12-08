@@ -5,21 +5,11 @@ import {
   registerPlaywrightMocks,
 } from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
+import { setupAuthenticatedUser, setupUnauthenticatedUser } from "./helpers/setup";
 
 const { describe: describeSpec } = createPlaywrightGuard("profile.spec.ts");
 
 const nearAccountId = "playwright.testnet";
-const nearSession = {
-  user: {
-    id: "user-123",
-    email: "test@example.com",
-    name: "Playwright Tester",
-  },
-  session: {
-    id: "session-abc",
-    expiresAt: new Date(Date.now() + 60_000).toISOString(),
-  },
-};
 
 const nearRpcUrl = "https://test.rpc.fastnear.com";
 
@@ -39,50 +29,35 @@ const ensurePlausibleSpy = async (page: Page) => {
   });
 };
 
-const waitForHarness = async (page: Page) => {
-  await page.waitForFunction(
-    () =>
-      typeof window !== "undefined" &&
-      typeof (window as any).__NEAR_TEST_HARNESS__ !== "undefined"
-  );
+const injectWalletAccount = async (page: Page, accountId = nearAccountId) => {
+  await page.addInitScript((id: string) => {
+    (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = id;
+  }, accountId);
 };
 
-const connectWalletHarness = async (page: Page, accountId = nearAccountId) => {
-  await page.evaluate(
-    ([account]) => {
-      return (window as typeof window & {
-        __NEAR_TEST_HARNESS__?: { emitSignIn?: (options?: { accountId?: string }) => Promise<void> };
-      }).__NEAR_TEST_HARNESS__?.emitSignIn?.({ accountId: account });
-    },
-    [accountId]
-  );
-};
-
-const stubAuthRoutes = async (page: Page, options: { hasLinkedAccount: boolean }) => {
+const stubAuthRoutesForNoAccount = async (page: Page) => {
   markPageWithCustomAuthRoutes(page);
-  await page.route("**/api/auth/session", (route) => {
+  await page.route("**/api/auth/get-session", (route) => {
     route.fulfill({
       status: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(nearSession),
+      body: JSON.stringify({
+        session: {
+          id: "session-abc",
+          userId: "user-123",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        user: {
+          id: "user-123",
+          email: "test@example.com",
+          name: "Playwright Tester",
+          accounts: [],
+        },
+      }),
     });
   });
 
-  const accounts = options.hasLinkedAccount
-    ? [
-        {
-          id: "linked-foo",
-          providerId: "siwn",
-          accountId: nearAccountId,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          userId: nearSession.user.id,
-          scopes: ["basic"],
-        },
-      ]
-    : [];
-
-  const listResponse = JSON.stringify({ data: accounts });
+  const listResponse = JSON.stringify({ data: [] });
   await page.route("**/api/auth/list-accounts", (route) => {
     route.fulfill({
       status: 200,
@@ -192,9 +167,11 @@ const stubDiscourseRpc = async (page: Page, method: string, payload: unknown, st
 };
 
 const openProfileFromNav = async (page: Page) => {
-  const accountButton = page.getByRole("button", { name: new RegExp(nearAccountId, "i") });
+  const accountButton = page.locator("button", {
+    hasText: nearAccountId,
+  });
   await expect(accountButton).toBeVisible();
-  await accountButton.click();
+  await accountButton.first().click();
   const profileMenu = page
     .locator("nextjs-portal")
     .filter({ hasText: /My Account/i })
@@ -211,7 +188,6 @@ describeSpec("Profile journeys", () => {
   }) => {
     registerPlaywrightMocks(page);
     await ensurePlausibleSpy(page);
-    await stubAuthRoutes(page, { hasLinkedAccount: true });
     await stubDiscourseLinkage(page, {
       payload: {
         discourseUsername: "playwright",
@@ -233,9 +209,8 @@ describeSpec("Profile journeys", () => {
     });
     await stubDiscourseRpc(page, "unlink", { success: true });
 
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await waitForHarness(page);
-    await connectWalletHarness(page);
+    await injectWalletAccount(page);
+    await setupAuthenticatedUser(page, nearAccountId);
     await openProfileFromNav(page);
 
     const skeleton = page.locator(".animate-pulse").first();
@@ -254,18 +229,23 @@ describeSpec("Profile journeys", () => {
 
   test("warns about wallet when no NEAR account and gates discourse linking", async ({ page }) => {
     registerPlaywrightMocks(page);
-    await stubAuthRoutes(page, { hasLinkedAccount: false });
+    await stubAuthRoutesForNoAccount(page);
     await stubDiscourseLinkage(page, { payload: null });
     await stubNearRpc(page);
 
-    await page.goto("/profile", { waitUntil: "domcontentloaded" });
-    await waitForHarness(page);
+    await page.goto("/profile", { waitUntil: "networkidle" });
+    const bodyText = await page.locator("body").textContent();
+    console.log("Profile page contains:", bodyText?.substring(0, 500));
 
-    await expect(page.getByText(/Connect your wallet to view your profile/i).first()).toBeVisible();
-    await expect(page.getByText(/Wallet not connected/i).first()).toBeVisible();
+    await expect(
+      page.getByText(/Connect your NEAR wallet to Discourse/i)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Wallet not connected" })
+    ).toBeVisible();
 
     const connectButton = page
-      .locator("button", { hasText: /Connect to Discourse/i })
+      .locator("button", { hasText: "Connect to Discourse" })
       .first();
     await expect(connectButton).toHaveCount(0);
   });
@@ -274,14 +254,23 @@ describeSpec("Profile journeys", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
-    await stubAuthRoutes(page, { hasLinkedAccount: true });
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null, fail: true });
+    await injectWalletAccount(page);
+    await setupAuthenticatedUser(page, nearAccountId);
+    await page.goto("/profile", { waitUntil: "networkidle" });
+    await expect(
+      page.getByRole("heading", { name: new RegExp(nearAccountId, "i") })
+    ).toBeVisible();
 
-    await page.goto("/profile", { waitUntil: "domcontentloaded" });
-    await waitForHarness(page);
-
-    await expect(page.getByText(/Plugin Unavailable/i)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Plugin Unavailable" })
+    ).toBeVisible();
+    await expect(
+      page.getByText("Discourse plugin server is not running.", {
+        exact: true,
+      })
+    ).toBeVisible();
     await expect(page.getByText(/cd discourse-plugin && bun run dev/)).toBeVisible();
 
     await page.reload();
@@ -296,15 +285,18 @@ describeSpec("Profile journeys", () => {
     await stubDiscourseBadge(page, { success: true, badges: [] });
 
     await page.reload();
-    await expect(page.getByRole("button", { name: /Connect to Discourse/i })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Connect to Discourse" })
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: /Unlink/i })).toBeVisible();
     await page.getByRole("button", { name: /Unlink/i }).click();
-    await expect(page.getByRole("button", { name: /Connect to Discourse/i })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Connect to Discourse" })
+    ).toBeVisible();
   });
 
   test("badge grid surfaces empty and error states", async ({ page }) => {
     registerPlaywrightMocks(page);
-    await stubAuthRoutes(page, { hasLinkedAccount: true });
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, {
       payload: {
@@ -314,9 +306,12 @@ describeSpec("Profile journeys", () => {
     });
     await stubDiscourseBadge(page, { success: true, badges: [] });
 
-    await page.goto("/profile", { waitUntil: "domcontentloaded" });
-    await waitForHarness(page);
-    await expect(page.getByText(/No badges earned yet/i)).toBeVisible();
+    await injectWalletAccount(page);
+    await setupAuthenticatedUser(page, nearAccountId);
+    await page.goto("/profile", { waitUntil: "networkidle" });
+    await expect(
+      page.getByText("No badges earned yet.", { exact: true })
+    ).toBeVisible();
 
     await page.unroute("**/api/discourse/user/**");
     await stubDiscourseBadge(page, { success: false });
@@ -328,7 +323,6 @@ describeSpec("Profile journeys", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
-    await stubAuthRoutes(page, { hasLinkedAccount: true });
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null });
     await stubDiscourseRpc(page, "getUserApiAuthUrl", {
@@ -356,12 +350,19 @@ describeSpec("Profile journeys", () => {
       });
     });
 
-    await page.goto("/profile", { waitUntil: "domcontentloaded" });
-    await waitForHarness(page);
-    await connectWalletHarness(page);
+    await injectWalletAccount(page);
+    await setupAuthenticatedUser(page, nearAccountId);
+    await page.goto("/profile", { waitUntil: "networkidle" });
+    await expect(
+      page.getByRole("heading", { name: new RegExp(nearAccountId, "i") })
+    ).toBeVisible();
 
-    await expect(page.getByRole("button", { name: /Connect to Discourse/i })).toBeVisible();
-    await page.getByRole("button", { name: /Connect to Discourse/i }).click();
+    await expect(
+      page.getByRole("button", { name: "Connect to Discourse" }).first()
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Connect to Discourse" })
+      .click();
     await page.getByRole("button", { name: /Paste from clipboard/i }).click();
     await page.fill("#discourse-key", "mock-api-key");
     await page.getByRole("button", { name: /Complete Link/i }).click();
@@ -373,7 +374,6 @@ describeSpec("Profile journeys", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
-    await stubAuthRoutes(page, { hasLinkedAccount: true });
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null });
     await stubDiscourseRpc(page, "getUserApiAuthUrl", {
@@ -397,11 +397,16 @@ describeSpec("Profile journeys", () => {
       window.open = () => popup as Window;
     });
 
-    await page.goto("/profile", { waitUntil: "domcontentloaded" });
-    await waitForHarness(page);
-    await connectWalletHarness(page);
+    await injectWalletAccount(page);
+    await setupAuthenticatedUser(page, nearAccountId);
+    await page.goto("/profile", { waitUntil: "networkidle" });
+    await expect(
+      page.getByRole("heading", { name: new RegExp(nearAccountId, "i") })
+    ).toBeVisible();
 
-    await page.getByRole("button", { name: /Connect to Discourse/i }).click();
+    await page
+      .getByRole("button", { name: "Connect to Discourse" })
+      .click();
     await page.fill("#discourse-key", "broken-key");
     await page.getByRole("button", { name: /Complete Link/i }).click();
 
@@ -411,17 +416,22 @@ describeSpec("Profile journeys", () => {
 
   test("discourse connect flow requires wallet before starting linking", async ({ page }) => {
     registerPlaywrightMocks(page);
-    await stubAuthRoutes(page, { hasLinkedAccount: true });
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null });
 
-    await page.goto("/profile", { waitUntil: "domcontentloaded" });
-    await waitForHarness(page);
-    await page.evaluate(() => {
-      (window as any).__NEAR_TEST_HARNESS__?.emitSignOut?.();
-    });
+    await setupUnauthenticatedUser(page);
+    await page.goto("/profile", { waitUntil: "networkidle" });
 
-    await page.getByRole("button", { name: /Connect to Discourse/i }).click();
-    await expect(page.getByText(/Please connect your wallet first\./i).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Wallet not connected/i })
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Connect your NEAR wallet to Discourse/i)
+    ).toBeVisible();
+
+    const connectButton = page.getByRole("button", {
+      name: "Connect to Discourse",
+    });
+    await expect(connectButton).toHaveCount(0);
   });
 });

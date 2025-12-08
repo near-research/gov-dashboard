@@ -22,7 +22,7 @@ export function ScreeningButton({
   revisionNumber,
   onScreeningComplete,
 }: ScreeningButtonProps) {
-  const { signedAccountId, wallet, loading } = useNear();
+  const { signedAccountId, nearClient, loading } = useNear();
   const track = useGovernanceAnalytics();
 
   const [screening, setScreening] = useState(false);
@@ -61,7 +61,7 @@ export function ScreeningButton({
     });
 
     try {
-      if (!wallet)
+      if (!nearClient)
         throw new Error(
           "Wallet not connected. Please connect your NEAR wallet."
         );
@@ -69,7 +69,7 @@ export function ScreeningButton({
         throw new Error("NEAR account not found. Please connect your wallet.");
 
       const authToken = await sign(`Screen proposal ${topicId}`, {
-        signer: wallet,
+        signer: nearClient,
         recipient: "social.near",
       });
 
@@ -257,7 +257,7 @@ export function ScreeningButton({
       <p className="text-sm text-muted-foreground mb-4">
         Screen this proposal (version {revisionNumber}) against NEAR governance
         criteria using AI.
-        {!wallet && (
+        {!signedAccountId && (
           <span className="block mt-1 text-red-500">
             ⚠ Please connect your NEAR wallet to screen proposals.
           </span>
@@ -270,12 +270,12 @@ export function ScreeningButton({
       )}
       <Button
         onClick={handleScreen}
-        disabled={screening || !wallet || !signedAccountId}
+        disabled={screening || !signedAccountId}
         className="w-full"
       >
         {screening
           ? "Screening..."
-          : wallet && signedAccountId
+          : signedAccountId
           ? "Screen This Proposal"
           : "Connect Wallet to Screen"}
       </Button>

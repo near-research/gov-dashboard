@@ -13,7 +13,7 @@ const loadAuth = async () => {
   return import("@/components/providers/auth-provider");
 };
 
-vi.mock("@/lib/auth-client", () => ({
+vi.mock("@/lib/auth/auth-client", () => ({
   authClient: {
     listAccounts: (...args: any[]) => listAccounts(...args),
   },
@@ -64,12 +64,11 @@ describe("AuthProvider", () => {
       error: null,
     });
     useNearMock.mockReturnValue({
-      wallet: null,
+      nearClient: {} as any,
       signedAccountId: "wallet.near",
       loading: false,
       signIn: vi.fn(),
       signOut: vi.fn(),
-      provider: null,
       viewFunction: vi.fn(),
       callFunction: vi.fn(),
     });
@@ -96,12 +95,11 @@ describe("AuthProvider", () => {
       error: null,
     });
     useNearMock.mockReturnValue({
-      wallet: null,
+      nearClient: {} as any,
       signedAccountId: null,
       loading: false,
       signIn: vi.fn(),
       signOut: vi.fn(),
-      provider: null,
       viewFunction: vi.fn(),
       callFunction: vi.fn(),
     });

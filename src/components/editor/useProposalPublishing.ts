@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GovernanceTrackFn } from "@/lib/analytics";
+import type { Near } from "near-kit";
 type OrpcClient = typeof import("@/lib/orpc").client;
 import type {
   DiscourseAuthUrl,
@@ -9,7 +10,7 @@ import type {
 
 interface UseProposalPublishingParams {
   client: OrpcClient;
-  wallet: any;
+  nearClient: Near | null;
   signedAccountId: string | null | undefined;
   isPassing: boolean;
   title: string;
@@ -19,7 +20,7 @@ interface UseProposalPublishingParams {
 
 export const useProposalPublishing = ({
   client,
-  wallet,
+  nearClient,
   signedAccountId,
   isPassing,
   title,
@@ -84,19 +85,19 @@ export const useProposalPublishing = ({
 
   const completeDiscourseLink = useCallback(async () => {
     if (!linkNonce || !linkPayload.trim()) {
-      setLinkError("Paste the User API key from Discourse to continue.");
-      return;
-    }
-    if (!wallet) {
-      setLinkError("Connect your NEAR wallet first.");
-      return;
-    }
+    setLinkError("Paste the User API key from Discourse to continue.");
+    return;
+  }
+  if (!nearClient || !signedAccountId) {
+    setLinkError("Connect your NEAR wallet first.");
+    return;
+  }
     setLinking(true);
     setLinkError("");
     try {
       const { sign } = await import("near-sign-verify");
       const authToken = await sign("Link my NEAR account to Discourse", {
-        signer: wallet,
+        signer: nearClient,
         recipient: "social.near",
       });
       await client.discourse.completeLink({
@@ -118,7 +119,7 @@ export const useProposalPublishing = ({
     } finally {
       setLinking(false);
     }
-  }, [client, linkNonce, linkPayload, signedAccountId, wallet]);
+  }, [client, linkNonce, linkPayload, signedAccountId, nearClient]);
 
   const publishToDiscourse = useCallback(async () => {
     if (!isPassing) {
@@ -129,7 +130,7 @@ export const useProposalPublishing = ({
       setPublishError("Add a title and proposal content first.");
       return;
     }
-    if (!wallet || !signedAccountId) {
+    if (!nearClient || !signedAccountId) {
       setPublishError("Connect your NEAR wallet to publish.");
       return;
     }
@@ -146,7 +147,7 @@ export const useProposalPublishing = ({
     try {
       const { sign } = await import("near-sign-verify");
       const authToken = await sign("Publish proposal draft to Discourse", {
-        signer: wallet,
+        signer: nearClient,
         recipient: "social.near",
       });
 
@@ -175,7 +176,7 @@ export const useProposalPublishing = ({
     } finally {
       setPublishLoading(false);
     }
-  }, [isPassing, title, content, wallet, signedAccountId, discourseLinked, client, track]);
+  }, [isPassing, title, content, nearClient, signedAccountId, discourseLinked, client, track]);
 
   return {
     publishLoading,

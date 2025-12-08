@@ -160,6 +160,12 @@ export default function SettingsPage() {
       rows: 12,
     },
   ];
+  const getCustomContextFieldId = (name: string) =>
+    `custom-context-field-${name}`;
+  const getPromptFieldId = (name: string) => `prompt-field-${name}`;
+  const getCustomVariableId = (name: string) => `custom-variable-${name}`;
+  const customPromptTextareaId = "custom-prompt-text";
+  const replyPostNumberInputId = "reply-post-number-to-load";
   const extractTemplateVariables = (template: string) => {
     // Matches both {variable} and {{variable}} syntaxes
     const regex = /\{(\{)?[\s]*([\w.-]+)[\s]*(\})?\}/g;
@@ -418,10 +424,14 @@ export default function SettingsPage() {
           </div>
           {selectedPrompt === "summarizeReply" && (
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <label
+                htmlFor={replyPostNumberInputId}
+                className="block text-xs font-medium text-muted-foreground uppercase tracking-wide"
+              >
                 Post Number
               </label>
               <Input
+                id={replyPostNumberInputId}
                 value={replyPostNumberToLoad}
                 onChange={(e) => setReplyPostNumberToLoad(e.target.value)}
                 placeholder="e.g. 5"
@@ -552,10 +562,14 @@ export default function SettingsPage() {
               {selectedPrompt === "custom" ? (
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-2">
+                    <label
+                      htmlFor={customPromptTextareaId}
+                      className="block text-sm font-medium text-muted-foreground mb-2"
+                    >
                       Write your prompt here:
                     </label>
                     <Textarea
+                      id={customPromptTextareaId}
                       value={customPromptText}
                       onChange={(e) => setCustomPromptText(e.target.value)}
                       placeholder="Enter the exact prompt to send to the model"
@@ -568,31 +582,71 @@ export default function SettingsPage() {
                         Custom Variables
                       </label>
                       <div className="space-y-3">
-                        {customVariableNames.map((variable) => (
-                          <div key={variable}>
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">
-                              {variable}
-                            </label>
-                            <Input
-                              value={inputValues[variable] || ""}
-                              onChange={(e) =>
-                                handleInputChange(variable, e.target.value)
-                              }
-                              placeholder={`Value for ${variable}`}
-                            />
-                          </div>
-                        ))}
+                        {customVariableNames.map((variable) => {
+                          const variableId = getCustomVariableId(variable);
+                          return (
+                            <div key={variable}>
+                              <label
+                                htmlFor={variableId}
+                                className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide"
+                              >
+                                {variable}
+                              </label>
+                              <Input
+                                id={variableId}
+                                value={inputValues[variable] || ""}
+                                onChange={(e) =>
+                                  handleInputChange(variable, e.target.value)
+                                }
+                                placeholder={`Value for ${variable}`}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
                   <div className="space-y-4">
                     {renderLoadSection()}
-                    {customContextFields.map((field) => (
+                    {customContextFields.map((field) => {
+                      const fieldId = getCustomContextFieldId(field.name);
+                      return (
+                        <div key={field.name}>
+                          <label
+                            htmlFor={fieldId}
+                            className="block text-sm font-medium text-muted-foreground mb-2"
+                          >
+                            {field.label}
+                          </label>
+                          <Textarea
+                            id={fieldId}
+                            value={inputValues[field.name] || ""}
+                            onChange={(e) =>
+                              handleInputChange(field.name, e.target.value)
+                            }
+                            placeholder={field.placeholder}
+                            rows={field.rows || 4}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {renderLoadSection()}
+                  {selectedPromptConfig?.fields?.map((field) => {
+                    const fieldId = getPromptFieldId(field.name);
+                    return (
                       <div key={field.name}>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">
+                        <label
+                          htmlFor={fieldId}
+                          className="block text-sm font-medium text-muted-foreground mb-2"
+                        >
                           {field.label}
                         </label>
                         <Textarea
+                          id={fieldId}
                           value={inputValues[field.name] || ""}
                           onChange={(e) =>
                             handleInputChange(field.name, e.target.value)
@@ -601,27 +655,8 @@ export default function SettingsPage() {
                           rows={field.rows || 4}
                         />
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {renderLoadSection()}
-                  {selectedPromptConfig?.fields?.map((field) => (
-                    <div key={field.name}>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">
-                        {field.label}
-                      </label>
-                      <Textarea
-                        value={inputValues[field.name] || ""}
-                        onChange={(e) =>
-                          handleInputChange(field.name, e.target.value)
-                        }
-                        placeholder={field.placeholder}
-                        rows={field.rows || 4}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </>
               )}
 

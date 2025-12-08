@@ -4,6 +4,7 @@ import {
   registerPlaywrightMocks,
 } from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
+import { mockSignInFailure, mockWalletConnected } from "./helpers/auth-mocks";
 
 const { describe: describeSpec } = createPlaywrightGuard("seed.spec.ts");
 
@@ -82,6 +83,7 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     // Verify Connect Wallet button is visible
     const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
     await expect(connectButton).toBeVisible();
+    await expect(connectButton).toBeEnabled({ timeout: 5000 });
 
     // Verify no account dropdown is shown
     const accountDropdown = page.locator("[role='menu']");
@@ -115,25 +117,9 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
+    await mockWalletConnected(page, "tester.testnet");
+    await page.goto("/", { waitUntil: "networkidle" });
 
-    // Navigate to home page so the harness can initialize
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(
-      () => typeof window !== "undefined" && !!(window as any).__NEAR_TEST_HARNESS__
-    );
-
-    // Click Connect Wallet button
-    const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
-    await connectButton.click();
-
-    // In real scenario, wallet modal would appear
-    // For tests with harness, we simulate wallet connection
-    await page.evaluate(() => {
-      (window as any).__NEAR_TEST_HARNESS__?.emitSignIn?.();
-    });
-
-    // Wait for state update and button transition
-    // Button should now show wallet account ID with "→ Sign In" text
     const signInButton = page.getByRole("button", {
       name: /Sign In/i,
     }).first();
@@ -160,36 +146,17 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
    */
   test("show loading spinner during wallet sign-in flow", async ({ page }) => {
     registerPlaywrightMocks(page);
-
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(
-      () => typeof window !== "undefined" && !!(window as any).__NEAR_TEST_HARNESS__
-    );
-
-    const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
-    await connectButton.click();
-
-    // Wait for wallet to connect
-    await page.evaluate(() => {
-      (window as any).__NEAR_TEST_HARNESS__?.emitSignIn?.();
-    });
-
-    // Wait for Sign In button to appear
-    await page.waitForTimeout(1000);
-
-    // Button should be visible and clickable
-    const signInButton = page.getByRole("button", { name: /Sign In/i }).first();
-
-    // Mock the auth flow to prevent actual network calls
+    await mockWalletConnected(page, "tester.testnet");
     markPageWithCustomAuthRoutes(page);
     await page.route("**/api/auth/**", (route) => {
       route.abort();
     });
+    await page.goto("/", { waitUntil: "networkidle" });
 
-    // Click Sign In
+    const signInButton = page.getByRole("button", { name: /Sign In/i }).first();
+
     await signInButton.click();
 
-    // Button should show loading state (spinner)
     const spinner = page.locator("svg.animate-spin");
     await expect(spinner).toBeVisible({ timeout: 3000 });
   });
@@ -393,25 +360,15 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
+    await mockWalletConnected(page, "tester.testnet");
+    await mockSignInFailure(page, "Wallet connection cancelled");
+    await page.goto("/", { waitUntil: "networkidle" });
 
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(
-      () => typeof window !== "undefined" && !!(window as any).__NEAR_TEST_HARNESS__
-    );
-
-    await page.evaluate(() => {
-      const harness = (window as any).__NEAR_TEST_HARNESS__;
-      if (harness) {
-        (harness as any).rejectConnection = true;
-      }
-    });
-
-    // Click Connect Wallet
+    const signInButton = page.getByRole("button", { name: /Sign In/i }).first();
+    await signInButton.click();
     const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
-    await connectButton.click();
-
-    // Should still show Connect Wallet button (no error state)
-    await expect(connectButton).toBeVisible({ timeout: 2000 });
+    await expect(connectButton).toBeVisible({ timeout: 5000 });
+    await expect(connectButton).toBeEnabled();
   });
 
   /**

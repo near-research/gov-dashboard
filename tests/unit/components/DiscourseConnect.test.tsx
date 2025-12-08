@@ -15,6 +15,7 @@ const wallet = { signMessage: vi.fn() } as any;
 vi.mock("@/components/providers/auth-provider", () => ({
   useAuth: () => ({
     wallet,
+    nearClient: wallet,
     nearAccountId: "alice.testnet",
   }),
 }));

@@ -7,9 +7,9 @@ import React, {
   useMemo,
   type ReactNode,
 } from "react";
-import { authClient, useSession } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth/auth-client";
 import { useNear } from "@/hooks/useNear";
-import { getNearAccountId, hasNearLinked } from "@/lib/auth-utils";
+import { getNearAccountId, hasNearLinked } from "@/lib/auth/auth-utils";
 
 type SessionData = ReturnType<typeof useSession>["data"];
 type SessionUser = SessionData extends null | undefined
@@ -36,14 +36,11 @@ type AuthContextType = {
   hasNear: boolean;
 
   // useNear wallet state (for signing, transactions)
-  wallet: ReturnType<typeof useNear>["wallet"];
+  nearClient: ReturnType<typeof useNear>["nearClient"];
   walletAccountId: string | null;
-  walletId: string | null;
-  walletName: string | null;
   walletLoading: boolean;
   walletSignIn: () => Promise<void>;
   walletSignOut: () => Promise<void>;
-  provider: ReturnType<typeof useNear>["provider"];
   viewFunction: ReturnType<typeof useNear>["viewFunction"];
   callFunction: ReturnType<typeof useNear>["callFunction"];
 
@@ -63,14 +60,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // useNear wallet
   const {
-    wallet,
     signedAccountId: walletAccountIdRaw,
     loading: walletLoading,
     signIn: walletSignIn,
     signOut: walletSignOut,
-    provider,
     viewFunction,
     callFunction,
+    nearClient,
   } = useNear();
   const walletAccountId = walletAccountIdRaw || null;
 
@@ -91,7 +87,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccountsError(null);
     } catch (err) {
       console.error("Failed to fetch linked accounts:", err);
-      setAccountsError(err instanceof Error ? err : new Error("Failed to fetch linked accounts"));
+      setAccountsError(
+        err instanceof Error
+          ? err
+          : new Error("Failed to fetch linked accounts")
+      );
     }
   }, [sessionData?.session]);
 
@@ -107,10 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const linkedNearAccountId = getNearAccountId(linkedAccounts);
   const nearAccountId = linkedNearAccountId || walletAccountId || null;
   const hasNear = hasNearLinked(linkedAccounts) || !!walletAccountId;
-  const walletId = wallet?.manifest?.id ?? null;
-  const walletName = wallet?.manifest?.name ?? null;
-
-  const memoWalletSignIn = useCallback(() => walletSignIn(), [walletSignIn]);
+  const memoWalletSignIn = useCallback(async () => {
+    await walletSignIn();
+  }, [walletSignIn]);
   const memoWalletSignOut = useCallback(() => walletSignOut(), [walletSignOut]);
 
   // Combined loading state
@@ -133,15 +132,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       nearAccountId,
       hasNear,
 
-      // Wallet
-      wallet,
+      nearClient,
       walletAccountId,
-      walletId,
-      walletName,
       walletLoading,
       walletSignIn: memoWalletSignIn,
       walletSignOut: memoWalletSignOut,
-      provider,
       viewFunction,
       callFunction,
 
@@ -157,14 +152,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshAccounts,
       nearAccountId,
       hasNear,
-      wallet,
+      nearClient,
       walletAccountId,
-      walletId,
-      walletName,
       walletLoading,
       memoWalletSignIn,
       memoWalletSignOut,
-      provider,
       viewFunction,
       callFunction,
       isPending,
@@ -173,9 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={contextValue}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
   );
 }
 

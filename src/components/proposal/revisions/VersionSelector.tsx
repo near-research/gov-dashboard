@@ -63,7 +63,11 @@ export default function VersionSelector({
             value={selectedVersion.toString()}
             onValueChange={(v) => onVersionChange(Number(v))}
             >
-              <SelectTrigger className="w-[140px]" id="version-select">
+              <SelectTrigger
+                className="w-[140px]"
+                id="version-select"
+                data-testid="version-select"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

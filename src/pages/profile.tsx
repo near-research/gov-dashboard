@@ -31,10 +31,6 @@ import {
   saveDiscourseUserApiKey,
 } from "@/utils/discourse";
 
-type AccountView = {
-  amount: string;
-};
-
 type DiscourseUserResponse = {
   user_badges: Array<{
     id: number;
@@ -54,21 +50,6 @@ type DiscourseUserResponse = {
 
 const YOCTO_NEAR = BigInt("1000000000000000000000000");
 
-const formatNearBalance = (amount: string) => {
-  try {
-    const yocto = BigInt(amount);
-    const whole = yocto / YOCTO_NEAR;
-    const fraction = yocto % YOCTO_NEAR;
-    let fractionStr = fraction.toString().padStart(24, "0").slice(0, 2);
-    fractionStr = fractionStr.replace(/0+$/, "");
-    return fractionStr
-      ? `${whole.toString()}.${fractionStr}`
-      : whole.toString();
-  } catch {
-    return "--";
-  }
-};
-
 const formatDate = (iso?: string | null) => {
   if (!iso) return "--";
   try {
@@ -83,8 +64,13 @@ const formatDate = (iso?: string | null) => {
 };
 
 export default function Profile() {
-  const { user, isPending, nearAccountId, wallet, walletLoading, provider } =
-    useAuth();
+  const {
+    user,
+    isPending,
+    nearAccountId,
+    walletLoading,
+    nearClient,
+  } = useAuth();
   const [discourseLink, setDiscourseLink] = useState<any>(null);
   const [discourseCheckFailed, setDiscourseCheckFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -129,7 +115,7 @@ export default function Profile() {
   }, [nearAccountId, user?.id]);
 
   useEffect(() => {
-    if (!nearAccountId || !provider) {
+    if (!nearAccountId || !nearClient) {
       setNearBalance(null);
       return;
     }
@@ -137,13 +123,9 @@ export default function Profile() {
     let cancelled = false;
     const fetchBalance = async () => {
       try {
-        const accountView = (await provider.query({
-          request_type: "view_account",
-          account_id: nearAccountId,
-          finality: "final",
-        })) as unknown as AccountView;
+        const accountBalance = await nearClient.getBalance(nearAccountId);
         if (!cancelled) {
-          setNearBalance(formatNearBalance(accountView.amount));
+          setNearBalance(accountBalance);
         }
       } catch (error) {
         if (!cancelled) {
@@ -159,7 +141,7 @@ export default function Profile() {
     return () => {
       cancelled = true;
     };
-  }, [provider, nearAccountId]);
+  }, [nearClient, nearAccountId]);
 
   useEffect(() => {
     if (!discourseLink?.discourseUsername) {

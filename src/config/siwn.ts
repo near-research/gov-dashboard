@@ -1,15 +1,26 @@
-const defaultDomain = process.env.NEXT_PUBLIC_NEAR_DOMAIN || "gov.near.org";
+/**
+ * Extract hostname from URL, stripping protocol but keeping port for localhost
+ */
+function getDomainFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.host;
+  } catch {
+    return url;
+  }
+}
+
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
 /**
- * Recipient/domain for SIWN flows.
- * - Client: used in better-near-auth client plugin and sign-in calls.
- * - Server: used by better-near-auth verification.
+ * Domain for SIWN flows.
+ * Explicit NEXT_PUBLIC_NEAR_DOMAIN overrides, otherwise derived from BASE_URL.
  */
-export const siwnRecipient =
-  process.env.NEAR_RECIPIENT || defaultDomain;
+export const siwnDomain =
+  process.env.NEXT_PUBLIC_NEAR_DOMAIN || getDomainFromUrl(baseUrl);
 
 /**
- * Domain passed to the SIWN client plugin; kept separate for clarity even though
- * it currently mirrors the recipient.
+ * Recipient for server-side verification.
+ * Should match siwnDomain unless explicitly overridden.
  */
-export const siwnDomain = defaultDomain;
+export const siwnRecipient = process.env.NEAR_RECIPIENT || siwnDomain;

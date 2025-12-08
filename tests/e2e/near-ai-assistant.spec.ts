@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   registerMockVerificationSessionsForEvents,
   registerPlaywrightMocks,
@@ -198,10 +198,35 @@ const waitForAnalyticsEvent = async (
     [name, minCount]
   );
 
+const shouldLogMocks = (process.env.PLAYWRIGHT_TEST ?? "").trim().toLowerCase() === "true";
+const logMockRoute = (label: string, route: Route) => {
+  if (!shouldLogMocks) return;
+  const request = route.request();
+  console.log(`[near-ai-assistant mock] ${label} ${request.method()} ${request.url()}`);
+};
+
 describeSpec("NEAR AI assistant chat", () => {
   test("streams NEAR AI completions, verification, errors, quick actions, and analytics", async ({
     page,
   }) => {
+    const consoleErrors: string[] = [];
+    if (shouldLogMocks) {
+      page.on("request", (request) => {
+        if (request.url().includes("/api/agent") || request.url().includes("/api/chat")) {
+          console.log(">>> Request:", request.method(), request.url());
+        }
+      });
+      page.on("response", (response) => {
+        if (response.url().includes("/api/agent") || response.url().includes("/api/chat")) {
+          console.log(">>> Response:", response.status(), response.url());
+        }
+      });
+      page.on("console", (msg) => {
+        if (msg.type() === "error" || msg.type() === "warning") {
+          consoleErrors.push(`${msg.type()}: ${msg.text()}`);
+        }
+      });
+    }
     await ensurePlausibleSpy(page);
     registerPlaywrightMocks(page, { skipChatCompletionsStream: true });
 
@@ -215,8 +240,10 @@ describeSpec("NEAR AI assistant chat", () => {
     };
     registerMockVerificationSessionsForEvents(chatMock.events);
 
-    await page.unroute("/api/agent");
-    await page.route("/api/agent", async (route) => {
+    await page.unroute("**/api/agent");
+    await page.unroute("**/api/agent**");
+    await page.route("**/api/agent**", async (route) => {
+      logMockRoute("api/agent override", route);
       if (chatMock.type === "stream") {
         await route.fulfill({
           status: 200,
@@ -258,7 +285,8 @@ describeSpec("NEAR AI assistant chat", () => {
     );
     await page.keyboard.press("Enter");
 
-    await expect(page.getByTestId("typing-indicator")).toBeVisible();
+    const typingIndicator = page.getByTestId("typing-indicator").first();
+    await typingIndicator.waitFor({ state: "visible", timeout: 5000 });
     const streamResponse = await agentResponsePromise;
     await streamResponse.finished();
     await expect(page.getByText("Overview of proposals with verification proof.")).toBeVisible({
@@ -294,7 +322,8 @@ describeSpec("NEAR AI assistant chat", () => {
     };
     registerMockVerificationSessionsForEvents(chatMock.events);
     await page.getByRole("button", { name: "Recent proposals" }).click();
-    await expect(page.getByTestId("typing-indicator")).toBeVisible();
+    const quickTypingIndicator = page.getByTestId("typing-indicator").first();
+    await quickTypingIndicator.waitFor({ state: "visible", timeout: 5000 });
     await expect(page.getByText("Quick action response and final verification.")).toBeVisible();
 
     const analyticsEvents = await getPlausibleEvents(page);
@@ -386,5 +415,8 @@ describeSpec("NEAR AI assistant chat", () => {
       (entry: any) => entry.event === "agent_chat_message_sent"
     );
     expect(finalMessageEvents.length).toBeGreaterThanOrEqual(4);
+    if (shouldLogMocks) {
+      console.log("Console errors:", consoleErrors);
+    }
   });
 });

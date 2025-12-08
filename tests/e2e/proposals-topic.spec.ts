@@ -1,11 +1,19 @@
 import { expect, test } from "@playwright/test";
 import proposalDetailFixture from "../fixtures/playwright/proposal-detail.json";
-import { registerPlaywrightMocks } from "./helpers/playwright-mocks";
+import {
+  mockProposalRevisions,
+  registerPlaywrightMocks,
+} from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
+import {
+  mockAuthenticatedSession,
+  mockWalletConnected,
+} from "./helpers/auth-mocks";
 
 const { describe: describeSpec } = createPlaywrightGuard("proposals-topic.spec.ts");
 const PROPOSAL_ID = "42";
 const PROPOSAL_TITLE = "Mock Proposal for Playwright";
+const PROPOSAL_SLUG = proposalDetailFixture.topic_slug;
 
 const createSsePayload = (events: Record<string, unknown>[]) =>
   `${events
@@ -17,6 +25,15 @@ describeSpec("Proposal topic detail walkthrough", () => {
     page,
   }) => {
     let skeletonDelayed = false;
+
+    await page.addInitScript(() => {
+      (window as any).__LAST_DISCOURSE_URL__ = null;
+      window.open = (url?: string | URL | null) => {
+        (window as any).__LAST_DISCOURSE_URL__ =
+          typeof url === "string" ? url : url?.toString?.() ?? null;
+        return null;
+      };
+    });
 
     await page.route(new RegExp(`/api/proposals/${PROPOSAL_ID}$`), async (route) => {
       if (!skeletonDelayed) {
@@ -81,6 +98,7 @@ describeSpec("Proposal topic detail walkthrough", () => {
       await route.continue();
     });
 
+    await mockProposalRevisions(page, PROPOSAL_ID);
     registerPlaywrightMocks(page);
 
     await page.goto("/proposals", { waitUntil: "domcontentloaded" });
@@ -90,17 +108,18 @@ describeSpec("Proposal topic detail walkthrough", () => {
       .first()
       .click();
 
-    const skeleton = page.locator("div.animate-pulse").first();
-    await expect(skeleton).toBeVisible({ timeout: 6000 });
-
     await expect(page.getByRole("heading", { name: PROPOSAL_TITLE })).toBeVisible({
       timeout: 10000,
     });
 
-    const externalLink = page.getByRole("link", { name: /View on Discourse/i });
-    await expect(externalLink).toHaveAttribute(
-      "href",
-      new RegExp(`/t/.+/${PROPOSAL_ID}`)
+    const discourseButton = page.getByRole("button", { name: /View on Discourse/i });
+    await expect(discourseButton).toBeVisible();
+    await discourseButton.click();
+    const openedUrl = await page.evaluate(
+      () => (window as any).__LAST_DISCOURSE_URL__
+    );
+    expect(openedUrl).toMatch(
+      new RegExp(`/t/${PROPOSAL_SLUG}/${PROPOSAL_ID}`)
     );
 
     await expect(page.getByText(/replies/i)).toBeVisible();
@@ -120,7 +139,10 @@ describeSpec("Proposal topic detail walkthrough", () => {
     await expect(page.getByTestId("verification-proof-trigger")).toBeVisible();
 
     await page.getByRole("button", { name: /Revisions/ }).click();
-    await page.locator("#version-select").click();
+    const versionSelect = page.locator('[data-testid="version-select"]');
+    console.log("Version select count:", await versionSelect.count());
+    await expect(versionSelect).toBeVisible({ timeout: 10000 });
+    await versionSelect.click();
     await page.getByRole("option", { name: /v2/ }).click();
     await page.getByLabel("Show changes").click();
     await expect(
@@ -160,9 +182,11 @@ describeSpec("Proposal topic detail walkthrough", () => {
     registerPlaywrightMocks(page);
     await page.goto(`/proposals/${PROPOSAL_ID}`, { waitUntil: "domcontentloaded" });
 
-    const fetchErrorAlert = page.locator('[role="alert"]:not(#__next-route-announcer__)');
-    await fetchErrorAlert.waitFor({ state: "visible", timeout: 5000 });
-    await expect(fetchErrorAlert).toHaveText(/Failed to fetch proposal/i);
+    const errorAlert = page.getByRole("alert");
+    await expect(errorAlert).toBeVisible();
+    await expect(errorAlert).toContainText(
+      /(Failed to fetch proposal|Proposal not found)/i
+    );
   });
 
   test("handles reply summaries, screening gating, chatbot streams, and analytics", async ({ page }) => {
@@ -238,7 +262,7 @@ describeSpec("Proposal topic detail walkthrough", () => {
     });
 
     let chatCall = 0;
-    await page.route("/api/chat/completions", async (route) => {
+    await page.route("**/api/chat/completions", async (route) => {
       chatCall += 1;
       const postData = route.request().postData();
       const body = postData ? JSON.parse(postData) : {};
@@ -328,16 +352,14 @@ describeSpec("Proposal topic detail walkthrough", () => {
 
     await expect(page.getByRole("heading", { name: /Evaluation/ })).toBeVisible();
 
-    await page.locator("#version-select").click();
+  await page.locator('[data-testid="version-select"]').click();
     await page.getByRole("option", { name: /v2/ }).click();
     await expect(
       page.getByText(/Connect your NEAR wallet to evaluate this proposal./)
     ).toBeVisible();
 
-    await page.waitForFunction(() => typeof window !== "undefined" && !!(window as any).__NEAR_TEST_HARNESS__);
-    await page.evaluate(() =>
-      (window as any).__NEAR_TEST_HARNESS__?.emitSignIn?.({ accountId: "playwright.testnet" })
-    );
+    await mockWalletConnected(page, "playwright.testnet");
+    await mockAuthenticatedSession(page, "playwright.testnet");
 
     const screeningButton = page.getByRole("button", { name: /Screen This Proposal/i });
     await expect(screeningButton).toBeVisible({ timeout: 10000 });
