@@ -2,6 +2,54 @@ import "server-only";
 
 import { createPluginRuntime } from "every-plugin";
 
+const DEFAULT_DISCOURSE_BASE_URL = "https://gov.near.org";
+
+const normalizeFileSchemeUrl = (rawUrl: string) => {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  if (!trimmed.toLowerCase().startsWith("file:")) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "file:") {
+      return trimmed;
+    }
+    const searchHash = `${parsed.search}${parsed.hash}`.replace(/^\s*/, "");
+    return `file://${parsed.pathname}${searchHash}`;
+  } catch {
+    if (trimmed.toLowerCase().startsWith("file:///")) {
+      return trimmed;
+    }
+    const withoutScheme = trimmed.slice("file://".length);
+    return `file:///${withoutScheme}`;
+  }
+};
+
+const normalizeRemoteEntryUrl = (input: string): string => {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  const normalized = normalizeFileSchemeUrl(trimmed);
+  if (normalized.endsWith(".js")) {
+    return normalized;
+  }
+
+  const base = normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+  return `${base}/remoteEntry.js`;
+};
+
+const getDiscourseBaseUrl = () =>
+  normalizeFileSchemeUrl(
+    process.env.DISCOURSE_URL || DEFAULT_DISCOURSE_BASE_URL
+  );
+
 type DiscoursePluginRuntime = ReturnType<typeof createPluginRuntime>;
 type DiscourseRuntimeResult = Awaited<
   ReturnType<DiscoursePluginRuntime["usePlugin"]>
@@ -17,10 +65,9 @@ const getGlobalMock = <T>(key: string): T | undefined =>
 const isTestEnvironment =
   Boolean(process.env.VITEST) || process.env.NODE_ENV === "test";
 
-import { getDiscourseBaseUrl, normalizeFileSchemeUrl } from "./discourse-url";
-
 const createFallbackDiscourseRouter = (): DiscourseRouter =>
   ({
+    initiateLink: async () => null,
     getUserApiAuthUrl: async () => null,
     completeLink: async () => null,
     getLinkage: async () => null,
@@ -91,10 +138,10 @@ if (isTestEnvironment) {
   discourseRouter = getTestRouter();
   discourseClient = getTestClient();
 } else {
-  const remoteUrl = normalizeFileSchemeUrl(
+  const remoteEntryUrl =
     process.env.DISCOURSE_PLUGIN_URL ||
-      "https://jlwaugh-66-discourse-plugin-discourse-plugin-near-d025bb0db-ze.zephyrcloud.app/remoteEntry.js"
-  );
+    "https://jlwaugh-70-discourse-plugin-discourse-plugin-near-e38bf3951-ze.zephyrcloud.app/remoteEntry.js";
+  const normalizedRemoteEntryUrl = normalizeRemoteEntryUrl(remoteEntryUrl);
 
   if (!process.env.DISCOURSE_PLUGIN_URL) {
     console.warn(
@@ -103,7 +150,7 @@ if (isTestEnvironment) {
   }
 
   const runtime = createPluginRuntime({
-    registry: { "discourse-plugin": { remoteUrl } },
+    registry: { "discourse-plugin": { remoteUrl: normalizedRemoteEntryUrl } },
     secrets: {
       DISCOURSE_API_KEY:
         process.env.DISCOURSE_API_KEY || "test-discourse-api-key",
@@ -134,4 +181,5 @@ if (isTestEnvironment) {
   discourseClient = plugin.client;
 }
 
+export { getDiscourseBaseUrl };
 export { discourseRouter, discourseClient };

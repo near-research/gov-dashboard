@@ -142,13 +142,13 @@ export function PublishBar({
           </Button>
         )}
         <div style={{ position: "relative" }}>
-          <Button
-            onClick={publishToDiscourse}
-            disabled={publishDisabled}
-            className="w-full"
-            aria-label={publishDisabled ? "Complete steps to publish" : undefined}
-            title={publishDisabled ? "Complete steps to publish" : undefined}
-          >
+        <Button
+          onClick={publishToDiscourse}
+          disabled={publishDisabled}
+          className="w-full"
+          aria-label={publishDisabled ? "Publish to Discourse (Complete steps to publish)" : undefined}
+          title={publishDisabled ? "Complete steps to publish" : undefined}
+        >
             {publishLoading ? "Publishing..." : "Publish to Discourse"}
           </Button>
           {publishDisabled && (

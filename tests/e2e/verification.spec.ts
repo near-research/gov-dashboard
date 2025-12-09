@@ -25,10 +25,7 @@ describeSpec("Verification flow", () => {
       route.fulfill({
         status: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          success: true,
-          proof: verifiedProofMock,
-        }),
+        body: JSON.stringify(verifiedProofMock),
       });
     });
 
@@ -84,10 +81,7 @@ describeSpec("Verification flow", () => {
       await route.fulfill({
         status: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          success: true,
-          proof: verifiedProofMock,
-        }),
+        body: JSON.stringify(verifiedProofMock),
       });
     });
 

@@ -165,7 +165,7 @@ describeSpec("Draft workflow", () => {
       });
     });
 
-    await page.route("**/api/rpc/discourse/getUserApiAuthUrl", (route) =>
+    await page.route("**/api/rpc/discourse/initiateLink", (route) =>
       route.fulfill({
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -238,7 +238,7 @@ describeSpec("Draft workflow", () => {
     await mockWalletConnected(page, "playwright.testnet");
     await connectButton.click();
     await mockAuthenticatedSession(page, "playwright.testnet");
-    await expect(page.getByRole("button", { name: /Link Discourse account/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Connect to Discourse/i })).toBeVisible();
 
     await page.evaluate(() => {
       window.open = () =>

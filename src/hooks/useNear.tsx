@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { authClient, safeSignOut, useSession } from "@/lib/auth/auth-client";
 import { siwnRecipient } from "@/config/siwn";
+import { shouldRetryNonce } from "@/lib/auth/retry";
 import { NearError, type Near } from "near-kit";
 
 export interface ViewFunctionParams {
@@ -57,6 +58,7 @@ export function useNear() {
     mockWalletAccount ?? ""
   );
   const [isClientReady, setIsClientReady] = useState(false);
+  const [clientInitKey, setClientInitKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +78,7 @@ export function useNear() {
         setIsClientReady(true);
       } catch (error) {
         console.error("Failed to initialize NEAR wallet client:", error);
+        setIsClientReady(false);
       }
     };
 
@@ -84,7 +87,7 @@ export function useNear() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clientInitKey]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !isPlaywrightTest) {
@@ -130,44 +133,60 @@ export function useNear() {
   }, [session, walletAccountId]);
 
   const signIn = useCallback(async () => {
-    const client = getSafeNearClient();
-    if (!client) {
+    if (!getSafeNearClient()) {
       throw new Error("NEAR client not initialized");
     }
 
-    try {
-      await authClient.requestSignIn.near({ recipient: siwnRecipient });
-      await authClient.signIn.near({ recipient: siwnRecipient });
+    let retriedNonce = false;
 
-      const accountId = authClient.near.getAccountId() ?? "";
-      setWalletAccountId(accountId);
+    while (true) {
+      try {
+        await authClient.requestSignIn.near({ recipient: siwnRecipient });
+        await authClient.signIn.near({ recipient: siwnRecipient });
 
-      if (refetchSession) {
-        try {
-          await refetchSession();
-        } catch (error) {
-          console.error("Failed to refresh session after NEAR sign-in:", error);
+        const accountId = authClient.near.getAccountId() ?? "";
+        setWalletAccountId(accountId);
+
+        if (refetchSession) {
+          try {
+            await refetchSession();
+          } catch (error) {
+            console.error("Failed to refresh session after NEAR sign-in:", error);
+          }
         }
-      }
 
-      return accountId;
-    } catch (error) {
-      setWalletAccountId("");
-      throw error;
+        return accountId;
+      } catch (error) {
+        if (!retriedNonce && shouldRetryNonce(error)) {
+          retriedNonce = true;
+          continue;
+        }
+
+        setWalletAccountId("");
+        throw error;
+      }
     }
   }, [getSafeNearClient, refetchSession]);
 
   const signOut = useCallback(async () => {
     try {
       await safeSignOut();
+      if (refetchSession) {
+        try {
+          await refetchSession();
+        } catch (refetchError) {
+          console.error("Failed to refresh session after NEAR sign-out:", refetchError);
+        }
+      }
     } catch (error) {
       console.error("Safe sign-out failed:", error);
     } finally {
       setWalletAccountId("");
       setNearClient(null);
       setIsClientReady(false);
+      setClientInitKey((prev) => prev + 1);
     }
-  }, []);
+  }, [refetchSession]);
 
   const viewFunction = useCallback(
     async <T = unknown,>({

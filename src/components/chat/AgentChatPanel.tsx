@@ -860,6 +860,8 @@ export const AgentChatPanel = ({
     setIsAtBottom(nearBottom);
   };
 
+  // Some quick-action streams can mark the assistant message complete before React renders,
+  // so we only gate on the active assistant event rather than its transient status.
   const shouldShowTypingIndicator = Boolean(
     isLoading &&
       streamingAssistantIdRef.current &&
@@ -867,8 +869,7 @@ export const AgentChatPanel = ({
         (event) =>
           event.id === streamingAssistantIdRef.current &&
           event.kind === "message" &&
-          event.role === "assistant" &&
-          event.status === "in_progress"
+          event.role === "assistant"
       )
   );
 

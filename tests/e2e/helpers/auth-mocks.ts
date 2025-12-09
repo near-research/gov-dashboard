@@ -9,7 +9,7 @@ const respondWithJson = (route: Route, payload: unknown, status = 200) => {
   route.fulfill({
     status,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+  body: JSON.stringify(payload),
   });
 };
 
@@ -80,6 +80,22 @@ const buildSessionPayload = (
   return { session, user, linkedAccounts, network };
 };
 
+const setPlaywrightWalletAccount = async (
+  page: Page,
+  accountId: string | null
+) => {
+  await page.addInitScript((value: string | null) => {
+    (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = value;
+  }, accountId);
+
+  await page.evaluate(
+    (value: string | null) => {
+      (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = value;
+    },
+    accountId
+  );
+};
+
 export const mockRequestSignIn = async (
   page: Page,
   accountId: string = DEFAULT_ACCOUNT_ID
@@ -87,9 +103,7 @@ export const mockRequestSignIn = async (
   const { network } = buildSessionPayload(accountId);
   const nonce = Buffer.from(randomUUID()).toString("base64");
 
-  await page.addInitScript((id: string) => {
-    (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = id;
-  }, accountId);
+  await setPlaywrightWalletAccount(page, accountId);
 
   markPageWithCustomAuthRoutes(page);
 
@@ -107,6 +121,8 @@ export const mockCompleteSignIn = async (
   page: Page,
   accountId: string = DEFAULT_ACCOUNT_ID
 ) => {
+  await setPlaywrightWalletAccount(page, accountId);
+
   const { session, user, linkedAccounts, network } =
     buildSessionPayload(accountId);
   markPageWithCustomAuthRoutes(page);
@@ -138,13 +154,11 @@ export const mockAuthenticatedSession = async (
   page: Page,
   accountId: string = DEFAULT_ACCOUNT_ID
 ) => {
-  await page.addInitScript((id: string) => {
-    (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = id;
-  }, accountId);
   await mockCompleteSignIn(page, accountId);
 };
 
 export const mockUnauthenticatedSession = async (page: Page) => {
+  await setPlaywrightWalletAccount(page, null);
   markPageWithCustomAuthRoutes(page);
   await page.route("**/api/auth/get-session", (route) => {
     respondWithJson(route, { session: null, user: null });
@@ -155,9 +169,7 @@ export const mockWalletConnected = async (
   page: Page,
   accountId: string = DEFAULT_ACCOUNT_ID
 ) => {
-  await page.addInitScript((id: string) => {
-    (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = id;
-  }, accountId);
+  await setPlaywrightWalletAccount(page, accountId);
   markPageWithCustomAuthRoutes(page);
   const linkedAccount = createLinkedAccountRecord(accountId, "wallet-only");
 

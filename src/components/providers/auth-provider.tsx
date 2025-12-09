@@ -88,7 +88,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const response = await authClient.listAccounts();
-      setLinkedAccounts(response.data || []);
+      type RawAccounts =
+        | LinkedAccount[]
+        | { data?: LinkedAccount[] }
+        | undefined;
+      const payload = response.data as RawAccounts;
+      const accounts = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : [];
+      setLinkedAccounts(accounts);
       setAccountsError(null);
     } catch (err) {
       console.error("Failed to fetch linked accounts:", err);

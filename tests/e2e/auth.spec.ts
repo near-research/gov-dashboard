@@ -414,7 +414,7 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     registerPlaywrightMocks(page);
     markPageWithCustomAuthRoutes(page);
 
-    const walletAccountId = "nonce.retry.testnet";
+    const walletAccountId = "test.near";
     await page.addInitScript((id: string) => {
       (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = id;
     }, walletAccountId);
@@ -607,20 +607,24 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
    */
   test("redirect to specified URL after successful login", async ({ page }) => {
     registerPlaywrightMocks(page);
+    const walletAccountId = "redirect.flow.near";
+    await mockRequestSignIn(page, walletAccountId);
+    await mockCompleteSignIn(page, walletAccountId);
 
-    // Navigate to login with redirect param
+    // Navigate to login with redirect param to /proposals
     await page.goto("/login?redirect=/proposals", {
       waitUntil: "domcontentloaded",
     });
+    await page.waitForLoadState("networkidle");
 
-    // Verify login page loads
-    const heading = page.getByRole("heading", {
-      name: /Sign in to Continue/i,
-    });
-    await expect(heading).toBeVisible();
+    const connectButton = page
+      .getByRole("button", { name: /Connect Wallet/i })
+      .first();
+    await expect(connectButton).toBeVisible({ timeout: 10000 });
+    await connectButton.click();
 
-    // In actual test, after sign-in completes, page would redirect to /proposals
-    // This would be verified by checking router state or page URL
+    await page.waitForURL(/\/proposals$/, { timeout: 10000 });
+    await expect(page.getByRole("heading", { name: /Proposals/i })).toBeVisible();
   });
 
   /**
@@ -662,12 +666,8 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
    * - Account ID helps identify which accounts are active
    */
   test("track wallet connection analytics events", async ({ page }) => {
-    registerPlaywrightMocks(page);
-
-    // Setup analytics interception
-    const events: Array<{ name: string; props?: Record<string, unknown> }> = [];
-
-    await page.evaluateHandle(() => {
+    await page.addInitScript(() => {
+      (window as any).__capturedEvents = [];
       const original = (window as any).__plausible;
       (window as any).__plausible = (
         name: string,
@@ -683,18 +683,74 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
       };
     });
 
-    // Navigate to home
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    registerPlaywrightMocks(page);
+    const walletAccountId = "analytics.testnet";
+    await mockRequestSignIn(page, walletAccountId);
+    await mockCompleteSignIn(page, walletAccountId);
 
-    // Get captured events
-    const capturedEvents = await page.evaluate(() => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle");
+
+    const connectButton = page
+      .getByRole("button", { name: /Connect.*Wallet/i })
+      .first();
+    await expect(connectButton).toBeVisible({ timeout: 10000 });
+    await connectButton.click();
+
+    const accountRegex = new RegExp(
+      walletAccountId.replace(/\./g, "\\."),
+      "i"
+    );
+    const accountButton = page
+      .getByRole("button")
+      .filter({ hasText: accountRegex });
+    await expect(accountButton.first()).toBeVisible({ timeout: 5000 });
+
+    const capturedAfterSignIn = await page.evaluate(() => {
       return (window as any).__capturedEvents || [];
     });
+    expect(
+      capturedAfterSignIn.some((entry: any) => entry.name === "wallet_connect_clicked")
+    ).toBe(true);
+    expect(
+      capturedAfterSignIn.some(
+        (entry: any) =>
+          entry.name === "wallet_connect_succeeded" &&
+          typeof entry.props?.account_id === "string" &&
+          entry.props.account_id.includes("testnet")
+      )
+    ).toBe(true);
 
-    // In a full test, we'd verify events were fired:
-    // - wallet_connect_clicked when button clicked
-    // - wallet_connect_succeeded on successful auth
-    // - wallet_disconnect_clicked on sign out
+    await accountButton.first().click();
+    const signOutMenuItem = page.getByRole("menuitem", { name: /Sign Out/i });
+    await expect(signOutMenuItem).toBeVisible();
+
+    await page.route("**/api/auth/sign-out", (route) => {
+      route.fulfill({
+        status: 204,
+        headers: { "Content-Type": "application/json" },
+        body: "",
+      });
+    });
+    await signOutMenuItem.click();
+
+    page.unroute("**/api/auth/get-session");
+    page.unroute("**/api/auth/list-accounts");
+    page.unroute("**/api/auth/accounts");
+    await mockUnauthenticatedSession(page);
+
+    await expect(
+      page.getByRole("button", { name: /Connect.*Wallet/i }).first()
+    ).toBeVisible({ timeout: 5000 });
+
+    const capturedAfterSignOut = await page.evaluate(() => {
+      return (window as any).__capturedEvents || [];
+    });
+    expect(
+      capturedAfterSignOut.some(
+        (entry: any) => entry.name === "wallet_disconnect_clicked"
+      )
+    ).toBe(true);
   });
 
   /**
@@ -902,17 +958,51 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
+    const walletAccountId = "fullflow.near";
+    await mockRequestSignIn(page, walletAccountId);
+    await mockCompleteSignIn(page, walletAccountId);
+    await page.route("**/api/auth/sign-out", (route) => {
+      route.fulfill({
+        status: 204,
+        headers: { "Content-Type": "application/json" },
+        body: "",
+      });
+    });
 
-    // Step 1: Visit home page
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle");
 
     const connectButton = page.getByRole("button", {
-      name: /Connect Wallet/i,
+      name: /Connect.*Wallet/i,
     });
-    await expect(connectButton).toBeVisible();
+    await expect(connectButton.first()).toBeVisible({ timeout: 10000 });
+    await connectButton.first().click();
 
-    // Step 2-6 would be tested with proper wallet mocking and auth mocks
-    // For seed test, we verify the starting state and navigation works
+    const accountRegex = new RegExp(
+      walletAccountId.replace(/\./g, "\\."),
+      "i"
+    );
+    const accountButton = page
+      .getByRole("button")
+      .filter({ hasText: accountRegex })
+      .first();
+    await expect(accountButton).toBeVisible({ timeout: 5000 });
+
+    await accountButton.click();
+    const profileLink = page.getByRole("menuitem", { name: /Profile/i });
+    await expect(profileLink).toBeVisible();
+    const signOutMenuItem = page.getByRole("menuitem", { name: /Sign Out/i });
+    await expect(signOutMenuItem).toBeVisible();
+    await signOutMenuItem.click();
+
+    page.unroute("**/api/auth/get-session");
+    page.unroute("**/api/auth/list-accounts");
+    page.unroute("**/api/auth/accounts");
+    await mockUnauthenticatedSession(page);
+
+    await expect(
+      page.getByRole("button", { name: /Connect.*Wallet/i }).first()
+    ).toBeVisible({ timeout: 5000 });
   });
 });
 

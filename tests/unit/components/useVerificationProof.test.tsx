@@ -119,8 +119,10 @@ describe("useVerificationProof hook", () => {
         payload: expect.objectContaining({ nonce: mockNonce }),
       });
     });
-    expect(result.current.nrasError).toBe("NRAS unavailable");
-    expect(result.current.nrasData).toBeNull();
+    await waitFor(() => {
+      expect(result.current.nrasError).toBe("NRAS unavailable");
+      expect(result.current.nrasData).toBeNull();
+    });
     expect((toast as any).error).toHaveBeenCalledWith("NRAS unavailable");
   });
 

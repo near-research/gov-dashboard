@@ -38,7 +38,7 @@ describeSpec("Proposal revision comparison", () => {
     const diffToggle = page.getByLabel("Show changes");
     await expect(diffToggle).toBeVisible();
     await diffToggle.click();
-    await expect(page.getByText("Updated KPIs with target values.")).toBeVisible();
+    await expect(page.getByText("Added clarification about token allocations.")).toBeVisible();
 
     await page.getByRole("button", { name: /Summarize All Revisions/i }).click();
     await expect(

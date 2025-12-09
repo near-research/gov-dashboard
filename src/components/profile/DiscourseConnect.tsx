@@ -6,9 +6,11 @@ import {
   CheckCircle2,
   ClipboardPaste,
 } from "lucide-react";
+import type { Near } from "near-kit";
 import { sign } from "near-sign-verify";
 import { useAuth } from "@/components/providers/auth-provider";
 import { client } from "@/lib/orpc";
+import { authClient } from "@/lib/auth/auth-client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -36,6 +38,8 @@ interface DiscourseConnectProps {
   onError: (error: string) => void;
 }
 
+type NearSignMessageParams = Parameters<Near["signMessage"]>[0];
+
 const steps = [
   { title: "Authorize", description: "Approve access in Discourse." },
   { title: "Paste Key", description: "Copy the User API key." },
@@ -46,7 +50,7 @@ export const DiscourseConnect = ({
   onLinked,
   onError,
 }: DiscourseConnectProps) => {
-  const { nearClient, nearAccountId } = useAuth();
+  const { nearAccountId } = useAuth();
 
   const [step, setStep] = useState<
     "idle" | "authorizing" | "signing" | "completing"
@@ -102,7 +106,7 @@ export const DiscourseConnect = ({
     clearErrors();
 
     try {
-      const data = (await client.discourse.getUserApiAuthUrl({
+      const data = (await client.discourse.initiateLink({
         clientId: "discourse-plugin",
         applicationName: "NEAR Gov",
       })) as DiscourseAuthUrl;
@@ -120,10 +124,6 @@ export const DiscourseConnect = ({
         if (popupRef.current && popupRef.current.closed) {
           stopPopupWatcher();
           popupRef.current = null;
-          handleError(
-            "Discourse window closed before authorization completed."
-          );
-          setStep("idle");
         }
       }, 500);
     } catch (err: any) {
@@ -138,8 +138,8 @@ export const DiscourseConnect = ({
       return;
     }
 
-    if (!nearClient) {
-      handleError("Wallet not connected. Please reconnect.");
+    if (!nearAccountId) {
+      handleError("No NEAR account found. Please reconnect your wallet.");
       setStep("idle");
       return;
     }
@@ -154,15 +154,34 @@ export const DiscourseConnect = ({
     clearErrors();
 
     try {
-      // Sign message using near-sign-verify with the useNear wallet
+      const nearKitClient = authClient.near.getNearClient();
+      const accountId = authClient.near.getAccountId();
+      if (!nearKitClient || !accountId) {
+        throw new Error(
+          "Unable to determine NEAR signer. Please reconnect your wallet."
+        );
+      }
+      const walletAdapter = {
+        signMessage: (params: NearSignMessageParams) =>
+          nearKitClient.signMessage(params, { signerId: accountId }),
+      };
       const authToken = await sign("Link my NEAR account to Discourse", {
-        signer: nearClient,
+        signer: walletAdapter,
         recipient: "social.near",
       });
 
       setStep("completing");
 
       // Complete the link via oRPC
+      if (process.env.NODE_ENV === "development") {
+        const trimmedPayload = payload.trim();
+        console.log(
+          "[Discourse] completing link with payload",
+          trimmedPayload,
+          "length",
+          trimmedPayload.length
+        );
+      }
       const data = (await client.discourse.completeLink({
         payload: payload.trim(),
         nonce,
@@ -265,9 +284,7 @@ export const DiscourseConnect = ({
             Connect to Discourse
           </Button>
         )}
-        {localError && (
-          <p className="text-sm text-red-600">{localError}</p>
-        )}
+        {localError && <p className="text-sm text-red-600">{localError}</p>}
       </div>
     );
   }

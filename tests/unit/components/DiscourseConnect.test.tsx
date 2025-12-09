@@ -5,7 +5,7 @@ import { DiscourseConnect } from "@/components/profile/DiscourseConnect";
 
 const { render, screen, fireEvent, act, waitFor } = await import("@testing-library/react");
 
-const getUserApiAuthUrl = vi.fn();
+const initiateLink = vi.fn();
 const completeLink = vi.fn();
 const onLinked = vi.fn();
 const onError = vi.fn();
@@ -22,14 +22,23 @@ vi.mock("@/components/providers/auth-provider", () => ({
   }),
 }));
 
-vi.mock("@/lib/orpc", () => ({
-  client: {
-    discourse: {
-      getUserApiAuthUrl: (...args: any[]) => getUserApiAuthUrl(...args),
-      completeLink: (...args: any[]) => completeLink(...args),
+vi.mock("@/lib/auth/auth-client", () => ({
+  authClient: {
+    near: {
+      getNearClient: () => mockNearClient,
+      getAccountId: () => mockNearAccountId,
     },
   },
 }));
+
+vi.mock("@/lib/orpc", () => ({
+  client: {
+      discourse: {
+        initiateLink: (...args: any[]) => initiateLink(...args),
+        completeLink: (...args: any[]) => completeLink(...args),
+      },
+    },
+  }));
 
 vi.mock("near-sign-verify", () => ({
   sign: vi.fn(async () => "auth-token"),
@@ -42,7 +51,7 @@ describe("DiscourseConnect", () => {
     mockNearAccountId = "alice.testnet";
     mockNearClient = wallet;
 
-    getUserApiAuthUrl.mockReset();
+    initiateLink.mockReset();
     completeLink.mockReset();
     onLinked.mockReset();
     onError.mockReset();
@@ -68,7 +77,7 @@ describe("DiscourseConnect", () => {
   });
 
   it("shows pending linking instructions and fallback tooltip button when wallet connected", async () => {
-    getUserApiAuthUrl.mockResolvedValue({
+    initiateLink.mockResolvedValue({
       authUrl: "https://discourse",
       nonce: "n1",
     });
@@ -94,7 +103,7 @@ describe("DiscourseConnect", () => {
   });
 
   it("surfaces popup blocked error", async () => {
-    getUserApiAuthUrl.mockResolvedValue({ authUrl: "https://discourse", nonce: "n1" });
+    initiateLink.mockResolvedValue({ authUrl: "https://discourse", nonce: "n1" });
     openSpy.mockReturnValue(null);
 
     render(<DiscourseConnect onLinked={onLinked} onError={onError} />);
@@ -104,7 +113,7 @@ describe("DiscourseConnect", () => {
   });
 
   it("reports popup closed before completion", async () => {
-    getUserApiAuthUrl.mockResolvedValue({ authUrl: "https://discourse", nonce: "n1" });
+    initiateLink.mockResolvedValue({ authUrl: "https://discourse", nonce: "n1" });
     const popup = { closed: true, close: vi.fn() } as any;
     openSpy.mockReturnValue(popup);
 
@@ -115,7 +124,7 @@ describe("DiscourseConnect", () => {
   });
 
   it("resets state after successful completion", async () => {
-    getUserApiAuthUrl.mockResolvedValue({ authUrl: "https://discourse", nonce: "n1" });
+    initiateLink.mockResolvedValue({ authUrl: "https://discourse", nonce: "n1" });
     completeLink.mockResolvedValue({ nearAccount: "alice", discourseUsername: "bob" });
     const popup = { closed: false, close: vi.fn() } as any;
     openSpy.mockReturnValue(popup);

@@ -7,31 +7,37 @@ type LinkedAccount = {
  * Extract NEAR accountId from linked accounts
  */
 export function getNearAccountId(
-  linkedAccounts: LinkedAccount[]
+  linkedAccounts: LinkedAccount[] | unknown
 ): string | null {
-  const nearAccount = linkedAccounts?.find(
-    (account) => account.providerId === "siwn"
-  );
+  if (!Array.isArray(linkedAccounts)) return null;
+  const accounts = linkedAccounts as LinkedAccount[];
+  const nearAccount = accounts.find((account) => account.providerId === "siwn");
   const accountId = nearAccount?.accountId;
-  // Handle "accountId:network" format if present
   return accountId?.split(":")[0] ?? null;
 }
 
 /**
  * Get all linked provider names
  */
-export function getLinkedProviders(linkedAccounts: any[]): string[] {
-  return linkedAccounts?.map((account) => account.providerId) || [];
+export function getLinkedProviders(linkedAccounts: unknown): string[] {
+  if (!Array.isArray(linkedAccounts)) return [];
+  const accounts = linkedAccounts as LinkedAccount[];
+  return accounts
+    .map((account) => account.providerId)
+    .filter((id): id is string => Boolean(id));
 }
 
 /**
  * Check if user has NEAR account linked
  */
-export function hasNearLinked(linkedAccounts: any[]): boolean {
-  return (
-    linkedAccounts?.some(
-      (account) => account.providerId === "siwn" && !!account.accountId
-    ) || false
+export function hasNearLinked(linkedAccounts: unknown): boolean {
+  if (!Array.isArray(linkedAccounts)) return false;
+  const accounts = linkedAccounts as LinkedAccount[];
+  return accounts.some(
+    (account) =>
+      account.providerId === "siwn" &&
+      typeof account.accountId === "string" &&
+      account.accountId.length > 0
   );
 }
 

@@ -67,7 +67,7 @@ export const useProposalPublishing = ({
     try {
       setPublishError("");
       setLinkError("");
-      const data = (await client.discourse.getUserApiAuthUrl({
+      const data = (await client.discourse.initiateLink({
         clientId: "discourse-plugin",
         applicationName: "NEAR Gov",
       })) as DiscourseAuthUrl;

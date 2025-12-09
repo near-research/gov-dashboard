@@ -10,6 +10,10 @@ interface ChatCompletionPayload {
   [key: string]: unknown;
 }
 
+type PageWithCustomChatRoute = Page & {
+  __hasCustomChatCompletionRoute__?: boolean;
+};
+
 const { describe: describeSpec } = createPlaywrightGuard("settings.spec.ts");
 
 const getTextareaByLabel = (page: Page, label: string) =>
@@ -34,6 +38,8 @@ const stubChatCompletion = (
     capture?: (body: ChatCompletionPayload) => void;
   }
 ) => {
+  const pageWithCustomRoute = page as PageWithCustomChatRoute;
+  pageWithCustomRoute.__hasCustomChatCompletionRoute__ = true;
   page.route("**/api/chat/completions", async (route) => {
     const rawBody = route.request().postData() ?? "";
     const parsedBody = (rawBody ? JSON.parse(rawBody) : {}) as ChatCompletionPayload;
@@ -173,11 +179,13 @@ describeSpec("settings lab", () => {
 
     await page.goto("/settings", { waitUntil: "domcontentloaded" });
     await ensureSettingsLabAvailable(page);
+    const customPromptTemplate =
+      "Summarize the proposal with {tone} delivery and mention {project}.";
     await expect(page.getByRole("button", { name: /Autofill/i })).toBeVisible();
 
     const customPromptTextarea = page.locator("#custom-prompt-text");
     await customPromptTextarea.fill(
-      "Summarize the proposal with {tone} delivery and mention {project}."
+      customPromptTemplate
     );
     const toneInput = page.locator("#custom-variable-tone");
     await expect(toneInput).toBeVisible();
@@ -193,9 +201,11 @@ describeSpec("settings lab", () => {
     await page.getByRole("option", { name: "Custom" }).click();
 
     await expect(customPromptTextarea).toHaveValue("");
+    await customPromptTextarea.fill(customPromptTemplate);
     const toneInputAfterReset = page.locator("#custom-variable-tone");
     await expect(toneInputAfterReset).toBeVisible();
     await toneInputAfterReset.fill("formal");
+    await page.locator("#custom-variable-project").fill("Governance Lab");
 
     await page.getByRole("button", { name: /Run Prompt/i }).click();
     await expect(page.getByText("Custom NEAR AI response includes formal tone.")).toBeVisible();

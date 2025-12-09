@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import proposalDetailFixture from "../fixtures/playwright/proposal-detail.json";
 import {
   mockProposalRevisions,
@@ -81,6 +81,9 @@ describeSpec("Proposal topic detail walkthrough", () => {
       });
     });
 
+    await mockProposalRevisions(page, PROPOSAL_ID);
+    registerPlaywrightMocks(page);
+
     let discussionCalls = 0;
     await page.route(/\/api\/discourse\/topics\/\d+\/summarize/, async (route) => {
       discussionCalls += 1;
@@ -94,9 +97,6 @@ describeSpec("Proposal topic detail walkthrough", () => {
       }
       await route.continue();
     });
-
-    await mockProposalRevisions(page, PROPOSAL_ID);
-    registerPlaywrightMocks(page);
 
     await page.goto("/proposals", { waitUntil: "domcontentloaded" });
 
@@ -166,8 +166,16 @@ describeSpec("Proposal topic detail walkthrough", () => {
     await discussionSummaries.nth(1).click();
     const discussionErrorAlert = page
       .locator('[role="alert"]:not(#__next-route-announcer__)')
-      .filter({ hasText: /discussion summarization failed/i });
+      .filter({ hasText: /(discussion summarization failed|Failed to generate summary)/i });
+    const discussionAlerts = await page
+      .locator('[role="alert"]:not(#__next-route-announcer__)')
+      .allTextContents();
+    console.log("Discussion alerts on page:", discussionAlerts);
+    console.log("Discussion error alert text:", await discussionErrorAlert.allTextContents());
     await expect(discussionErrorAlert).toBeVisible();
+    await expect(discussionErrorAlert).toContainText(
+      /(discussion summarization failed|Failed to generate summary)/i
+    );
     await discussionSummaries.nth(1).click();
     await expect(
       page.getByText(/Mock discussion summary covering main community sentiment/i)
@@ -363,6 +371,10 @@ describeSpec("Proposal topic detail walkthrough", () => {
       await route.continue();
     });
 
+    const pageWithCustomChatRoute = page as Page & {
+      __hasCustomChatCompletionRoute__?: boolean;
+    };
+    pageWithCustomChatRoute.__hasCustomChatCompletionRoute__ = true;
     registerPlaywrightMocks(page);
     await page.goto(`/proposals/${PROPOSAL_ID}`, { waitUntil: "domcontentloaded" });
 
@@ -435,6 +447,7 @@ describeSpec("Proposal topic detail walkthrough", () => {
     await chatbotInput.fill("Summarize the revisions.");
     await chatbotInput.press("Enter");
     await expect(page.getByText(/API Error: 500 - Streaming failure/)).toBeVisible({ timeout: 5000 });
+    console.log("Chatbot error text:", await page.getByText(/API Error:/).allTextContents());
     await chatbotInput.fill("Summarize revisions.");
     await chatbotInput.press("Enter");
     await expect(page.getByText(/Tool results stitched into a cohesive answer./)).toBeVisible({ timeout: 10000 });

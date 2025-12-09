@@ -33,9 +33,20 @@ export const setupAuthenticatedUser = async (
   await navigateHome(page);
 };
 
+export const setupAuthenticatedUserNoNav = async (
+  page: Page,
+  accountId?: string
+) => {
+  await mockAuthenticatedSession(page, accountId);
+};
+
 export const setupUnauthenticatedUser = async (page: Page) => {
   await mockUnauthenticatedSession(page);
   await navigateHome(page);
+};
+
+export const setupUnauthenticatedUserNoNav = async (page: Page) => {
+  await mockUnauthenticatedSession(page);
 };
 
 export const setupWalletRejection = async (page: Page, accountId?: string) => {

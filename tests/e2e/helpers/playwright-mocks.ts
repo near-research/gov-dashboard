@@ -14,6 +14,7 @@ import revisionAnalysesFixture from "../../fixtures/playwright/revision-analyses
 const shouldLogMocks = (process.env.PLAYWRIGHT_TEST ?? "").trim().toLowerCase() === "true";
 type PageWithAuthOverride = Page & {
   __hasCustomAuthRoutes__?: boolean;
+  __hasCustomChatCompletionRoute__?: boolean;
 };
 
 export const markPageWithCustomAuthRoutes = (page: Page) => {
@@ -356,7 +357,11 @@ export const registerPlaywrightMocks = (
     respondWithJson(route, replySummaryFixture);
   });
 
-  if (!options?.skipChatCompletionsStream) {
+  const skipChatCompletionsStream =
+    options?.skipChatCompletionsStream ||
+    Boolean(pageWithAuthOverride.__hasCustomChatCompletionRoute__);
+
+  if (!skipChatCompletionsStream) {
     page.route(apiRoute("/api/chat/completions"), (route) => {
       logRouteHit("api/chat/completions", route);
       route.fulfill({

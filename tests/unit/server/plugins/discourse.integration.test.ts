@@ -1,7 +1,10 @@
 import { ORPCError } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DiscourseClient, DiscourseRouter } from "@/server/plugins/discourse";
+import type {
+  DiscourseClient,
+  DiscourseRouter,
+} from "@/server/plugins/discourse";
 
 declare global {
   var __mockDiscourseRouter: DiscourseRouter | undefined;
@@ -14,6 +17,7 @@ const originalPluginUrl = process.env.DISCOURSE_PLUGIN_URL;
 const originalApiKey = process.env.DISCOURSE_API_KEY;
 const originalApiUsername = process.env.DISCOURSE_API_USERNAME;
 const originalClientId = process.env.DISCOURSE_CLIENT_ID;
+const originalDiscourseUrl = process.env.DISCOURSE_URL;
 
 const setEnvVar = (key: string, value?: string) => {
   if (typeof value === "undefined") {
@@ -35,6 +39,7 @@ const restoreEnv = () => {
   setEnvVar("DISCOURSE_API_KEY", originalApiKey);
   setEnvVar("DISCOURSE_API_USERNAME", originalApiUsername);
   setEnvVar("DISCOURSE_CLIENT_ID", originalClientId);
+  setEnvVar("DISCOURSE_URL", originalDiscourseUrl);
 };
 
 afterEach(() => {
@@ -74,8 +79,20 @@ describe("discourse plugin wiring", () => {
     setEnvVar("NODE_ENV", "test");
 
     const routerMock: DiscourseRouter = {
-      getUserApiAuthUrl: vi.fn(async () => ({ authUrl: "x", nonce: "n1", expiresAt: "later" })),
+      initiateLink: vi.fn(async () => ({
+        authUrl: "x",
+        nonce: "n1",
+        expiresAt: "later",
+      })),
       completeLink: vi.fn(async () => null),
+      authRoutes: {
+        initiateLink: vi.fn(async () => ({
+          authUrl: "x",
+          nonce: "n1",
+          expiresAt: "later",
+        })),
+        completeLink: vi.fn(async () => null),
+      },
       getLinkage: vi.fn(async () => null),
       ping: vi.fn(async () => "pong"),
       createPost: vi.fn(async () => null),
@@ -86,7 +103,13 @@ describe("discourse plugin wiring", () => {
       getCategories: vi.fn(async () => ({ categories: [] })),
       getCategory: vi.fn(async () => ({ category: null, subcategories: [] })),
       getTags: vi.fn(async () => ({ tags: [] })),
-      search: vi.fn(async () => ({ posts: [], topics: [], users: [], categories: [], totalResults: 0 })),
+      search: vi.fn(async () => ({
+        posts: [],
+        topics: [],
+        users: [],
+        categories: [],
+        totalResults: 0,
+      })),
       linkageStore: {
         unlink: vi.fn(async () => null),
       },
@@ -125,17 +148,21 @@ describe("production plugin runtime initialization", () => {
     vi.resetModules();
     setEnvVar("NODE_ENV", "production");
     setEnvVar("VITEST");
-    setEnvVar("DISCOURSE_PLUGIN_URL", "http://example.com/remoteEntry.js");
+    setEnvVar("DISCOURSE_PLUGIN_URL", "http://example.com");
     setEnvVar("DISCOURSE_API_KEY", "prod-key");
     setEnvVar("DISCOURSE_API_USERNAME", "api-user");
     setEnvVar("DISCOURSE_CLIENT_ID", "custom-client");
 
-    const normalizeSpy = vi.fn(() => "normalized://example");
     const baseUrl = "https://gov.test";
+    setEnvVar("DISCOURSE_URL", baseUrl);
 
     const pluginRouter: DiscourseRouter = {
-      getUserApiAuthUrl: vi.fn(async () => null),
+      initiateLink: vi.fn(async () => null),
       completeLink: vi.fn(async () => null),
+      authRoutes: {
+        initiateLink: vi.fn(async () => null),
+        completeLink: vi.fn(async () => null),
+      },
       getLinkage: vi.fn(async () => null),
       ping: vi.fn(async () => "pong"),
       createPost: vi.fn(async () => null),
@@ -146,7 +173,13 @@ describe("production plugin runtime initialization", () => {
       getCategories: vi.fn(async () => ({ categories: [] })),
       getCategory: vi.fn(async () => ({ category: null, subcategories: [] })),
       getTags: vi.fn(async () => ({ tags: [] })),
-      search: vi.fn(async () => ({ posts: [], topics: [], users: [], categories: [], totalResults: 0 })),
+      search: vi.fn(async () => ({
+        posts: [],
+        topics: [],
+        users: [],
+        categories: [],
+        totalResults: 0,
+      })),
       linkageStore: {
         unlink: vi.fn(async () => null),
       },
@@ -179,10 +212,6 @@ describe("production plugin runtime initialization", () => {
 
     const createPluginRuntimeMock = vi.fn(() => runtime);
 
-    vi.doMock("@/server/plugins/discourse-url", () => ({
-      getDiscourseBaseUrl: () => baseUrl,
-      normalizeFileSchemeUrl: normalizeSpy,
-    }));
     vi.doMock("every-plugin", () => ({
       createPluginRuntime: createPluginRuntimeMock,
     }));
@@ -194,11 +223,12 @@ describe("production plugin runtime initialization", () => {
         "@/server/plugins/discourse"
       );
 
-      expect(normalizeSpy).toHaveBeenCalledWith(
-        "http://example.com/remoteEntry.js"
-      );
       expect(createPluginRuntimeMock).toHaveBeenCalledWith({
-        registry: { "discourse-plugin": { remoteUrl: "normalized://example" } },
+        registry: {
+          "discourse-plugin": {
+            remoteUrl: "http://example.com/remoteEntry.js",
+          },
+        },
         secrets: { DISCOURSE_API_KEY: "prod-key" },
       });
       expect(runtime.usePlugin).toHaveBeenCalledWith("discourse-plugin", {
@@ -214,7 +244,6 @@ describe("production plugin runtime initialization", () => {
       expect(warnSpy).not.toHaveBeenCalled();
     } finally {
       warnSpy.mockRestore();
-      vi.doUnmock("@/server/plugins/discourse-url");
       vi.doUnmock("every-plugin");
     }
   });
@@ -289,7 +318,9 @@ describe("discourse client wrapper helpers", () => {
       "@/server/plugins/discourse-client"
     );
 
-    const { client, searchMock } = createClientStub(async () => validSearchResponse);
+    const { client, searchMock } = createClientStub(
+      async () => validSearchResponse
+    );
     const factory = vi.fn();
     factory.mockRejectedValueOnce(new Error("token expired"));
     factory.mockResolvedValueOnce(client);

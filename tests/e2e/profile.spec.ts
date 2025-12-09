@@ -6,15 +6,13 @@ import {
 } from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
 import {
-  setupAuthenticatedUser,
-  setupUnauthenticatedUser,
+  setupAuthenticatedUserNoNav,
+  setupUnauthenticatedUserNoNav,
 } from "./helpers/setup";
 
 const { describe: describeSpec } = createPlaywrightGuard("profile.spec.ts");
 
 const nearAccountId = "playwright.testnet";
-
-const nearRpcUrl = "https://test.rpc.fastnear.com";
 
 const respondOrpc = (payload: unknown) => JSON.stringify({ json: payload });
 
@@ -82,22 +80,27 @@ const stubAuthRoutesForNoAccount = async (page: Page) => {
   });
 };
 
-const stubNearRpc = async (
-  page: Page,
-  amount = "1500000000000000000000000"
-) => {
-  await page.route(`${nearRpcUrl}/**`, (route) => {
+const stubNearRpc = async (page: Page, amount = "1500000000000000000000000") => {
+  await page.route(/rpc.*near|fastnear|near.*rpc/i, async (route) => {
+    const request = route.request();
+    if (request.method() !== "POST") {
+      await route.continue();
+      return;
+    }
     route.fulfill({
       status: 200,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jsonrpc: "2.0",
+        id: "dontcare",
         result: {
           amount,
           locked: "0",
-          code_hash: "",
-          storage_usage: 0,
-          storage_paid_at: "0",
+          code_hash: "11111111111111111111111111111111",
+          storage_usage: 182,
+          storage_paid_at: 0,
+          block_height: 1,
+          block_hash: "11111111111111111111111111111111",
         },
       }),
     });
@@ -181,63 +184,28 @@ const stubDiscourseRpc = async (
   });
 };
 
-/**
- * Helper to navigate to profile page - handles both nav dropdown and direct navigation
- */
-const navigateToProfile = async (page: Page, useNav = false) => {
-  if (useNav) {
-    // Try to find account button in nav
-    const accountButton = page
-      .locator("button")
-      .filter({ hasText: /\.testnet|\.near/i })
-      .first();
-    const isVisible = await accountButton
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-
-    if (isVisible) {
-      await accountButton.click();
-      const profileMenu = page.locator("[role='menu']").first();
-      await expect(profileMenu).toBeVisible({ timeout: 3000 });
-      const profileItem = profileMenu.getByRole("menuitem", {
-        name: /Profile/i,
-      });
-      await profileItem.click();
-      await page.waitForURL(/\/profile/, { timeout: 5000 });
-    } else {
-      // Fallback to direct navigation
-      await page.goto("/profile", { waitUntil: "networkidle" });
-    }
-  } else {
-    await page.goto("/profile", { waitUntil: "networkidle" });
-  }
-};
-
-/**
- * Wait for profile page to fully render (not just return JSON)
- */
-const waitForProfileRender = async (page: Page) => {
-  // Wait for either the account heading or an error/warning state
-  await page
-    .waitForFunction(
-      () => {
-        const body = document.body.textContent || "";
-        // Profile page should NOT show raw JSON
-        return (
-          !body.includes('"nextExport":true') && !body.includes('"buildId"')
-        );
-      },
-      { timeout: 10000 }
-    )
-    .catch(() => {
-      // If we timeout, the page might still be loading
-    });
-};
-
 describeSpec("Profile journeys", () => {
   test("shows skeleton, linked summary, NEAR balance, wallet status and badges", async ({
     page,
   }) => {
+    page.on("request", (req) => {
+      if (
+        req.url().includes("rpc") ||
+        req.url().includes("auth") ||
+        req.url().includes("discourse")
+      ) {
+        console.log("REQUEST:", req.method(), req.url());
+      }
+    });
+    page.on("response", (res) => {
+      if (
+        res.url().includes("rpc") ||
+        res.url().includes("auth") ||
+        res.url().includes("discourse")
+      ) {
+        console.log("RESPONSE:", res.status(), res.url());
+      }
+    });
     page.on("console", (msg) => {
       console.log("PAGE LOG:", msg.text());
     });
@@ -258,7 +226,7 @@ describeSpec("Profile journeys", () => {
       badges: ["Catalyst Rounds", "Early Contributor"],
     });
     await stubNearRpc(page);
-    await stubDiscourseRpc(page, "getUserApiAuthUrl", {
+    await stubDiscourseRpc(page, "initiateLink", {
       authUrl: "https://gov.near.org/discourse/oauth",
       nonce: "nonce-123",
     });
@@ -269,42 +237,18 @@ describeSpec("Profile journeys", () => {
     await stubDiscourseRpc(page, "unlink", { success: true });
 
     await injectWalletAccount(page);
-    await setupAuthenticatedUser(page, nearAccountId);
-
-    // Navigate directly to profile
+    await setupAuthenticatedUserNoNav(page, nearAccountId);
     await page.goto("/profile", { waitUntil: "networkidle" });
-    const currentUrl = page.url();
-    console.log("Current URL:", currentUrl);
-    if (currentUrl.includes("/login")) {
-      console.log("Redirected to login - auth not working");
-    }
-    const bodyText = await page.locator("body").textContent();
-    console.log(
-      "Body content:",
-      bodyText ? bodyText.substring(0, 1000) : "<empty body>"
-    );
-    await waitForProfileRender(page);
-
-    // Look for profile content with flexible selectors
-    // The heading might be an h1/h2/h3 with the account ID
-    const accountHeading = page.getByRole("heading", {
-      name: new RegExp(nearAccountId, "i"),
+    console.log("URL:", page.url());
+    console.log("HTML:", (await page.content()).substring(0, 2000));
+    await expect(page.getByText(nearAccountId).first()).toBeVisible({
+      timeout: 10000,
     });
-    const accountText = page.getByText(nearAccountId);
-
-    // Wait for either heading or text to appear
-    const hasHeading = await accountHeading
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    const hasText = await accountText
-      .first()
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
-
-    expect(hasHeading || hasText).toBe(true);
 
     // Check for balance and discourse elements with flexible selectors
-    await expect(page.getByText(/NEAR Balance/i)).toBeVisible({
+    await expect(
+      page.getByText("NEAR Balance", { exact: true })
+    ).toBeVisible({
       timeout: 5000,
     });
     await expect(page.getByText(/1\.5\s*NEAR|1500000/i)).toBeVisible({
@@ -343,31 +287,12 @@ describeSpec("Profile journeys", () => {
     await stubDiscourseLinkage(page, { payload: null });
     await stubNearRpc(page);
 
+    await setupUnauthenticatedUserNoNav(page);
     await page.goto("/profile", { waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
-    // Look for wallet warning with flexible selectors
-    // The testid might not exist, so try text-based selectors
-    const walletWarning = page.getByTestId("discourse-wallet-warning");
-    const walletWarningText = page.getByText(
-      /Wallet not connected|Connect.*wallet|No wallet/i
-    );
-    const walletWarningHeading = page.getByRole("heading", {
-      name: /Wallet not connected|Connect/i,
-    });
-
-    const hasTestId = await walletWarning
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    const hasText = await walletWarningText
-      .first()
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
-    const hasHeading = await walletWarningHeading
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
-
-    expect(hasTestId || hasText || hasHeading).toBe(true);
+    await expect(
+      page.getByText(/Wallet not connected|Connect.*wallet|No wallet/i).first()
+    ).toBeVisible({ timeout: 10000 });
 
     // Connect to Discourse button should NOT be visible without wallet
     const connectButton = page
@@ -383,10 +308,8 @@ describeSpec("Profile journeys", () => {
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null, fail: true });
     await injectWalletAccount(page);
-    await setupAuthenticatedUser(page, nearAccountId);
-
+    await setupAuthenticatedUserNoNav(page, nearAccountId);
     await page.goto("/profile", { waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
     // Check for account ID anywhere on page
     await expect(page.getByText(nearAccountId).first()).toBeVisible({
@@ -411,7 +334,6 @@ describeSpec("Profile journeys", () => {
     await stubDiscourseBadge(page, { success: true, badges: [] });
 
     await page.reload({ waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
     // Should now show connect/unlink buttons
     const connectOrUnlink = page.getByRole("button", {
@@ -432,9 +354,8 @@ describeSpec("Profile journeys", () => {
     await stubDiscourseBadge(page, { success: true, badges: [] });
 
     await injectWalletAccount(page);
-    await setupAuthenticatedUser(page, nearAccountId);
+    await setupAuthenticatedUserNoNav(page, nearAccountId);
     await page.goto("/profile", { waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
     // Empty badges state - flexible text matching
     const emptyBadges = page.getByText(/No badges|earned yet|0 badges/i);
@@ -444,7 +365,6 @@ describeSpec("Profile journeys", () => {
     await page.unroute("**/api/discourse/user/**");
     await stubDiscourseBadge(page, { success: false });
     await page.reload({ waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
     // Error state - flexible matching
     const errorText = page.getByText(/Unable to load|error|failed/i);
@@ -457,7 +377,7 @@ describeSpec("Profile journeys", () => {
     registerPlaywrightMocks(page);
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null });
-    await stubDiscourseRpc(page, "getUserApiAuthUrl", {
+    await stubDiscourseRpc(page, "initiateLink", {
       authUrl: "https://gov.near.org/discourse/oauth",
       nonce: "nonce-123",
     });
@@ -483,9 +403,8 @@ describeSpec("Profile journeys", () => {
     });
 
     await injectWalletAccount(page);
-    await setupAuthenticatedUser(page, nearAccountId);
+    await setupAuthenticatedUserNoNav(page, nearAccountId);
     await page.goto("/profile", { waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
     // Verify account ID is visible
     await expect(page.getByText(nearAccountId).first()).toBeVisible({
@@ -515,7 +434,7 @@ describeSpec("Profile journeys", () => {
 
     // Click complete/verify button
     const completeButton = page.getByRole("button", {
-      name: /Complete|Verify|Link/i,
+      name: "Complete Link",
     });
     await completeButton.click();
 
@@ -531,7 +450,7 @@ describeSpec("Profile journeys", () => {
     registerPlaywrightMocks(page);
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null });
-    await stubDiscourseRpc(page, "getUserApiAuthUrl", {
+    await stubDiscourseRpc(page, "initiateLink", {
       authUrl: "https://gov.near.org/discourse/oauth",
       nonce: "nonce-456",
     });
@@ -553,9 +472,8 @@ describeSpec("Profile journeys", () => {
     });
 
     await injectWalletAccount(page);
-    await setupAuthenticatedUser(page, nearAccountId);
+    await setupAuthenticatedUserNoNav(page, nearAccountId);
     await page.goto("/profile", { waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
     // Verify account visible
     await expect(page.getByText(nearAccountId).first()).toBeVisible({
@@ -574,7 +492,7 @@ describeSpec("Profile journeys", () => {
     }
 
     // Click complete
-    await page.getByRole("button", { name: /Complete|Verify|Link/i }).click();
+    await page.getByRole("button", { name: "Complete Link" }).click();
 
     // Verify error is shown
     await expect(
@@ -583,7 +501,7 @@ describeSpec("Profile journeys", () => {
 
     // Button should still be enabled for retry
     await expect(
-      page.getByRole("button", { name: /Complete|Verify|Link/i })
+      page.getByRole("button", { name: "Complete Link" })
     ).toBeEnabled();
   });
 
@@ -594,9 +512,8 @@ describeSpec("Profile journeys", () => {
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null });
 
-    await setupUnauthenticatedUser(page);
+    await setupUnauthenticatedUserNoNav(page);
     await page.goto("/profile", { waitUntil: "networkidle" });
-    await waitForProfileRender(page);
 
     // Should show wallet not connected message
     const walletWarning = page.getByText(
