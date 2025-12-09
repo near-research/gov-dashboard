@@ -150,6 +150,12 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
           },
         });
       } catch (err: unknown) {
+        if (
+          controller.signal.aborted ||
+          (err instanceof DOMException && err.name === "AbortError")
+        ) {
+          return;
+        }
         const message =
           err instanceof Error ? err.message : "Failed to fetch proposal";
         setError(message);
@@ -298,6 +304,7 @@ export function useProposalDetail({
     revisionsLoading,
     fetchRevisions,
     fetchScreening,
+    fetchProposal,
     setScreeningChecked,
   } = useProposalData(proposalId, track);
 
@@ -363,6 +370,7 @@ export function useProposalDetail({
     revisionsLoading,
     handleVersionChange,
     handleToggleRevisions,
+    fetchProposal,
     fetchRevisions,
     fetchScreening,
   };

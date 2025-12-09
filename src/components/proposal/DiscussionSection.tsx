@@ -1,8 +1,12 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Markdown } from "@/components/proposal/Markdown";
+import { Textarea } from "@/components/ui/textarea";
 import { VerificationProof } from "@/components/verification/VerificationProof";
 import { extractExpectationsFromProposal } from "@/utils/attestation/expectations";
 import type {
@@ -10,6 +14,7 @@ import type {
   ReplySummaryResponse,
 } from "@/types/summaries";
 import type { ProposalReply } from "@/types/proposals";
+import type { DiscourseLinkage } from "@/types/discourse-linkage";
 import {
   AlertCircle,
   ChevronDown,
@@ -18,7 +23,14 @@ import {
   Loader2,
   MessagesSquare,
 } from "lucide-react";
+import Link from "next/link";
 import { ReplyCard } from "./ReplyCard";
+import { toast } from "sonner";
+import { sign } from "near-sign-verify";
+import { useNear } from "@/hooks/useNear";
+import { client } from "@/lib/orpc";
+import { useGovernanceAnalytics } from "@/lib/analytics";
+import { getDiscourseUserApiKey } from "@/utils/discourse";
 
 interface DiscussionSectionProps {
   discourseBaseUrl: string;
@@ -35,6 +47,8 @@ interface DiscussionSectionProps {
   replySummaryErrors: Record<number, string>;
   onFetchReplySummary: (replyId: number) => void;
   onHideReplySummary: (replyId: number) => void;
+  topicId: number;
+  onReplyPosted?: () => void;
 }
 
 export function DiscussionSection({
@@ -52,10 +66,131 @@ export function DiscussionSection({
   replySummaryErrors,
   onFetchReplySummary,
   onHideReplySummary,
+  topicId,
+  onReplyPosted,
 }: DiscussionSectionProps) {
+  const { signedAccountId, nearClient } = useNear();
+  const track = useGovernanceAnalytics();
+  const [replyContent, setReplyContent] = useState("");
+  const [replyLoading, setReplyLoading] = useState(false);
+  const [replyError, setReplyError] = useState("");
+  const [checkingLinkage, setCheckingLinkage] = useState(false);
+  const [linkage, setLinkage] = useState<DiscourseLinkage | null>(null);
+
+  useEffect(() => {
+    const checkLinkage = async () => {
+      if (!signedAccountId) {
+        setLinkage(null);
+        return;
+      }
+      setCheckingLinkage(true);
+      try {
+        let data = (await client.discourse.getLinkage(
+          signedAccountId
+            ? { nearAccount: signedAccountId }
+            : undefined
+        )) as DiscourseLinkage | null;
+        if (!data && signedAccountId) {
+          data = (await client.discourse.getLinkage()) as DiscourseLinkage | null;
+        }
+        setLinkage(data);
+      } catch (err) {
+        console.error("[discussion] failed to check linkage:", err);
+        setLinkage(null);
+      } finally {
+        setCheckingLinkage(false);
+      }
+    };
+
+    void checkLinkage();
+  }, [signedAccountId]);
+
   if (!replies || replies.length === 0) {
     return null;
   }
+
+  const isLinked = Boolean(linkage?.discourseUsername);
+
+  const handleReplySubmit = async () => {
+    if (!replyContent.trim()) {
+      setReplyError("Add a reply before submitting.");
+      return;
+    }
+    if (!nearClient) {
+      setReplyError("Connect your NEAR wallet before replying.");
+      return;
+    }
+    if (!signedAccountId) {
+      setReplyError("Connect your NEAR wallet before replying.");
+      return;
+    }
+    if (!isLinked) {
+      setReplyError("Link your Discourse account before replying.");
+      return;
+    }
+
+    setReplyLoading(true);
+    setReplyError("");
+    track("discussion_reply_started", {
+      props: { topic_id: topicId },
+    });
+
+    try {
+      const authToken = await sign(`Reply to proposal ${topicId}`, {
+        signer: nearClient,
+        recipient: "social.near",
+      });
+
+      const payloadForLog = {
+        topicId,
+        replyToPostNumber: 1,
+        username: linkage?.discourseUsername ?? undefined,
+        nearAccount: signedAccountId,
+      };
+      console.debug("[discussion] createPost payload", payloadForLog);
+      const userApiKey =
+        linkage?.userApiKey ?? getDiscourseUserApiKey() ?? undefined;
+
+      await client.discourse.createPost({
+        authToken,
+        username: linkage?.discourseUsername ?? undefined,
+        userApiKey,
+        nearAccount: signedAccountId,
+        raw: replyContent.trim(),
+        topicId,
+        replyToPostNumber: 1,
+      });
+
+      toast.success("Reply posted");
+      setReplyContent("");
+      track("discussion_reply_succeeded", {
+        props: { topic_id: topicId },
+      });
+      onReplyPosted?.();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to post reply. Please try again.";
+      setReplyError(message);
+      console.error("[discussion] reply failed:", {
+        error: err,
+        rpcData: err && typeof err === "object" ? (err as Record<string, unknown>).data : undefined,
+        rpcName: err instanceof Error ? err.name : undefined,
+        linkage,
+        payload: {
+          topicId,
+          username: linkage?.discourseUsername,
+          nearAccount: signedAccountId,
+        },
+      });
+      track("discussion_reply_failed", {
+        props: { topic_id: topicId, message: message.slice(0, 120) },
+      });
+    } finally {
+      setReplyLoading(false);
+    }
+  };
 
   return (
     <Card className="rounded-2xl border-border/60 shadow-sm">
@@ -130,73 +265,141 @@ export function DiscussionSection({
         </CardHeader>
       </div>
 
-      {(showReplies || (discussionSummary && discussionSummaryVisible)) && (
-        <CardContent className="pt-6 space-y-4">
-          {discussionSummary && discussionSummaryVisible && (
-            <Alert className="bg-blue-50 border-blue-200">
-              <div className="flex items-center gap-2 mb-2">
-                <Badge variant="secondary">Discussion Summary</Badge>
+      <CardContent className="pt-6 space-y-6">
+        {discussionSummary && discussionSummaryVisible && (
+          <Alert className="bg-blue-50 border-blue-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="secondary">Discussion Summary</Badge>
+            </div>
+            <AlertDescription className="space-y-4">
+              <Markdown
+                content={discussionSummary.summary}
+                className="text-sm leading-relaxed"
+              />
+              {(() => {
+                const expectations =
+                  extractExpectationsFromProposal(discussionSummary);
+                return (
+                  <VerificationProof
+                    verification={discussionSummary.verification ?? undefined}
+                    verificationId={
+                      discussionSummary.verificationId ?? undefined
+                    }
+                    model={discussionSummary.model ?? undefined}
+                    requestHash={
+                      discussionSummary.proof?.requestHash ?? undefined
+                    }
+                    responseHash={
+                      discussionSummary.proof?.responseHash ?? undefined
+                    }
+                    nonce={
+                      discussionSummary.proof?.nonce ??
+                      expectations.nonce ??
+                      undefined
+                    }
+                    expectedArch={
+                      discussionSummary.proof?.arch ??
+                      expectations.arch ??
+                      undefined
+                    }
+                    expectedDeviceCertHash={
+                      discussionSummary.proof?.deviceCertHash ??
+                      expectations.deviceCertHash ??
+                      undefined
+                    }
+                    expectedRimHash={
+                      discussionSummary.proof?.rimHash ??
+                      expectations.rimHash ??
+                      undefined
+                    }
+                    expectedUeid={
+                      discussionSummary.proof?.ueid ??
+                      expectations.ueid ??
+                      undefined
+                    }
+                    expectedMeasurements={
+                      discussionSummary.proof?.measurements ??
+                      expectations.measurements ??
+                      undefined
+                    }
+                    prefetchedProof={
+                      discussionSummary.remoteProof ?? undefined
+                    }
+                  />
+                );
+              })()}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-4">
+          <div className="space-y-3">
+            <Textarea
+              value={replyContent}
+              onChange={(event) => {
+                setReplyContent(event.currentTarget.value);
+                if (replyError) {
+                  setReplyError("");
+                }
+              }}
+              placeholder="Write a reply to the discussion..."
+              rows={4}
+              className="min-h-[120px]"
+            />
+            {replyError && (
+              <Alert variant="destructive" className="p-3">
+                <AlertDescription>{replyError}</AlertDescription>
+              </Alert>
+            )}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="text-sm text-muted-foreground flex-1 space-y-1">
+                <p>
+                  Replies are posted directly to Gov discussion on
+                  <span className="font-semibold"> {discourseBaseUrl}</span>.
+                </p>
+                <p>
+                  {!signedAccountId
+                    ? "Connect your NEAR wallet to reply."
+                    : checkingLinkage
+                    ? "Checking Discourse linkage…"
+                    : isLinked
+                    ? "You're linked and ready to reply."
+                    : "Link your Discourse account on the "}
+                  {signedAccountId &&
+                    !checkingLinkage &&
+                    !isLinked && (
+                      <Link
+                        href="/profile"
+                        className="font-semibold text-primary underline underline-offset-2"
+                      >
+                        profile
+                      </Link>
+                    )}
+                  {signedAccountId && !checkingLinkage && !isLinked && " page."}
+                </p>
               </div>
-              <AlertDescription className="space-y-4">
-                <Markdown
-                  content={discussionSummary.summary}
-                  className="text-sm leading-relaxed"
-                />
-                {(() => {
-                  const expectations =
-                    extractExpectationsFromProposal(discussionSummary);
-                  return (
-                    <VerificationProof
-                      verification={discussionSummary.verification ?? undefined}
-                      verificationId={
-                        discussionSummary.verificationId ?? undefined
-                      }
-                      model={discussionSummary.model ?? undefined}
-                      requestHash={
-                        discussionSummary.proof?.requestHash ?? undefined
-                      }
-                      responseHash={
-                        discussionSummary.proof?.responseHash ?? undefined
-                      }
-                      nonce={
-                        discussionSummary.proof?.nonce ??
-                        expectations.nonce ??
-                        undefined
-                      }
-                      expectedArch={
-                        discussionSummary.proof?.arch ??
-                        expectations.arch ??
-                        undefined
-                      }
-                      expectedDeviceCertHash={
-                        discussionSummary.proof?.deviceCertHash ??
-                        expectations.deviceCertHash ??
-                        undefined
-                      }
-                      expectedRimHash={
-                        discussionSummary.proof?.rimHash ??
-                        expectations.rimHash ??
-                        undefined
-                      }
-                      expectedUeid={
-                        discussionSummary.proof?.ueid ??
-                        expectations.ueid ??
-                        undefined
-                      }
-                      expectedMeasurements={
-                        discussionSummary.proof?.measurements ??
-                        expectations.measurements ??
-                        undefined
-                      }
-                      prefetchedProof={
-                        discussionSummary.remoteProof ?? undefined
-                      }
-                    />
-                  );
-                })()}
-              </AlertDescription>
-            </Alert>
-          )}
+              <Button
+                onClick={handleReplySubmit}
+                disabled={
+                  replyLoading ||
+                  !signedAccountId ||
+                  !nearClient ||
+                  !replyContent.trim() ||
+                  !isLinked
+                }
+                className="gap-1"
+              >
+                {replyLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Posting...
+                  </>
+                ) : (
+                  "Post reply"
+                )}
+              </Button>
+            </div>
+          </div>
 
           {showReplies && (
             <div className="space-y-4">
@@ -214,8 +417,8 @@ export function DiscussionSection({
               ))}
             </div>
           )}
-        </CardContent>
-      )}
+        </div>
+      </CardContent>
     </Card>
   );
 }

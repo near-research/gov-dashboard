@@ -421,11 +421,36 @@ export const router = publicProcedure.router({
         discourseRouter as Record<string, (input: unknown) => Promise<unknown>>
       ).ping(input)
     ),
-    createPost: proxyProtected(({ input }) =>
-      (
-        discourseRouter as Record<string, (input: unknown) => Promise<unknown>>
-      ).createPost(input)
-    ),
+    createPost: proxyProtected(async ({ input, context }) => {
+      const payload = input as Record<string, unknown> | unknown;
+      const sessionUserId = context?.session?.user?.id ?? null;
+      const candidate = (discourseRouter as Record<string, unknown>)["createPost"];
+      if (!candidate) {
+        throw new ORPCError("NOT_IMPLEMENTED", {
+          message: "Discourse createPost procedure is not available",
+        });
+      }
+      try {
+        const result = await invokeOrpcProcedure(
+          candidate,
+          { input, context },
+          "createPost"
+        );
+        if (result !== null) {
+          return result;
+        }
+        throw new ORPCError("NOT_IMPLEMENTED", {
+          message: "Discourse createPost procedure returned no handler",
+        });
+      } catch (error) {
+        console.error("[discourse] createPost failed", {
+          payload,
+          sessionUserId,
+          error,
+        });
+        throw error;
+      }
+    }),
     unlink: protectedProcedure.handler(async ({ input }) => {
       const nearAccount =
         typeof input === "object" &&

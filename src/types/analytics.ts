@@ -88,6 +88,12 @@ export type GovernanceEvents = {
     visible: boolean;
   };
 
+  discussion_reply_started: TopicEventBase;
+
+  discussion_reply_succeeded: TopicEventBase;
+
+  discussion_reply_failed: TopicEventBase & FailureBase;
+
   // -------- Home --------
   home_latest_proposals_requested: {};
 

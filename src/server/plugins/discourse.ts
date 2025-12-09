@@ -176,6 +176,14 @@ if (isTestEnvironment) {
     },
     secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
   });
+  console.log(
+    "[discourse-plugin] loaded router keys",
+    Object.keys(plugin.router).sort()
+  );
+  console.log(
+    "[discourse-plugin] createPost type",
+    typeof (plugin.router as Record<string, unknown>).createPost
+  );
 
   discourseRouter = plugin.router;
   discourseClient = plugin.client;

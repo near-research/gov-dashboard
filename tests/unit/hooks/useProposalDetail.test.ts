@@ -201,6 +201,25 @@ describe("useProposalDetail", () => {
     expect(result.current.screening).toBeNull();
   });
 
+  it("ignores abort errors when fetching the proposal", async () => {
+    const abortError = new DOMException(
+      "signal is aborted without reason",
+      "AbortError"
+    );
+
+    setupFetchScenario({
+      proposal: { throwError: abortError },
+    });
+
+    const { result } = renderHook(() =>
+      useProposalDetail({ proposalId: PROPOSAL_ID, track: vi.fn() })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("");
+    expect(result.current.proposal).toBeNull();
+  });
+
   it("refetches screening when version changes and surfaces errors", async () => {
     const trackMock = vi.fn();
     setupFetchScenario({

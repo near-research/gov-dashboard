@@ -57,6 +57,7 @@ export default function ProposalDetail() {
     handleVersionChange,
     handleToggleRevisions,
     fetchScreening,
+    fetchProposal,
   } = useProposalDetail({
     proposalId: id as string | undefined,
     track,
@@ -275,22 +276,28 @@ export default function ProposalDetail() {
                 />
               </Card>
 
-              <DiscussionSection
-                discourseBaseUrl={DISCOURSE_URL}
-                replies={proposal.replies ?? []}
-                discussionSummary={discussionSummary}
-                discussionSummaryVisible={discussionSummaryVisible}
-                discussionSummaryLoading={discussionSummaryLoading}
-                discussionSummaryError={discussionSummaryError}
-                showReplies={showReplies}
-                onToggleReplies={() => setShowReplies((prev) => !prev)}
-                onHandleDiscussionSummary={handleDiscussionSummary}
-                replySummaries={replySummaries}
-                replySummaryLoading={replySummaryLoading}
-                replySummaryErrors={replySummaryErrors}
-                onFetchReplySummary={fetchReplySummary}
-                onHideReplySummary={hideReplySummary}
-              />
+                <DiscussionSection
+                  discourseBaseUrl={DISCOURSE_URL}
+                  replies={proposal.replies ?? []}
+                  discussionSummary={discussionSummary}
+                  discussionSummaryVisible={discussionSummaryVisible}
+                  discussionSummaryLoading={discussionSummaryLoading}
+                  discussionSummaryError={discussionSummaryError}
+                  showReplies={showReplies}
+                  onToggleReplies={() => setShowReplies((prev) => !prev)}
+                  onHandleDiscussionSummary={handleDiscussionSummary}
+                  replySummaries={replySummaries}
+                  replySummaryLoading={replySummaryLoading}
+                  replySummaryErrors={replySummaryErrors}
+                  onFetchReplySummary={fetchReplySummary}
+                  onHideReplySummary={hideReplySummary}
+                  topicId={proposal.topic_id}
+                  onReplyPosted={() => {
+                    if (typeof id === "string") {
+                      fetchProposal(id);
+                    }
+                  }}
+                />
             </div>
 
             <div className="space-y-6">
