@@ -254,9 +254,9 @@ export const DiscourseConnect = ({
         </div>
         {!nearAccountId && (
           <Alert className="border-slate-200 bg-slate-50">
-      <AlertDescription>
-        Connect your NEAR wallet to Discourse
-      </AlertDescription>
+            <AlertDescription data-testid="discourse-wallet-warning">
+              Connect your NEAR wallet to Discourse
+            </AlertDescription>
           </Alert>
         )}
         {nearAccountId && (

@@ -222,6 +222,45 @@ describe("agent SSE + chat streaming integration", () => {
     expect(mockedVerificationFlowModule.performSecondCompletion).toHaveBeenCalled();
   });
 
+  it("registers the verification session and forwards it to the streaming client", async () => {
+    const registerSessionSpy = vi.spyOn(
+      verificationService,
+      "registerSession"
+    );
+    mockedStreamingModule.consumeStream.mockResolvedValueOnce({
+      content: "Reasoning output",
+      finishReason: "stop",
+      verificationId: "run-ver-id",
+      toolStepStarted: false,
+    } as any);
+
+    const req = createSseRequest();
+    const res = createSseResponse();
+
+    const streamPromise = handler(req, res);
+    await new Promise<void>((resolve) => res.on("finish", resolve));
+    await streamPromise;
+
+    expect(registerSessionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verificationId: "agent-ver-1",
+        nonce: "nonce-abc",
+        requestHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      })
+    );
+
+    expect(mockedStreamingModule.consumeStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionVerificationId: "agent-ver-1",
+      })
+    );
+
+    const events = parseSseEvents(res);
+    expect(events.some((evt) => evt.type === EventType.RUN_STARTED)).toBe(true);
+    expect(events.some((evt) => evt.type === EventType.RUN_FINISHED)).toBe(true);
+    registerSessionSpy.mockRestore();
+  });
+
   it("surfaces AGENT errors via RUN_ERROR events and closes the stream", async () => {
     mockedStreamingModule.consumeStream.mockImplementationOnce(async () => {
       throw new Error("stream failure");

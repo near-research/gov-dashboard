@@ -10,13 +10,13 @@ import {
   mockAddress,
   verifiedProofMock,
 } from "../../fixtures/verification";
-import { officialNearAIExample } from "@/fixtures/verificationMocks";
+import { officialNearAIExample } from "../../fixtures/verificationMocks";
 import { toast } from "sonner";
 import { verifyMessage } from "ethers";
 
 const fetchVerificationProofMock = vi.fn();
 const verifyWithNrasServiceMock = vi.fn();
-const mockRecoveredAddress = "0x856039d8a60613528d1DBEc3dc920f5FE96a31A0";
+const mockRecoveredAddress = mockAddress;
 
 vi.mock("@/services/verification/proof-service", () => ({
   fetchVerificationProof: (...args: unknown[]) => fetchVerificationProofMock(...args),

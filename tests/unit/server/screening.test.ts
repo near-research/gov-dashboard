@@ -10,6 +10,7 @@ import {
   verifyNearAuth,
 } from "@/server/screening";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
+import { NearAITimeoutError } from "@/lib/near-ai/errors";
 import { verify as verifyNearToken } from "near-sign-verify";
 import * as verificationSessions from "@/verification/server";
 import { siwnRecipient } from "@/config/siwn";
@@ -99,6 +100,14 @@ describe("screening", () => {
     });
   });
 
+  it("throws when auth header is missing", async () => {
+    await expect(verifyNearAuth(undefined)).rejects.toMatchObject({
+      statusCode: 401,
+      message: "NEAR authentication required",
+      details: { code: "missing_token" },
+    });
+  });
+
   it("returns evaluation details and verification metadata", async () => {
     mockChatCompletions.mockResolvedValue({
       id: "verification-123",
@@ -153,6 +162,37 @@ describe("screening", () => {
     });
   });
 
+  it("wraps NearAITimeoutError in ScreeningError timeout messaging", async () => {
+    mockChatCompletions.mockRejectedValue(
+      new NearAITimeoutError("Cloud request timed out")
+    );
+
+    expect.assertions(4);
+
+    try {
+      await requestEvaluation("Title", "Content");
+      throw new Error("Expected requestEvaluation to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ScreeningError);
+      expect((error as ScreeningError).statusCode).toBe(502);
+      expect((error as Error).message).toBe("NEAR AI API error");
+      expect((error as ScreeningError).details?.message).toBe(
+        "Cloud request timed out"
+      );
+    }
+  });
+
+  it("throws when the AI response delivers no message content", async () => {
+    mockChatCompletions.mockResolvedValue({
+      choices: [],
+    });
+
+    await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
+      statusCode: 500,
+      message: "Empty response from AI",
+    });
+  });
+
   it("fails on malformed AI responses", async () => {
     mockChatCompletions.mockResolvedValue({
       choices: [
@@ -165,6 +205,16 @@ describe("screening", () => {
     await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
       statusCode: 500,
       message: "Could not parse evaluation response",
+    });
+  });
+
+  it("wraps unknown rejections in a generic ScreeningError", async () => {
+    mockChatCompletions.mockRejectedValue("boom!");
+
+    await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
+      statusCode: 500,
+      message: "Failed to evaluate proposal",
+      details: { message: "Unknown error" },
     });
   });
 

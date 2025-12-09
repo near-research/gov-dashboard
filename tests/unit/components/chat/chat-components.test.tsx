@@ -2,7 +2,7 @@ import "../../../vi-compat";
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import MarkdownIt from "markdown-it";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 // Capture props passed to VerificationProof to avoid rendering the heavy component.
 const verificationProps: any[] = [];
@@ -460,5 +460,281 @@ describe("Chat components", () => {
     );
 
     expect(document.querySelectorAll(".animate-bounce")).toHaveLength(0);
+  });
+
+  it("ChatMessages auto-scrolls when anchored at the bottom", async () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    const originalClientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight"
+    );
+    const originalScrollTop = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollTop"
+    );
+
+    try {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+        get() {
+          return 600;
+        },
+        configurable: true,
+      });
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+        get() {
+          return 200;
+        },
+        configurable: true,
+      });
+      const scrollTopCalls: number[] = [];
+      Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+        get() {
+          return scrollTopCalls.length
+            ? scrollTopCalls[scrollTopCalls.length - 1]
+            : 0;
+        },
+        set(value) {
+          scrollTopCalls.push(value);
+        },
+        configurable: true,
+      });
+
+      const events = [
+        {
+          kind: "message",
+          id: "m1",
+          role: "assistant",
+          content: "Scrolling message",
+          status: "completed",
+          timestamp: new Date(),
+          turnNumber: 1,
+        },
+      ];
+
+      render(
+        <ChatMessages
+          events={events as any}
+          isLoading={false}
+          isInitialized
+          showTypingIndicator={false}
+          welcomeMessage="Auto scroll"
+          markdown={markdown}
+          isAtBottom
+          onNearBottomChange={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(scrollTopCalls).toContain(600);
+      });
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollHeight",
+          originalScrollHeight
+        );
+      } else {
+        delete (HTMLElement.prototype as any).scrollHeight;
+      }
+      if (originalClientHeight) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "clientHeight",
+          originalClientHeight
+        );
+      } else {
+        delete (HTMLElement.prototype as any).clientHeight;
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollTop",
+          originalScrollTop
+        );
+      } else {
+        delete (HTMLElement.prototype as any).scrollTop;
+      }
+    }
+  });
+
+  it("suppresses assistant message when a proposal payload is present", () => {
+    const proposalPayload = JSON.stringify({
+      type: "proposal_list",
+      description: "Top-level ideas",
+      topics: [
+        {
+          id: 1,
+          title: "Governance upgrade",
+          excerpt: "Expand committee",
+          created_at: 1672531200,
+          author: "gov",
+          topic: "1",
+          slug: "upgrade",
+          reply_count: 0,
+          views: 0,
+          last_posted_at: 1672531200,
+        },
+      ],
+    });
+
+    const events = [
+      {
+        kind: "tool_call",
+        id: "tool-1",
+        toolCallId: "tool-1",
+        toolName: "Proposal Fetch",
+        status: "completed",
+        timestamp: new Date(),
+        turnNumber: 1,
+        input: JSON.stringify({ query: "options" }),
+        output: JSON.stringify({
+          type: "proposal_list",
+          description: "Copied from tool",
+          topics: [
+            {
+              id: 2,
+              title: "Tool topic",
+              excerpt: "Tool excerpt",
+              created_at: 1672531300,
+              author: "agent",
+              topic: "2",
+              slug: "tool-topic",
+              reply_count: 1,
+              views: 2,
+              last_posted_at: 1672531300,
+            },
+          ],
+        }),
+      },
+      {
+        kind: "message",
+        id: "assistant-suppressed",
+        role: "assistant",
+        content: `Here is what I found:\n\`\`\`json\n${proposalPayload}\n\`\`\``,
+        status: "completed",
+        timestamp: new Date(),
+        turnNumber: 1,
+        verification: { source: "near-ai-cloud", status: "pending" },
+        proof: {
+          verificationId: "verif-1",
+          stage: "initial_reasoning",
+          requestHash: "req",
+          responseHash: "res",
+        },
+      },
+    ];
+
+    render(
+      <ChatMessages
+        events={events as any}
+        isLoading={false}
+        isInitialized
+        showTypingIndicator={false}
+        welcomeMessage="Hi"
+        markdown={markdown}
+        isAtBottom
+        onNearBottomChange={() => {}}
+      />
+    );
+
+    expect(screen.queryByText(/Here is what I found/i)).toBeNull();
+    expect(screen.getByTestId("proposal-card")).toBeInTheDocument();
+    expect(screen.getByTestId("verification-proof")).toBeInTheDocument();
+  });
+
+  it("renders assistant message content when no proposal suppression applies", () => {
+    const events = [
+      {
+        kind: "message",
+        id: "assistant-standard",
+        role: "assistant",
+        content: "Direct answer without meta blocks",
+        status: "completed",
+        timestamp: new Date(),
+        turnNumber: 1,
+      },
+    ];
+
+    render(
+      <ChatMessages
+        events={events as any}
+        isLoading={false}
+        isInitialized
+        showTypingIndicator={false}
+        welcomeMessage="Hi"
+        markdown={markdown}
+        isAtBottom
+        onNearBottomChange={() => {}}
+      />
+    );
+
+    expect(screen.getByText("Direct answer without meta blocks")).toBeInTheDocument();
+    expect(screen.queryByTestId("proposal-card")).toBeNull();
+  });
+
+  it("groups tool history entries per turn", () => {
+    const events = [
+      {
+        kind: "message",
+        id: "user-1",
+        role: "user",
+        content: "Gather context",
+        status: "completed",
+        timestamp: new Date(),
+        turnNumber: 1,
+      },
+      {
+        kind: "tool_call",
+        id: "tool-1",
+        toolCallId: "tool-1",
+        toolName: "Fetcher",
+        status: "completed",
+        timestamp: new Date(),
+        turnNumber: 1,
+        input: JSON.stringify({ query: "near" }),
+        output: "done",
+      },
+      {
+        kind: "tool_call",
+        id: "tool-2",
+        toolCallId: "tool-2",
+        toolName: "Summarizer",
+        status: "completed",
+        timestamp: new Date(),
+        turnNumber: 1,
+        input: JSON.stringify({ query: "near" }),
+        output: "summary",
+      },
+      {
+        kind: "message",
+        id: "assistant-1",
+        role: "assistant",
+        content: "Combined tool output",
+        status: "completed",
+        timestamp: new Date(),
+        turnNumber: 1,
+      },
+    ];
+
+    render(
+      <ChatMessages
+        events={events as any}
+        isLoading={false}
+        isInitialized
+        showTypingIndicator={false}
+        welcomeMessage="Hi"
+        markdown={markdown}
+        isAtBottom
+        onNearBottomChange={() => {}}
+      />
+    );
+
+    expect(screen.getAllByText(/Tools Used/i)).toHaveLength(1);
+    expect(screen.getByText("Fetcher")).toBeInTheDocument();
+    expect(screen.getByText("Summarizer")).toBeInTheDocument();
   });
 });

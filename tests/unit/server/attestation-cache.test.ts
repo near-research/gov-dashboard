@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as attestationCache from "@/server/attestation-cache";
 import * as fetchModel from "@/utils/attestation/fetch-model-attestation";
 import { __attestationCacheTestHooks } from "@/server/attestation-cache";
+import { mockAddress } from "../../fixtures/verification";
 
 const mockFetchModel = vi.spyOn(fetchModel, "fetchModelAttestation");
 
@@ -80,7 +81,7 @@ describe("attestation-cache verification", () => {
         json: async () => ({
           verified: true,
           nonce,
-          report_data: `nonce:${nonce} 0x856039d8a60613528d1DBEc3dc920f5FE96a31A0`,
+          report_data: `nonce:${nonce} ${mockAddress}`,
         }),
       } as any);
     });

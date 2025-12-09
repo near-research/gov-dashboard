@@ -30,6 +30,21 @@ vi.mock("@/server/attestation-cache", () => {
   };
 });
 
+const originalNodeEnv = process.env.NODE_ENV;
+
+const setEnvVar = (key: string, value?: string) => {
+  if (typeof value === "undefined") {
+    Reflect.deleteProperty(process.env, key);
+    return;
+  }
+  Reflect.defineProperty(process.env, key, {
+    value,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+};
+
 const discussionPayload = {
   title: "NEAR discussion",
   participant_count: 4,
@@ -142,6 +157,7 @@ describe("discussion summary API", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setEnvVar("NODE_ENV", originalNodeEnv);
   });
 
   it("returns a discussion summary with rate-limit headers, caches results, and merges remote proof", async () => {
@@ -217,5 +233,57 @@ describe("discussion summary API", () => {
     expect(res.getStatusCode()).toBe(200);
     expect(body.remoteProof).toBeUndefined();
     expect(body.verification?.status).toBe("pending");
+  });
+
+  it("returns details when the AI summary is empty during development", async () => {
+    setEnvVar("NODE_ENV", "development");
+    mockChatCompletions.mockResolvedValue({
+      choices: [],
+    } as any);
+
+    const req = createRequest();
+    const res = createResponse();
+
+    await handler(req, res);
+
+    const body = res.getBody() as any;
+    expect(res.getStatusCode()).toBe(500);
+    expect(body.details).toBe("Empty summary returned from AI");
+  });
+
+  it("recovers once the discussion summary rate limit window resets", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    mockChatCompletions.mockResolvedValue({
+      id: "rl-summary",
+      choices: [{ message: { content: "hello again" } }],
+    });
+
+    const request = createRequest();
+    request.headers["x-forwarded-for"] = "rate-limit-test";
+
+    try {
+      for (
+        let attempt = 0;
+        attempt < rateLimitConfig.discussionSummary.maxRequests;
+        attempt++
+      ) {
+        const res = createResponse();
+        await handler(request, res);
+        expect(res.getStatusCode()).toBe(200);
+      }
+
+      const limited = createResponse();
+      await handler(request, limited);
+      expect(limited.getStatusCode()).toBe(429);
+
+      vi.setSystemTime(rateLimitConfig.discussionSummary.windowMs + 1000);
+
+      const recovery = createResponse();
+      await handler(request, recovery);
+      expect(recovery.getStatusCode()).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

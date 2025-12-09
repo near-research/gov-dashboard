@@ -1,7 +1,7 @@
 ## Project Overview
 
 - NEAR Governance Dashboard web app that screens proposals and discussions, with NEP-413 wallet auth plus NEAR AI inference and verifiable compute checks.
-- Built on Next.js 15 with TypeScript, Tailwind CSS, Radix UI components, Better Auth + hot-labs/near-connect for wallet linking, Drizzle ORM over PostgreSQL, and NEAR AI/verification helpers.
+- Built on Next.js 15 with TypeScript, Tailwind CSS, Radix UI components, Better Auth + better-near-auth for wallet linking, Drizzle ORM over PostgreSQL, and NEAR AI/verification helpers.
 
 ## Directory Structure
 
@@ -27,7 +27,7 @@
 | Key file                         | Purpose                                                     |
 | -------------------------------- | ----------------------------------------------------------- |
 | `src/pages/api/auth/[...all].ts` | Better Auth proxy; keeps raw streams & multi-value headers. |
-| `src/hooks/useNear.tsx`          | Wallet connector lifecycle (hot-labs/near-connect).         |
+| `src/hooks/useNear.tsx`          | Wallet connector lifecycle (better-near-auth).              |
 | `src/lib/auth/near-sign-in.ts`   | Wallet SIWN retry/cancellation handling.                    |
 | `src/lib/near-ai/client.ts`      | NEAR AI client + timeout/retry helpers.                     |
 | `src/config/near.ts`             | Network, RPC, and EVM chain selection.                      |
@@ -64,12 +64,12 @@
 
 - TypeScript-first with strict options; React function components, hooks for state/effects (`use client` on client components).
 - Imports typically ordered external → aliased `@/...`; prefer path aliases over relative hops.
-- File naming: kebab-case for modules/components (`near-sign-in-compact.tsx`, `retry.ts`), PascalCase for React component exports (`SignInForm`, `AuthProvider`); tests mirror subject with `.test.ts[x]`.
+- File naming: kebab-case for modules/components (`near-sign-in.tsx`, `retry.ts`), PascalCase for React component exports (`SignInForm`, `AuthProvider`); tests mirror subject with `.test.ts[x]`.
 - Patterns: defensive optional chaining, small helper utilities (`retry.ts`), union types for result states, early returns in API handlers, explicit `try/catch` with toast-driven UX errors on the client; Next API handlers preserve streaming bodies and multi-value headers.
 
 ## NEAR Integration
 
-- Wallet auth: Better Auth + `better-near-auth` SIWN plugin (`src/lib/auth.ts`, `src/lib/auth-client.ts`) using `siwnRecipient`/`siwnDomain` from `src/config/siwn.ts`; wallet linking via `@hot-labs/near-connect` orchestrated in `src/hooks/useNear.tsx` and retried by `nearSignInWithRetry`.
+- Wallet auth: Better Auth + `better-near-auth` SIWN plugin (`src/lib/auth.ts`, `src/lib/auth-client.ts`) using `siwnRecipient`/`siwnDomain` from `src/config/siwn.ts`; wallet linking via `better-near-auth` orchestrated in `src/hooks/useNear.tsx` and retried by `nearSignInWithRetry`.
 - Network config: `src/config/near.ts` picks `mainnet`/`testnet` from `NEXT_PUBLIC_NEAR_NETWORK` (fallback based on `NODE_ENV`), sets RPC URLs, social contract ID, and EVM WalletConnect chain metadata; warns on domain/network mismatch.
 - WalletConnect: optional `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` enables WC metadata inside `useNear`.
 - NEAR AI: `src/lib/near-ai/client.ts` wraps Cloud API with default base `https://cloud-api.near.ai`, env `NEAR_AI_CLOUD_API_KEY`, timeouts (2m) and exponential backoff; supports verification headers (`X-Verification-Id`, `X-Nonce`) and streaming via `chatCompletionsStream`.
@@ -80,7 +80,7 @@
 - Environment: sample `.env.example` lists `NEAR_AI_CLOUD_API_KEY`, `DATABASE_URL`, Discourse settings, Better Auth secrets, NEAR recipient/domain/network, `NEXT_PUBLIC_BASE_URL`, etc.; auth routes expect these present. Playwright config honors `PLAYWRIGHT_PORT/BASE_URL/HOST/START_SERVER`, defaults to headless Chrome; `VERIFY_USE_MOCKS` defaults to `true` for tests.
 - Discourse plugin-backed endpoints (`/api/discourse/search`, `/api/discourse/latest`, agent tools) clamp limits to 30 (render 20), default to the proposals category (`DISCOURSE_PROPOSALS_CATEGORY_ID`, 168), and honor `page` pagination; forward `userApiKey` when available for authenticated queries.
 - Database: PostgreSQL schema managed via Drizzle (`drizzle-kit` scripts); migrations live in `drizzle/`.
-- Auth: Better Auth + NEP-413 wallet flow via hot-labs/near-connect; `src/pages/api/auth/[...all].ts` proxies requests to `auth.handler` while streaming bodies and preserving `Set-Cookie`.
+- Auth: Better Auth + NEP-413 wallet flow via better-near-auth; `src/pages/api/auth/[...all].ts` proxies requests to `auth.handler` while streaming bodies and preserving `Set-Cookie`.
 - Tooling: ESLint (Next core web vitals flat config), Tailwind + typography/animate plugins, PostCSS, Bun config present.
 - Gotchas: Next API auth route disables body parsing to forward raw streams; tests rely on jsdom globals—ensure `test-setup.ts` runs (configured in `vitest.config.ts`). Playwright specs skip automatically unless `PLAYWRIGHT_TEST` set; Bun runner prints skip notice.
 
@@ -92,6 +92,6 @@
 ## What Not To Do
 
 - Do not bypass `test-setup.ts` or `tests/vi-compat.ts` when adding tests—missing DOM/mocks will cause flakiness.
-- Avoid hitting real external services in unit tests; rely on fixtures (`tests/fixtures`, `src/fixtures/verificationMocks.ts`) and `vi.mock`.
+- Avoid hitting real external services in unit tests; rely on fixtures (`tests/fixtures`, `tests/fixtures/verificationMocks.ts`) and `vi.mock`.
 - Don’t enable Next API body parsing on `src/pages/api/auth/[...all].ts`—it needs raw streams for auth proxying.
 - Skip running Playwright specs with Bun’s built-in test runner; use `bun run test:e2e` (Playwright) with `PLAYWRIGHT_TEST=true`.

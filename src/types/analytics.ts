@@ -130,6 +130,11 @@ export type GovernanceEvents = {
     last_error: string | null;
   };
 
+  page_view: {
+    path: string;
+    referrer?: string | null;
+  };
+
   // Proposal chatbot
   proposal_chatbot_opened: TopicEventBase;
   proposal_chatbot_message_sent: TopicEventBase & { length: number };

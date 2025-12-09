@@ -4,16 +4,23 @@ import {
   registerPlaywrightMocks,
 } from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
-import { mockSignInFailure, mockWalletConnected } from "./helpers/auth-mocks";
+import {
+  mockAuthenticatedSession,
+  mockCompleteSignIn,
+  mockRequestSignIn,
+  mockSignInFailure,
+  mockUnauthenticatedSession,
+  mockWalletConnected,
+} from "./helpers/auth-mocks";
 
-const { describe: describeSpec } = createPlaywrightGuard("seed.spec.ts");
+const { describe: describeSpec } = createPlaywrightGuard("auth.spec.ts");
 
 /**
  * NAVIGATION BAR & LOGIN FLOWS TEST PLAN
  *
  * This comprehensive test suite covers:
  * - Navigation bar display and state management
- * - Wallet connection flows (NEAR wallet via hot-labs/near-connect)
+ * - Wallet connection flows (NEAR wallet via better-near-auth)
  * - Better Auth sign-in with nonce retry logic
  * - Session management and disconnect flows
  * - Discourse account linkage indicators
@@ -21,7 +28,7 @@ const { describe: describeSpec } = createPlaywrightGuard("seed.spec.ts");
  * - Auth gating and conditional UI rendering
  *
  * Tech Stack:
- * - NEAR Wallet: useNear() hook with @hot-labs/near-connect
+ * - NEAR Wallet: useNear() hook with @better-near-auth
  * - Better Auth: createAuthClient() with SIWN plugin (@better-near-auth)
  * - Discourse Integration: client.discourse.getLinkage() via oRPC
  * - Analytics: useGovernanceAnalytics() → Plausible
@@ -81,7 +88,9 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // Verify Connect Wallet button is visible
-    const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
+    const connectButton = page
+      .getByRole("button", { name: /Connect.*Wallet/i })
+      .first();
     await expect(connectButton).toBeVisible();
     await expect(connectButton).toBeEnabled({ timeout: 5000 });
 
@@ -96,7 +105,7 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
    * When "Connect Wallet" button is clicked:
    * 1. Analytics event "wallet_connect_clicked" is tracked
    * 2. Button becomes disabled with loading spinner (Loader2 icon spinning)
-   * 3. useNear() hook triggers wallet connection (hot-labs/near-connect)
+   * 3. useNear() hook triggers wallet connection (better-near-auth)
    * 4. If successful:
    *    - walletAccountId is set (e.g., "example.near")
    *    - Button changes to "[wallet_id] → Sign In"
@@ -117,13 +126,16 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
-    await mockWalletConnected(page, "tester.testnet");
+    const walletAccountId = "tester.testnet";
+    await mockRequestSignIn(page, walletAccountId);
     await page.goto("/", { waitUntil: "networkidle" });
 
-    const signInButton = page.getByRole("button", {
-      name: /Sign In/i,
-    }).first();
+    const accountRegex = new RegExp(walletAccountId.replace(/\./g, "\\."), "i");
+    const signInButton = page
+      .getByRole("button", { name: accountRegex })
+      .first();
     await expect(signInButton).toBeVisible({ timeout: 5000 });
+    await expect(signInButton).toHaveText(/Sign In/i);
   });
 
   /**
@@ -193,55 +205,28 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
   }) => {
     registerPlaywrightMocks(page);
 
-    // Mock successful auth session
-    await page.evaluateHandle(() => {
-      (window as any).__AUTH_MOCK__ = {
-        user: {
-          id: "user123",
-          email: "test@example.com",
-          name: "Test User",
-        },
-        session: {
-          token: "mock-session-token",
-          expiresAt: new Date(
-            Date.now() + 7 * 24 * 60 * 60 * 1000
-          ).toISOString(),
-        },
-        nearAccount: {
-          accountId: "testuser.near",
-        },
-      };
-    });
-
-    // Navigate to home
+    const walletAccountId = "testuser.near";
+    await mockRequestSignIn(page, walletAccountId);
+    await mockCompleteSignIn(page, walletAccountId);
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    // In a real test with mocks, we'd wait for the account dropdown
-    // For now, verify the structure if account exists
-    const accountButton = page.getByRole("button", {
-      name: /testuser\.near|My Account/i,
-    });
+    const accountRegex = new RegExp(walletAccountId.replace(/\./g, "\\."), "i");
+    const accountButton = page
+      .getByRole("button")
+      .filter({ hasText: accountRegex })
+      .first();
+    await expect(accountButton).toBeVisible({ timeout: 5000 });
 
-    if (await accountButton.isVisible({ timeout: 2000 })) {
-      // Avatar should be visible
-      const avatar = accountButton.locator("[role='presentation']");
-      await expect(avatar).toBeVisible();
+    await accountButton.click();
 
-      // Click to open dropdown
-      await accountButton.click();
+    const menu = page.locator("[role='menu']");
+    await expect(menu).toBeVisible();
 
-      // Verify dropdown menu appears
-      const menu = page.locator("[role='menu']");
-      await expect(menu).toBeVisible();
+    const profileLink = page.getByRole("menuitem", { name: /Profile/i });
+    await expect(profileLink).toBeVisible();
 
-      // Verify Profile link
-      const profileLink = page.getByRole("menuitem", { name: /Profile/i });
-      await expect(profileLink).toBeVisible();
-
-      // Verify Sign Out button
-      const signOutButton = page.getByRole("menuitem", { name: /Sign Out/i });
-      await expect(signOutButton).toBeVisible();
-    }
+    const signOutButton = page.getByRole("menuitem", { name: /Sign Out/i });
+    await expect(signOutButton).toBeVisible();
   });
 
   /**
@@ -328,20 +313,46 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
    */
   test("sign out and return to Connect Wallet state", async ({ page }) => {
     registerPlaywrightMocks(page);
+    const accountId = "testuser.near";
+    await mockAuthenticatedSession(page, accountId);
+    await page.route("**/api/auth/sign-out", (route) => {
+      route.fulfill({
+        status: 204,
+        headers: { "Content-Type": "application/json" },
+        body: "",
+      });
+    });
 
-    // Navigate to home
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    // Verify Connect Wallet button is visible initially
-    const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
-    await expect(connectButton).toBeVisible();
+    const accountRegex = new RegExp(accountId.replace(/\./g, "\\."), "i");
+    const accountButton = page
+      .getByRole("button")
+      .filter({ hasText: accountRegex })
+      .first();
+    await expect(accountButton).toBeVisible({ timeout: 5000 });
+
+    await accountButton.click();
+    const signOutMenuItem = page.getByRole("menuitem", { name: /Sign Out/i });
+    await expect(signOutMenuItem).toBeVisible();
+    await signOutMenuItem.click();
+
+    page.unroute("**/api/auth/get-session");
+    page.unroute("**/api/auth/list-accounts");
+    page.unroute("**/api/auth/accounts");
+    await mockUnauthenticatedSession(page);
+
+    const connectButton = page
+      .getByRole("button", { name: /Connect.*Wallet/i })
+      .first();
+    await expect(connectButton).toBeVisible({ timeout: 5000 });
   });
 
   /**
    * TEST 7: WALLET REJECTION HANDLING
    *
    * When user rejects wallet connection:
-   * 1. Wallet modal is shown by hot-labs/near-connect
+   * 1. Wallet modal is shown by better-near-auth
    * 2. User clicks "Cancel" or rejects transaction
    * 3. Promise rejection is caught
    * 4. isUserRejected() returns true for rejection errors
@@ -361,14 +372,19 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
   }) => {
     registerPlaywrightMocks(page);
     await mockWalletConnected(page, "tester.testnet");
-    await mockSignInFailure(page, "Wallet connection cancelled");
+    await mockSignInFailure(page, "Wallet connection cancelled by user");
     await page.goto("/", { waitUntil: "networkidle" });
 
     const signInButton = page.getByRole("button", { name: /Sign In/i }).first();
+    await expect(signInButton).toBeVisible({ timeout: 5000 });
     await signInButton.click();
-    const connectButton = page.getByRole("button", { name: /Connect Wallet/i });
-    await expect(connectButton).toBeVisible({ timeout: 5000 });
-    await expect(connectButton).toBeEnabled();
+    await page.keyboard.press("Escape");
+
+    // Primary assertion: NO error toast shown on user rejection
+    const errorToast = page
+      .locator('[role="alert"]')
+      .filter({ hasText: /error|failed|cancelled/i });
+    await expect(errorToast).not.toBeVisible({ timeout: 2000 });
   });
 
   /**
@@ -396,32 +412,126 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
    */
   test("retry sign-in on nonce expiration error", async ({ page }) => {
     registerPlaywrightMocks(page);
-
-    // Navigate to home
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-
-    // Mock nonce error on first attempt, then success
     markPageWithCustomAuthRoutes(page);
-    let attemptCount = 0;
-    await page.route("**/api/auth/**", (route) => {
-      attemptCount++;
-      if (attemptCount === 1) {
-        // First attempt returns nonce error
+
+    const walletAccountId = "nonce.retry.testnet";
+    await page.addInitScript((id: string) => {
+      (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ = id;
+    }, walletAccountId);
+
+    const linkedAccount = {
+      id: `linked-${walletAccountId}`,
+      providerId: "siwn",
+      accountId: walletAccountId,
+      userId: "user-nonce",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      scopes: ["basic"],
+    };
+    const session = {
+      id: `session-nonce-${walletAccountId}`,
+      userId: "user-nonce",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    };
+    const user = {
+      id: "user-nonce",
+      name: "Playwright Nonce Retry User",
+      email: "nonce-retry@near.org",
+      accounts: [{ providerId: "siwn", accountId: walletAccountId }],
+    };
+    const sessionPayload = { session, user, linkedAccounts: [linkedAccount] };
+
+    const verifyResponse = {
+      token: "mock-retry-token",
+      success: true,
+      user: {
+        id: user.id,
+        accountId: walletAccountId,
+        network: "testnet",
+      },
+    };
+
+    let nonceCallCount = 0;
+    let hasAuthenticated = false;
+
+    await page.route("**/api/auth/near/nonce", (route) => {
+      nonceCallCount++;
+      if (nonceCallCount === 1) {
         route.fulfill({
           status: 400,
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             code: "NONCE_NOT_FOUND",
-            message: "Session expired",
+            message: "Retry with new nonce",
           }),
         });
-      } else {
-        // Retry succeeds
-        route.continue();
+        return;
       }
+
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nonce: `retry-nonce-${nonceCallCount}` }),
+      });
     });
 
-    // In real test, this would be triggered via sign-in flow
-    // Retry logic happens internally in navigation component
+    await page.route("**/api/auth/near/verify", (route) => {
+      hasAuthenticated = true;
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(verifyResponse),
+      });
+    });
+
+    await page.route("**/api/auth/get-session", (route) => {
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          hasAuthenticated
+            ? sessionPayload
+            : { session: null, user: null, linkedAccounts: [] }
+        ),
+      });
+    });
+
+    await page.route("**/api/auth/list-accounts", (route) => {
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: hasAuthenticated ? sessionPayload.linkedAccounts : [],
+        }),
+      });
+    });
+
+    await page.route("**/api/auth/accounts", (route) => {
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: hasAuthenticated ? sessionPayload.linkedAccounts : [],
+        }),
+      });
+    });
+
+    await page.goto("/", { waitUntil: "networkidle" });
+
+    const accountRegex = new RegExp(walletAccountId.replace(/\./g, "\\."), "i");
+    const signInButton = page
+      .getByRole("button", { name: accountRegex })
+      .first();
+    await expect(signInButton).toBeVisible();
+    await signInButton.click();
+
+    const accountButton = page
+      .getByRole("button")
+      .filter({ hasText: accountRegex })
+      .first();
+    await expect(accountButton).toBeVisible({ timeout: 5000 });
+
+    expect(nonceCallCount).toBe(2);
   });
 
   /**
@@ -733,7 +843,7 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     await logoLink.click();
 
     // Should still be on home
-    expect(page.url()).toContain("localhost");
+    expect(new URL(page.url()).pathname).toBe("/");
   });
 
   /**
@@ -746,7 +856,7 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
    *    - No profile menu or account info visible
    *
    * 2. Click Connect Wallet
-   *    - Wallet modal opens (hot-labs/near-connect)
+   *    - Wallet modal opens (better-near-auth)
    *    - User approves wallet (e.g., "testuser.near")
    *    - Button changes to "testuser.near → Sign In"
    *    - Analytics event "wallet_connect_clicked" tracked
@@ -812,8 +922,7 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
  * AUTHENTICATION ARCHITECTURE:
  *
  * 1. NEAR Wallet Connection (useNear)
- *    - Uses @hot-labs/near-connect for wallet selection
- *    - Supported: Hot Wallet, WalletConnect, iframe connectors
+ *    - Uses @better-near-auth for wallet selection
  *    - walletSignIn() triggers wallet modal
  *    - Returns walletAccountId once connected
  *

@@ -38,10 +38,7 @@ export const setupUnauthenticatedUser = async (page: Page) => {
   await navigateHome(page);
 };
 
-export const setupWalletRejection = async (
-  page: Page,
-  accountId?: string
-) => {
+export const setupWalletRejection = async (page: Page, accountId?: string) => {
   await mockWalletConnected(page, accountId);
   await mockSignInFailure(page, "Wallet connection cancelled by user");
   await navigateHome(page);
@@ -98,15 +95,13 @@ export const mockDiscourseAPI = async (
 
   await page.route(/\/api\/discourse\/topics\/\d+\/summarize/, (route) => {
     const topicId = extractTopicId(route.request().url()) ?? "default";
-    const payload =
-      options?.topicSummaries?.[topicId] ?? topicSummaryFixture;
+    const payload = options?.topicSummaries?.[topicId] ?? topicSummaryFixture;
     respondWithJson(route, payload);
   });
 
   await page.route(/\/api\/discourse\/replies\/\d+\/summarize/, (route) => {
     const replyId = extractTopicId(route.request().url()) ?? "default";
-    const payload =
-      options?.replySummaries?.[replyId] ?? replySummaryFixture;
+    const payload = options?.replySummaries?.[replyId] ?? replySummaryFixture;
     respondWithJson(route, payload);
   });
 
@@ -117,12 +112,7 @@ export const mockDiscourseAPI = async (
 };
 
 export const dismissPopups = async (page: Page) => {
-  const popupSelectors = [
-    ".hot-connector-popup",
-    "[data-modal]",
-    ".overlay",
-    ".modal-backdrop",
-  ];
+  const popupSelectors = ["[data-modal]", ".overlay", ".modal-backdrop"];
 
   for (const selector of popupSelectors) {
     const locator = page.locator(selector).first();

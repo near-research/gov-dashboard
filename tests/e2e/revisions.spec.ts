@@ -21,9 +21,15 @@ describeSpec("Proposal revision comparison", () => {
     });
     await expect(page.getByText(/Version 3/)).toBeVisible();
 
-    const versionSelect = page.locator('[data-testid="version-select"]');
-    const count = await versionSelect.count();
-    console.log("Version select count:", count);
+    const revisionsToggle = page.getByRole("button", { name: /Revisions/i }).first();
+    await expect(revisionsToggle).toBeVisible({ timeout: 10000 });
+    await revisionsToggle.click();
+
+    const versionSelect = page
+      .locator(
+        '[role="combobox"], [data-testid="version-select"], select, button:has-text("v1")'
+      )
+      .first();
     await expect(versionSelect).toBeVisible({ timeout: 10000 });
     await versionSelect.click();
     await page.getByRole("option", { name: "v2" }).click();

@@ -1,22 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHash } from "crypto";
 import handler from "@/pages/api/chat/completions";
+import { NearAIError, NearAITimeoutError } from "@/lib/near-ai/errors";
 import * as verificationServer from "@/verification/server";
 import { EventEmitter } from "events";
 
 const chatSpy = vi.fn();
 const streamSpy = vi.fn();
+const getNearAIClientSpy = vi.fn();
 const registerSpy = vi.spyOn(
   verificationServer,
   "registerVerificationSession"
 );
 
+const nearAIClientMock = {
+  chatCompletions: chatSpy,
+  chatCompletionsStream: streamSpy,
+  getConfig: () => ({ baseUrl: "https://example.com", apiKey: "test" }),
+};
+
 vi.mock("@/lib/near-ai/client", () => ({
-  getNearAIClient: () => ({
-    chatCompletions: chatSpy,
-    chatCompletionsStream: streamSpy,
-    getConfig: () => ({ baseUrl: "https://example.com", apiKey: "test" }),
-  }),
+  getNearAIClient: () => getNearAIClientSpy(),
 }));
 
 const createResponse = () => {
@@ -93,6 +97,8 @@ describe("POST /api/chat/completions", () => {
     chatSpy.mockReset();
     chatSpy.mockResolvedValue({ id: "abc", choices: [] });
     streamSpy.mockReset();
+    getNearAIClientSpy.mockReset();
+    getNearAIClientSpy.mockReturnValue(nearAIClientMock);
     registerSpy.mockClear();
   });
 
@@ -202,10 +208,14 @@ describe("POST /api/chat/completions", () => {
       "registerVerificationSession"
     );
 
-    const req = createRequest({
+    const requestBody = {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       stream: true,
+    };
+
+    const req = createRequest({
+      ...requestBody,
       verificationId: "ver-123",
       verificationNonce: "nonce-xyz",
     });
@@ -213,13 +223,69 @@ describe("POST /api/chat/completions", () => {
 
     await handler(req as any, res as any);
 
+    expect(streamSpy).toHaveBeenCalledWith(requestBody, {
+      verificationId: "ver-123",
+      verificationNonce: "nonce-xyz",
+    });
     expect(res.headers["Content-Type"]).toContain("text/event-stream");
+    expect(res.headers["Cache-Control"]).toBe("no-cache, no-transform");
+    expect(res.headers["Connection"]).toBe("keep-alive");
+    expect(res.headers["X-Accel-Buffering"]).toBe("no");
     expect(res.getBody()).toBe("data: one\n\ndata: two\n\n");
+
+    const expectedRequestHash = createHash("sha256")
+      .update(JSON.stringify(requestBody))
+      .digest("hex");
+
+    const [firstCall] = registerSpy.mock.calls;
+    expect(firstCall).toEqual([
+      "ver-123",
+      "nonce-xyz",
+      expectedRequestHash,
+      null,
+    ]);
 
     const lastCall = registerSpy.mock.calls.at(-1);
     expect(lastCall?.[0]).toBe("ver-123");
-    expect(lastCall?.[2]).toMatch(/^[0-9a-f]{64}$/); // request hash
+    expect(lastCall?.[1]).toBe("nonce-xyz");
+    expect(lastCall?.[2]).toBe(expectedRequestHash);
     expect(lastCall?.[3]).toMatch(/^[0-9a-f]{64}$/); // response hash
+  });
+
+  it("bubbles NEAR AI streaming failures into JSON error responses", async () => {
+    streamSpy.mockRejectedValueOnce(
+      new NearAIError("Stream failed unexpectedly", 502)
+    );
+
+    const req = createRequest({
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+      verificationId: "ver-stream-fail",
+      verificationNonce: "nonce-fail",
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    expect(streamSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "m",
+        messages: [{ role: "user", content: "hi" }],
+        stream: true,
+      }),
+      {
+        verificationId: "ver-stream-fail",
+        verificationNonce: "nonce-fail",
+      }
+    );
+
+    expect(res.statusCode).toBe(502);
+    expect(res.body).toEqual({
+      error: "NEAR AI Cloud API Error: 502",
+      details: "Stream failed unexpectedly",
+    });
+    expect(registerSpy).not.toHaveBeenCalled();
   });
 
   it("hashes the decoder flush chunk in streamed responses", async () => {
@@ -258,5 +324,134 @@ describe("POST /api/chat/completions", () => {
       .digest("hex");
 
     expect(lastCall?.[3]).toBe(expectedHash);
+  });
+
+  it("returns 500 when the NEAR AI client is not configured", async () => {
+    getNearAIClientSpy.mockImplementationOnce(() => {
+      throw new Error("NEAR_AI_CLOUD_API_KEY missing");
+    });
+    const req = createRequest({
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body?.error).toBe("API key not configured on server");
+  });
+
+  it("propagates NearAI authentication failures (expired token)", async () => {
+    chatSpy.mockRejectedValueOnce(
+      new NearAIError("Token expired", 401, { type: "unauthorized" })
+    );
+    const req = createRequest({
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body?.error).toBe("NEAR AI Cloud API Error: 401");
+    expect(res.body?.details).toBe("Token expired");
+  });
+
+  it("returns 429 when NearAI enforces rate limits", async () => {
+    chatSpy.mockRejectedValueOnce(
+      new NearAIError("Rate limit exceeded", 429, { retryAfter: 60 })
+    );
+    const req = createRequest({
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.body?.error).toBe("NEAR AI Cloud API Error: 429");
+  });
+
+  it("maps NearAITimeoutError to a 504 response", async () => {
+    chatSpy.mockRejectedValueOnce(new NearAITimeoutError("Timed out waiting"));
+    const req = createRequest({
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    expect(res.statusCode).toBe(504);
+    expect(res.body?.error).toBe("Request timeout");
+    expect(res.body?.details).toBe("Timed out waiting");
+  });
+
+  it("sends negotiated tool metadata when provided", async () => {
+    const tools = [{ name: "fetch-url", description: "Fetch remote data" }];
+    const toolChoice = { name: "fetch-url", arguments: { url: "https://example.com" } };
+    const reqBody = {
+      model: "deepseek-ai/DeepSeek-V3.1",
+      messages: [{ role: "user", content: "go fetch" }],
+      tools,
+      tool_choice: toolChoice,
+    };
+    const req = createRequest(reqBody);
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    const [forwarded] = chatSpy.mock.calls[0];
+    expect(forwarded.tools).toBe(tools);
+    expect(forwarded.tool_choice).toStrictEqual(toolChoice);
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("keeps tool_choice unset when the payload explicitly passes null", async () => {
+    const req = createRequest({
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+      tool_choice: null,
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    const [forwarded] = chatSpy.mock.calls[0];
+    expect(forwarded).not.toHaveProperty("tool_choice");
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("formats unexpected errors as generic NEAR AI Cloud API failures", async () => {
+    chatSpy.mockRejectedValueOnce(new Error("upstream boom"));
+    const req = createRequest({
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({
+      error: "NEAR AI Cloud API Error",
+      details: "upstream boom",
+    });
+  });
+
+  it("rejects requests with an empty model value", async () => {
+    const req = createRequest({
+      model: "",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = createResponse();
+
+    await handler(req as any, res as any);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.message).toContain(">=1 characters");
   });
 });

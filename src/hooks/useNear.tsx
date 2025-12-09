@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { authClient, useSession } from "@/lib/auth/auth-client";
-import { ensureHotLabsWalletIframeReady } from "@/lib/auth/ensure-iframe-ready";
+import { authClient, safeSignOut, useSession } from "@/lib/auth/auth-client";
 import { siwnRecipient } from "@/config/siwn";
 import { NearError, type Near } from "near-kit";
 
@@ -19,6 +18,16 @@ export interface CallFunctionParams {
   gas?: string;
   deposit?: string;
 }
+
+const getPlaywrightWalletAccount = () =>
+  typeof window !== "undefined"
+    ? (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ ?? null
+    : null;
+
+const isPlaywrightTest =
+  typeof process !== "undefined" &&
+  typeof process.env !== "undefined" &&
+  (process.env.PLAYWRIGHT_TEST ?? "").toLowerCase() === "true";
 
 function classifyNearError(err: unknown): {
   message: string;
@@ -40,16 +49,9 @@ function classifyNearError(err: unknown): {
 }
 
 export function useNear() {
-  const {
-    data: session,
-    isPending,
-    refetch: refetchSession,
-  } = useSession();
+  const { data: session, isPending, refetch: refetchSession } = useSession();
 
-  const mockWalletAccount =
-    typeof window !== "undefined"
-      ? (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__
-      : null;
+  const mockWalletAccount = getPlaywrightWalletAccount();
   const [nearClient, setNearClient] = useState<Near | null>(null);
   const [walletAccountId, setWalletAccountId] = useState<string>(
     mockWalletAccount ?? ""
@@ -60,16 +62,10 @@ export function useNear() {
     let cancelled = false;
 
     const initializeClient = async () => {
-      await ensureHotLabsWalletIframeReady();
-
       try {
         const client = authClient.near.getNearClient();
-        const resolvedMock =
-          typeof window !== "undefined"
-            ? (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__
-            : null;
-        const accountId =
-          resolvedMock ?? authClient.near.getAccountId() ?? "";
+        const resolvedMock = getPlaywrightWalletAccount();
+        const accountId = resolvedMock ?? authClient.near.getAccountId() ?? "";
 
         if (cancelled) {
           return;
@@ -87,6 +83,24 @@ export function useNear() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isPlaywrightTest) {
+      return;
+    }
+
+    const syncMockAccount = () => {
+      const mockAccount = getPlaywrightWalletAccount();
+      const normalized = mockAccount ?? "";
+      setWalletAccountId((prev) => (prev === normalized ? prev : normalized));
+    };
+
+    syncMockAccount();
+    const intervalId = window.setInterval(syncMockAccount, 250);
+    return () => {
+      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -116,75 +130,47 @@ export function useNear() {
   }, [session, walletAccountId]);
 
   const signIn = useCallback(async () => {
-    await ensureHotLabsWalletIframeReady();
-
     const client = getSafeNearClient();
     if (!client) {
       throw new Error("NEAR client not initialized");
     }
 
-    await new Promise<void>((resolve, reject) => {
-      authClient.requestSignIn.near(
-        { recipient: siwnRecipient },
-        {
-          onSuccess: resolve,
-          onError: reject,
+    try {
+      await authClient.requestSignIn.near({ recipient: siwnRecipient });
+      await authClient.signIn.near({ recipient: siwnRecipient });
+
+      const accountId = authClient.near.getAccountId() ?? "";
+      setWalletAccountId(accountId);
+
+      if (refetchSession) {
+        try {
+          await refetchSession();
+        } catch (error) {
+          console.error("Failed to refresh session after NEAR sign-in:", error);
         }
-      );
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      authClient.signIn.near(
-        { recipient: siwnRecipient },
-        {
-          onSuccess: resolve,
-          onError: reject,
-        }
-      );
-    });
-
-    const accountId = authClient.near.getAccountId() ?? "";
-    setWalletAccountId(accountId);
-
-    if (refetchSession) {
-      try {
-        await refetchSession();
-      } catch (error) {
-        console.error("Failed to refresh session after NEAR sign-in:", error);
       }
-    }
 
-    return accountId;
+      return accountId;
+    } catch (error) {
+      setWalletAccountId("");
+      throw error;
+    }
   }, [getSafeNearClient, refetchSession]);
 
   const signOut = useCallback(async () => {
-    await ensureHotLabsWalletIframeReady();
-
     try {
-      await authClient.signOut();
+      await safeSignOut();
     } catch (error) {
-      console.error("Better Auth session sign out failed:", error);
-    }
-
-    try {
-      await authClient.near.disconnect();
-    } catch (error) {
-      console.error("Wallet disconnect error:", error);
+      console.error("Safe sign-out failed:", error);
     } finally {
       setWalletAccountId("");
-    }
-  }, []);
-
-  const disconnect = useCallback(async () => {
-    try {
-      await authClient.near.disconnect();
-    } catch (error) {
-      console.error("Disconnect error:", error);
+      setNearClient(null);
+      setIsClientReady(false);
     }
   }, []);
 
   const viewFunction = useCallback(
-    async <T = unknown>({
+    async <T = unknown,>({
       contractId,
       method,
       args = {},
@@ -246,7 +232,6 @@ export function useNear() {
     isAuthenticated: !!session?.user,
     signIn,
     signOut,
-    disconnect,
     loading: isPending || !isClientReady,
     viewFunction,
     callFunction,

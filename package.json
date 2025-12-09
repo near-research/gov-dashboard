@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "near-kit": "^0.6.3",
-    "@hot-labs/near-connect": "^0.6.2",
     "@orpc/client": "1.10.0",
     "@orpc/contract": "1.10.0",
     "@orpc/server": "1.10.0",

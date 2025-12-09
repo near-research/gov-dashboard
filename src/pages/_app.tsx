@@ -7,6 +7,21 @@ import PlausibleProvider from "next-plausible";
 
 const domain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN ?? "neargov.ai";
 
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (event) => {
+    const message = event.reason?.message || "";
+    if (message.includes("Iframe not loaded")) {
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener("error", (event) => {
+    if (event.message?.includes("Iframe not loaded")) {
+      event.preventDefault();
+    }
+  });
+}
+
 export default function App({ Component, pageProps }: AppProps) {
   return (
     <AuthProvider>

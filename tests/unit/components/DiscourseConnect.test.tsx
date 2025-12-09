@@ -12,11 +12,13 @@ const onError = vi.fn();
 
 const wallet = { signMessage: vi.fn() } as any;
 
+let mockNearAccountId: string | null = "alice.testnet";
+let mockNearClient: any = wallet;
+
 vi.mock("@/components/providers/auth-provider", () => ({
   useAuth: () => ({
-    wallet,
-    nearClient: wallet,
-    nearAccountId: "alice.testnet",
+    nearClient: mockNearClient,
+    nearAccountId: mockNearAccountId,
   }),
 }));
 
@@ -37,6 +39,9 @@ describe("DiscourseConnect", () => {
   let openSpy: any;
 
   beforeEach(() => {
+    mockNearAccountId = "alice.testnet";
+    mockNearClient = wallet;
+
     getUserApiAuthUrl.mockReset();
     completeLink.mockReset();
     onLinked.mockReset();
@@ -46,6 +51,46 @@ describe("DiscourseConnect", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("prompts the user to connect a wallet when none is present", () => {
+    mockNearAccountId = null;
+
+    render(<DiscourseConnect onLinked={onLinked} onError={onError} />);
+
+    expect(screen.getByTestId("discourse-wallet-warning")).toHaveTextContent(
+      /connect your near wallet to discourse/i
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /connect to discourse/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows pending linking instructions and fallback tooltip button when wallet connected", async () => {
+    getUserApiAuthUrl.mockResolvedValue({
+      authUrl: "https://discourse",
+      nonce: "n1",
+    });
+    const popup = { closed: false, close: vi.fn() } as any;
+    openSpy.mockReturnValue(popup);
+
+    render(<DiscourseConnect onLinked={onLinked} onError={onError} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /connect to discourse/i }));
+    });
+
+    expect(
+      await screen.findByText(/Complete Discourse Linking/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Authorize the connection in the newly opened Discourse tab\./i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /reopen discourse authorization/i,
+      })
+    ).toBeInTheDocument();
   });
 
   it("surfaces popup blocked error", async () => {

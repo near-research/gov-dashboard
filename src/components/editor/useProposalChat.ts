@@ -215,12 +215,14 @@ export const useProposalChat = ({
           return;
 
         case EventType.TOOL_CALL_RESULT: {
-          let toolCall = Array.from(activeToolCalls.values()).find(
-            (tc) => tc.id === event.toolCallId
-          );
+          const toolCallId = event.toolCallId;
+          let toolCall: ToolCallState | undefined;
+          if (toolCallId) {
+            toolCall = Array.from(activeToolCalls.values()).find((tc) => tc.id === toolCallId);
+          }
 
-          if (!toolCall) {
-            toolCall = completedToolCallsRef.current.get(event.toolCallId);
+          if (!toolCall && toolCallId) {
+            toolCall = completedToolCallsRef.current.get(toolCallId);
           }
 
           if (toolCall?.name === "screen_proposal") {
@@ -237,11 +239,13 @@ export const useProposalChat = ({
             setProposalState((prev: ProposalState) => ({ ...prev, evaluation: result as Evaluation }));
           }
 
-          setActiveToolCalls((prev) => {
-            const updated = new Map(prev);
-            updated.delete(event.toolCallId);
-            return updated;
-          });
+          if (toolCallId) {
+            setActiveToolCalls((prev) => {
+              const updated = new Map(prev);
+              updated.delete(toolCallId);
+              return updated;
+            });
+          }
           return;
         }
 

@@ -11,6 +11,11 @@ import { authClient, useSession } from "@/lib/auth/auth-client";
 import { useNear } from "@/hooks/useNear";
 import { getNearAccountId, hasNearLinked } from "@/lib/auth/auth-utils";
 
+type LinkedAccount = {
+  providerId: string;
+  accountId?: string;
+};
+
 type SessionData = ReturnType<typeof useSession>["data"];
 type SessionUser = SessionData extends null | undefined
   ? null
@@ -27,7 +32,7 @@ type AuthContextType = {
   sessionError: Error | null;
 
   // Linked accounts from Better Auth
-  linkedAccounts: any[];
+  linkedAccounts: LinkedAccount[];
   refreshAccounts: () => Promise<void>;
   accountsError: Error | null;
 
@@ -39,7 +44,7 @@ type AuthContextType = {
   nearClient: ReturnType<typeof useNear>["nearClient"];
   walletAccountId: string | null;
   walletLoading: boolean;
-  walletSignIn: () => Promise<void>;
+  walletSignIn: () => Promise<string>;
   walletSignOut: () => Promise<void>;
   viewFunction: ReturnType<typeof useNear>["viewFunction"];
   callFunction: ReturnType<typeof useNear>["callFunction"];
@@ -70,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   } = useNear();
   const walletAccountId = walletAccountIdRaw || null;
 
-  const [linkedAccounts, setLinkedAccounts] = useState<any[]>([]);
+  const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [accountsError, setAccountsError] = useState<Error | null>(null);
 
   // Fetch linked accounts when session exists
@@ -107,11 +112,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const linkedNearAccountId = getNearAccountId(linkedAccounts);
   const nearAccountId = linkedNearAccountId || walletAccountId || null;
   const hasNear = hasNearLinked(linkedAccounts) || !!walletAccountId;
-  const memoWalletSignIn = useCallback(async () => {
-    await walletSignIn();
-  }, [walletSignIn]);
-  const memoWalletSignOut = useCallback(() => walletSignOut(), [walletSignOut]);
-
   // Combined loading state
   const isPending = sessionPending || walletLoading;
 
@@ -135,8 +135,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       nearClient,
       walletAccountId,
       walletLoading,
-      walletSignIn: memoWalletSignIn,
-      walletSignOut: memoWalletSignOut,
+      walletSignIn,
+      walletSignOut,
       viewFunction,
       callFunction,
 
@@ -155,8 +155,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       nearClient,
       walletAccountId,
       walletLoading,
-      memoWalletSignIn,
-      memoWalletSignOut,
+      walletSignIn,
+      walletSignOut,
       viewFunction,
       callFunction,
       isPending,

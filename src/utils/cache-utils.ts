@@ -18,7 +18,7 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-class SimpleCache<T> {
+export class SimpleCache<T> {
   private cache: Map<string, CacheEntry<T>>;
   private ttl: number;
   private name: string;

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "sonner";
-import { isUserRejected } from "@/lib/auth/retry";
+import { isUserRejected, shouldRetryNonce } from "@/lib/auth/retry";
 
 export function SignInForm() {
   const router = useRouter();
@@ -29,14 +29,33 @@ export function SignInForm() {
     setIsConnecting(true);
     setError(null);
 
-    try {
+    let retriedNonce = false;
+
+    const executeSignIn = async () => {
       await walletSignIn();
       toast.success("Signed in successfully");
+    };
+
+    try {
+      await executeSignIn();
     } catch (err: any) {
-      const rejected = isUserRejected(err);
+      let errorToReport = err;
+
+      if (shouldRetryNonce(err) && !retriedNonce) {
+        retriedNonce = true;
+        try {
+          await executeSignIn();
+          setIsConnecting(false);
+          return;
+        } catch (retryErr: any) {
+          errorToReport = retryErr;
+        }
+      }
+
+      const rejected = isUserRejected(errorToReport);
       const message = rejected
         ? "Sign in cancelled"
-        : err?.message || "Failed to sign in";
+        : errorToReport?.message || "Failed to sign in";
       setError(message);
       if (!rejected) {
         toast.error(message);
@@ -78,6 +97,7 @@ export function SignInForm() {
         <div className="space-y-4">
           {!user ? (
             <button
+              data-testid="sign-in-connect-button"
               onClick={handleSignIn}
               disabled={isConnecting}
               className="w-full py-3 px-4 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50"

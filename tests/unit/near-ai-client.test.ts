@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   NearAIClient,
+  createNearAIClient,
   getNearAIClient,
   resetNearAIClient,
 } from "@/lib/near-ai/client";
@@ -211,5 +212,55 @@ describe("NearAIClient", () => {
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe("stream-model");
     expect(body.stream).toBe(true);
+  });
+
+  it("parses streaming errors when the response body is plain text", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => "service busy",
+    });
+
+    const client = new NearAIClient({ apiKey: "stream-key" });
+    await expect(
+      client.chatCompletionsStream({ model: "stream-model", messages: [] })
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      details: "service busy",
+    });
+  });
+
+  it("wraps streaming aborts in NearAITimeoutError", async () => {
+    const abortError = new Error("stream aborted");
+    (abortError as any).name = "AbortError";
+    fetchMock.mockRejectedValue(abortError);
+
+    const client = new NearAIClient({ apiKey: "stream-key", timeout: 10 });
+    await expect(
+      client.chatCompletionsStream({ model: "stream-model", messages: [] })
+    ).rejects.toBeInstanceOf(NearAITimeoutError);
+  });
+
+  it("wraps unexpected streaming failures in NearAIError", async () => {
+    fetchMock.mockRejectedValue(new Error("stream crack"));
+
+    const client = new NearAIClient({ apiKey: "stream-key" });
+    await expect(
+      client.chatCompletionsStream({ model: "stream-model", messages: [] })
+    ).rejects.toMatchObject({
+      message: "stream crack",
+    });
+  });
+
+  it("createNearAIClient returns a fresh instance unrelated to the singleton", () => {
+    const globalClient = getNearAIClient({ apiKey: "global" });
+    const isolatedClient = createNearAIClient({
+      apiKey: "refresh",
+      baseUrl: "https://fresh",
+    });
+
+    expect(isolatedClient).not.toBe(globalClient);
+    expect(isolatedClient.getConfig().apiKey).toBe("refresh");
+    expect(globalClient.getConfig().apiKey).toBe("global");
   });
 });

@@ -1,6 +1,13 @@
-import type { GetServerSidePropsContext, NextApiRequest } from "next";
+import type { GetServerSidePropsContext, NextApiRequest, NextApiResponse } from "next";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createContext, getSessionFromContext, getSessionFromReq } from "@/lib/context";
+import {
+  createContext,
+  getSessionFromContext,
+  getSessionFromReq,
+  formatApiResponse,
+  requireAuth,
+  UnauthorizedError,
+} from "@/lib/context";
 import { createMockHeaders, mockSession } from "../fixtures/context";
 
 const getSessionMock = vi.fn();
@@ -59,5 +66,44 @@ describe("context helpers", () => {
 
     expect(context.verification).toBeUndefined();
     expect(getSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws UnauthorizedError when requireAuth cannot find a user", async () => {
+    getSessionMock.mockResolvedValueOnce(null);
+    const req = { headers: {} } as unknown as NextApiRequest;
+
+    await expect(requireAuth(req)).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it("formats API responses by applying status before JSON", () => {
+    const body = { ok: true };
+    const statusMock = vi.fn();
+    const jsonMock = vi.fn();
+    const res = {
+      status: statusMock,
+      json: jsonMock,
+    } as unknown as NextApiResponse<typeof body>;
+    statusMock.mockReturnValue(res);
+
+    formatApiResponse(res, 201, body);
+
+    expect(statusMock).toHaveBeenCalledWith(201);
+    expect(jsonMock).toHaveBeenCalledWith(body);
+  });
+
+  it("prefers the first string when headers supply arrays", async () => {
+    const req = {
+      headers: {
+        "x-verification-id": ["first", "second"],
+        "x-nonce": ["nonce-value"],
+      },
+    } as unknown as NextApiRequest;
+
+    const context = await createContext(req);
+
+    expect(context.verification).toEqual({
+      verificationId: "first",
+      verificationNonce: "nonce-value",
+    });
   });
 });

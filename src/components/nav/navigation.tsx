@@ -268,7 +268,12 @@ export const Navigation = () => {
                 <span className="hidden sm:inline">→ Sign In</span>
               </Button>
             ) : !isOnLoginPage ? (
-              <Button size="sm" onClick={handleSignIn} disabled={isLoading}>
+            <Button
+              size="sm"
+              onClick={handleSignIn}
+              disabled={isLoading}
+              data-testid="nav-connect-wallet"
+            >
                 Connect Wallet
               </Button>
             ) : null}

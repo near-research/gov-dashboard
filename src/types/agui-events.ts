@@ -65,7 +65,7 @@ export type MessageRole =
 // Base Event Interface
 export interface BaseEvent {
   type: EventType;
-  timestamp?: number;
+  timestamp?: number | string;
   rawEvent?: unknown;
   verification?: VerificationMetadata;
 }
@@ -198,9 +198,9 @@ export interface ToolCallEndEvent extends BaseEvent {
  */
 export interface ToolCallResultEvent extends BaseEvent {
   type: EventType.TOOL_CALL_RESULT;
-  messageId: string;
-  toolCallId: string;
-  content: string; // The actual result/output content
+  messageId?: string;
+  toolCallId?: string;
+  content?: unknown; // The actual result/output content
   toolCallName?: string;
   role?: "tool";
 }
@@ -300,6 +300,7 @@ export interface CustomEvent extends BaseEvent {
   type: EventType.CUSTOM;
   name: string; // Name of the custom event
   value: unknown; // Value associated with the event
+  proof?: Record<string, unknown>;
 }
 
 // ============================================================================

@@ -7,6 +7,10 @@ if (!process.env.NODE_ENV) {
 }
 
 const ensureDom = () => {
+  if (process.env.VITEST_SKIP_DOM === "true") {
+    return;
+  }
+
   if (typeof document !== "undefined" && (globalThis as any).document) return;
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     url: "https://localhost",

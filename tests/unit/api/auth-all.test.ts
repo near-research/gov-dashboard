@@ -2,7 +2,7 @@ import handler from "@/pages/api/auth/[...all]";
 import { auth } from "@/lib/auth";
 import { NearAITimeoutError } from "@/lib/near-ai/errors";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PassThrough } from "stream";
+import { PassThrough, Readable } from "stream";
 
 vi.mock("@/lib/auth", () => ({
   auth: {
@@ -161,5 +161,186 @@ describe("auth proxy", () => {
     const res = createRes();
 
     await expect(handler(req, res)).rejects.toBeInstanceOf(NearAITimeoutError);
+  });
+
+  it("serializes JSON payloads once and marks duplex", async () => {
+    const payload = { callback: "signin" };
+    let capturedRequest: (Request & { duplex?: string }) | undefined;
+
+    (auth.handler as any).mockImplementation(async (request: Request) => {
+      capturedRequest = request;
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    const req = createReq();
+    req.method = "POST";
+    req.headers["content-type"] = "application/json";
+    (req as any).body = payload;
+
+    const res = createRes();
+    await handler(req, res);
+
+    expect(capturedRequest).toBeDefined();
+    expect(await capturedRequest!.text()).toBe(JSON.stringify(payload));
+    expect(capturedRequest!.duplex).toBe("half");
+  });
+
+  it("converts Buffer bodies to Uint8Array before proxying", async () => {
+    const buffer = Buffer.from("secure");
+    let capturedRequest: Request | undefined;
+
+    (auth.handler as any).mockImplementation(async (request: Request) => {
+      capturedRequest = request;
+      return new Response("ok", { status: 200 });
+    });
+
+    const req = createReq();
+    req.method = "PUT";
+    req.headers["content-type"] = "application/octet-stream";
+    (req as any).body = buffer;
+
+    const res = createRes();
+    await handler(req, res);
+
+    const array = Buffer.from(await capturedRequest!.arrayBuffer());
+    expect(array.toString()).toBe(buffer.toString());
+  });
+
+  it("maintains URLSearchParams bodies without re-encoding", async () => {
+    const params = new URLSearchParams({ redirect: "/callback" });
+    let capturedRequest: Request | undefined;
+
+    (auth.handler as any).mockImplementation(async (request: Request) => {
+      capturedRequest = request;
+      return new Response("ok", { status: 200 });
+    });
+
+    const req = createReq();
+    req.method = "POST";
+    req.headers["content-type"] = "application/x-www-form-urlencoded";
+    (req as any).body = params;
+
+    const res = createRes();
+    await handler(req, res);
+
+    expect(await capturedRequest!.text()).toBe(params.toString());
+  });
+
+  it("passes through FormData bodies as-is", async () => {
+    const form = new FormData();
+    form.append("token", "abc");
+    let capturedRequest: Request | undefined;
+
+    (auth.handler as any).mockImplementation(async (request: Request) => {
+      capturedRequest = request;
+      return new Response("ok", { status: 200 });
+    });
+
+    const req = createReq();
+    req.method = "POST";
+    (req as any).body = form;
+
+    const res = createRes();
+    await handler(req, res);
+
+    const formData = await capturedRequest!.formData();
+    expect(formData.get("token")).toBe("abc");
+  });
+
+  it("falls back to URLSearchParams for form-encoded object payloads", async () => {
+    const payload = { csrf: "x", format: "urlencoded" };
+    let capturedRequest: Request | undefined;
+
+    (auth.handler as any).mockImplementation(async (request: Request) => {
+      capturedRequest = request;
+      return new Response("ok", { status: 200 });
+    });
+
+    const req = createReq();
+    req.method = "PATCH";
+    req.headers["content-type"] = "application/x-www-form-urlencoded";
+    (req as any).body = payload;
+
+    const res = createRes();
+    await handler(req, res);
+
+    expect(await capturedRequest!.text()).toBe(
+      new URLSearchParams(payload as Record<string, string>).toString()
+    );
+  });
+
+  it("respects getSetCookie when provided by upstream headers", async () => {
+    const setCookies = ["first=1; Path=/", "second=2; Path=/"];
+    const headers = new Headers();
+    (headers as any).getSetCookie = () => setCookies;
+
+    (auth.handler as any).mockResolvedValue({
+      status: 201,
+      headers,
+      body: null,
+      text: async () => "",
+    });
+
+    const req = createReq();
+    req.method = "POST";
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.headers["Set-Cookie"]).toEqual(setCookies);
+  });
+
+  it("falls back to raw text when JSON parsing fails", async () => {
+    const headers = new Headers();
+    headers.set("content-type", "application/json; charset=utf-8");
+
+    (auth.handler as any).mockResolvedValue({
+      status: 200,
+      headers,
+      body: null,
+      text: async () => "not : json",
+    });
+
+    const req = createReq();
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res._jsonBody).toBeUndefined();
+    expect(res._sentBody).toBe("not : json");
+  });
+
+  it("pipes streaming responses without text parsing", async () => {
+    const nodeStream = new Readable({
+      read() {
+        this.push("chunk-1");
+        this.push("chunk-2");
+        this.push(null);
+      },
+    });
+    const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+
+    (auth.handler as any).mockResolvedValue(
+      new Response(webStream, {
+        status: 206,
+        headers: {
+          "content-type": "application/octet-stream",
+        },
+      })
+    );
+
+    const req = createReq();
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(206);
+    expect(res.headers["content-type"]).toBe("application/octet-stream");
+    expect(res.getBody()).toBe("chunk-1chunk-2");
   });
 });

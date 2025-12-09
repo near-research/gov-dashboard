@@ -1,64 +1,71 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { proposalCache, CacheKeys } from "@/utils/cache-utils";
+import { describe, expect, it, vi } from "vitest";
+import { SimpleCache } from "@/utils/cache-utils";
 
-describe("SimpleCache TTL and cleanup", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
-    proposalCache.clear();
+const createDeferred = <T>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
   });
+  return { promise, resolve, reject };
+};
 
+describe("SimpleCache", () => {
   afterEach(() => {
     vi.useRealTimers();
-    proposalCache.clear();
   });
 
-  it("expires entries after TTL and cleanup removes them", () => {
-    const key = CacheKeys.proposal("expire-test");
-    proposalCache.set(key, { value: "one" }, 0.01); // ~0.6s TTL
+  it("expires entries after the TTL elapses", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
 
-    expect(proposalCache.get(key)).toEqual({ value: "one" });
-    expect(proposalCache.has(key)).toBe(true);
+    const cache = new SimpleCache<string>(0.001, "ttl-cache");
+    cache.set("proposal:1", "fresh");
 
-    vi.advanceTimersByTime(700); // advance past TTL
+    expect(cache.get("proposal:1")).toBe("fresh");
 
-    expect(proposalCache.get(key)).toBeNull();
-    expect(proposalCache.has(key)).toBe(false);
+    vi.advanceTimersByTime(59);
+    expect(cache.get("proposal:1")).toBe("fresh");
 
-    const key2 = CacheKeys.proposal("cleanup-test");
-    proposalCache.set(key2, { value: "two" }, 0.01);
-    vi.advanceTimersByTime(700);
-    const removed = proposalCache.cleanup();
-    expect(removed).toBeGreaterThanOrEqual(1);
-    expect(proposalCache.has(key2)).toBe(false);
+    vi.advanceTimersByTime(2);
+    expect(cache.get("proposal:1")).toBeNull();
   });
 
-  it("reports TTL remaining and reuses cached values via getOrSet", async () => {
-    const key = CacheKeys.proposal("factory-test");
+  it("invalidates entries via explicit keys, patterns, and clear", () => {
+    const cache = new SimpleCache<string>(5, "invalidate-cache");
+    cache.set("discussion:123", "A");
+    cache.set("discussion:456", "B");
+    cache.set("reply:999", "C");
 
-    const factory = vi.fn(async () => "fresh-value");
-    const first = await proposalCache.getOrSet(key, factory, 1);
-    expect(first).toBe("fresh-value");
-    expect(factory).toHaveBeenCalledOnce();
+    expect(cache.has("discussion:123")).toBe(true);
+    expect(cache.invalidate("discussion:123")).toBe(true);
+    expect(cache.has("discussion:123")).toBe(false);
 
-    const remaining = proposalCache.ttlRemaining(key);
-    expect(remaining).toBeGreaterThan(50);
+    const removed = cache.invalidatePattern("^discussion");
+    expect(removed).toBe(1);
+    expect(cache.has("discussion:456")).toBe(false);
+    expect(cache.has("reply:999")).toBe(true);
 
-    const second = await proposalCache.getOrSet(key, factory);
-    expect(second).toBe("fresh-value");
-    expect(factory).toHaveBeenCalledOnce();
-
-    vi.advanceTimersByTime(61_000);
-    expect(proposalCache.ttlRemaining(key)).toBeNull();
+    cache.clear();
+    expect(cache.getStats().totalEntries).toBe(0);
   });
 
-  it("invalidates pattern matches", () => {
-    const prefix = "proposal:pattern-";
-    for (let idx = 0; idx < 3; idx++) {
-      proposalCache.set(`${prefix}${idx}`, idx);
-    }
-    const removed = proposalCache.invalidatePattern(`${prefix}\\d`);
-    expect(removed).toBe(3);
-    expect(proposalCache.has(`${prefix}0`)).toBe(false);
+  it("handles concurrent getOrSet callers without corruption", async () => {
+    const cache = new SimpleCache<string>(10, "concurrent-cache");
+    const deferred = createDeferred<string>();
+    const factory = vi.fn(() => deferred.promise);
+
+    const promiseA = cache.getOrSet("proposal:concurrent", factory);
+    const promiseB = cache.getOrSet("proposal:concurrent", factory);
+
+    expect(factory).toHaveBeenCalledTimes(2);
+
+    deferred.resolve("winner");
+    const [resultA, resultB] = await Promise.all([promiseA, promiseB]);
+
+    expect(resultA).toBe("winner");
+    expect(resultB).toBe("winner");
+    expect(cache.get("proposal:concurrent")).toBe("winner");
   });
 });

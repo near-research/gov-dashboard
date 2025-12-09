@@ -2,7 +2,7 @@ export const signatureResponse = {
   text: "reqhash:reshash",
   signature:
     "0x77e4db99019046762da28e669d8fce369fca67361592efd7b90ce5b225d7d6450cc4e7ee5f5a6fff8c7ab892f1caabb3d5625ba61f0dd79f97a5344fbbfa468d1c",
-  signing_address: "0x856039d8a60613528d1DBEc3dc920f5FE96a31A0",
+  signing_address: "0x616AAa0c5FA690409Bf2c4F20Bf46d02AcD9BF69",
   signing_algo: "ecdsa",
 };
 
@@ -78,4 +78,4 @@ export {
   failedProofMock,
   mockNonce,
   mockAddress,
-} from "@/fixtures/verificationMocks";
+} from "./verificationMocks";

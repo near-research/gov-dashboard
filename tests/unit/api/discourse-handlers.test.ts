@@ -103,6 +103,51 @@ describe("discourse search handler", () => {
     expect(res.statusCode).toBe(400);
     expect(res.getBody().error).toContain("Unsupported parameter(s)");
   });
+
+  it("passes pagination metadata through to the plugin", async () => {
+    (discourseSearch as any).mockResolvedValue({
+      data: {
+        topics: [],
+        posts: [],
+        users: [],
+        categories: [],
+        totalResults: 0,
+        hasMore: false,
+        nextPage: null,
+      },
+    });
+
+    const req = createReq({ query: { q: "governance", limit: "8", page: "2" } });
+    const res = createRes();
+
+    await searchHandler(req, res);
+
+    const callArgs = (discourseSearch as any).mock.calls[0][0];
+    expect(callArgs.page).toBe(2);
+    expect(callArgs.limit).toBe(8);
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("guards against missing topics or posts arrays", async () => {
+    (discourseSearch as any).mockResolvedValue({
+      data: {
+        users: [],
+        categories: [],
+        totalResults: 0,
+        hasMore: false,
+        nextPage: null,
+      },
+    });
+
+    const req = createReq({ query: { q: "governance" } });
+    const res = createRes();
+
+    await searchHandler(req, res);
+
+    const body = res.getBody();
+    expect(body.topics).toEqual([]);
+    expect(body.posts).toEqual([]);
+  });
 });
 
 describe("discourse latest handler", () => {
@@ -136,5 +181,23 @@ describe("discourse latest handler", () => {
     expect(res.statusCode).toBe(200);
     expect(res.getBody().latest_posts).toHaveLength(DISCOURSE_RENDER_LIMIT);
     expect(res.getBody().per_page).toBe(DISCOURSE_RENDER_LIMIT);
+  });
+
+  it("handles unexpected payloads without topics", async () => {
+    (discourseLatestTopics as any).mockResolvedValue({
+      data: {
+        hasMore: false,
+        nextPage: null,
+      },
+    });
+
+    const req = createReq({ query: { per_page: "5" } });
+    const res = createRes();
+
+    await latestHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.getBody().latest_posts).toEqual([]);
+    expect(res.getBody().per_page).toBe(5);
   });
 });

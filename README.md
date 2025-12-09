@@ -45,7 +45,7 @@ Results based on **6 Quality Criteria** and **2 Attention Scores**:
 | **Language**       | TypeScript                   |
 | **Database**       | PostgreSQL with Drizzle ORM  |
 | **AI Provider**    | NEAR AI Cloud                |
-| **NEAR Wallet**    | `@hot-labs/near-connect`     |
+| **NEAR Wallet**    | `better-near-auth`           |
 | **Authentication** | `near-sign-verify` (NEP-413) |
 
 ## Quick Start
@@ -194,23 +194,29 @@ import Transformer from "./plugins/transformer";
 
 const pluginMap = {
   "data-source": DataSource,
-  transformer: Transformer
+  transformer: Transformer,
 } as const;
 
 const runtime = createLocalPluginRuntime(
   {
     registry: {
-      "data-source": { remoteUrl: "http://localhost:3000/remoteEntry.js", version: "1.0.0" },
-      transformer: { remoteUrl: "http://localhost:3001/remoteEntry.js", version: "1.0.0" }
+      "data-source": {
+        remoteUrl: "http://localhost:3000/remoteEntry.js",
+        version: "1.0.0",
+      },
+      transformer: {
+        remoteUrl: "http://localhost:3001/remoteEntry.js",
+        version: "1.0.0",
+      },
     },
-    secrets: { API_KEY: "dev-key" }
+    secrets: { API_KEY: "dev-key" },
   },
   pluginMap
 );
 
 const { client } = await runtime.usePlugin("data-source", {
   secrets: { apiKey: "{{API_KEY}}" },
-  variables: { timeout: 30_000 }
+  variables: { timeout: 30_000 },
 });
 
 const result = await client.getData({ id: "123" });

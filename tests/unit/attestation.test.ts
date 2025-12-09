@@ -8,7 +8,7 @@ import {
   nonceReplayAttackMock,
   partialProofMock,
   multiGpuProofMock,
-} from "../../src/fixtures/verificationMocks";
+} from "../fixtures/verificationMocks";
 import { verifyMessage, type SignatureLike } from "ethers";
 
 vi.mock("ethers", () => ({

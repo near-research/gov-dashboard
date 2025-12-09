@@ -2,7 +2,7 @@ import "../../vi-compat";
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
 import handler from "@/pages/api/verification/proof";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { verifiedProofMock, mockNonce } from "../../fixtures/verification";
+import { verifiedProofMock, mockNonce, mockAddress } from "../../fixtures/verification";
 import { verifyMessage } from "ethers";
 import * as requestHashUtils from "@/verification/hashes";
 import * as screening from "@/server/screening";
@@ -29,7 +29,7 @@ if (!compatVi.resetModules) {
 }
 
 vi.mock("ethers", () => ({
-  verifyMessage: vi.fn(() => "0x856039d8a60613528d1DBEc3dc920f5FE96a31A0"),
+  verifyMessage: vi.fn(() => mockAddress),
 }));
 
 const fixedNonce = mockNonce;
@@ -516,7 +516,7 @@ describe("verification/proof API (mocked fetch)", () => {
     expect(state.status).toBe(200);
     expect(state.body?.results?.verified).toBe(false);
     expect(state.body?.results?.reasons).toContain("Signer does not match attested key");
-    verifyMessageMock.mockReturnValue("0x856039d8a60613528d1DBEc3dc920f5FE96a31A0");
+    verifyMessageMock.mockReturnValue(mockAddress);
   });
 
   it("fails when attested or NRAS nonce does not match session nonce", async () => {
