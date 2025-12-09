@@ -58,6 +58,12 @@ const createLinkedAccountRecord = (
   scopes: ["basic"],
 });
 
+const clearAuthRoutes = (page: Page, patterns: string[]) => {
+  for (const pattern of patterns) {
+    page.unroute(pattern);
+  }
+};
+
 const buildSessionPayload = (
   accountId: string
 ): AuthSessionPayload & { network: "mainnet" | "testnet" } => {
@@ -107,6 +113,11 @@ export const mockRequestSignIn = async (
 
   markPageWithCustomAuthRoutes(page);
 
+  clearAuthRoutes(page, [
+    "**/api/auth/near/nonce",
+    "**/api/auth/get-session",
+  ]);
+
   await page.route("**/api/auth/near/nonce", (route) => {
     respondWithJson(route, { nonce });
   });
@@ -126,6 +137,13 @@ export const mockCompleteSignIn = async (
   const { session, user, linkedAccounts, network } =
     buildSessionPayload(accountId);
   markPageWithCustomAuthRoutes(page);
+
+  clearAuthRoutes(page, [
+    "**/api/auth/near/verify",
+    "**/api/auth/get-session",
+    "**/api/auth/list-accounts",
+    "**/api/auth/accounts",
+  ]);
 
   await page.route("**/api/auth/near/verify", (route) => {
     respondWithJson(route, {
@@ -160,6 +178,13 @@ export const mockAuthenticatedSession = async (
 export const mockUnauthenticatedSession = async (page: Page) => {
   await setPlaywrightWalletAccount(page, null);
   markPageWithCustomAuthRoutes(page);
+  clearAuthRoutes(page, [
+    "**/api/auth/get-session",
+    "**/api/auth/list-accounts",
+    "**/api/auth/accounts",
+    "**/api/auth/near/verify",
+    "**/api/auth/near/nonce",
+  ]);
   await page.route("**/api/auth/get-session", (route) => {
     respondWithJson(route, { session: null, user: null });
   });
@@ -171,6 +196,11 @@ export const mockWalletConnected = async (
 ) => {
   await setPlaywrightWalletAccount(page, accountId);
   markPageWithCustomAuthRoutes(page);
+  clearAuthRoutes(page, [
+    "**/api/auth/get-session",
+    "**/api/auth/list-accounts",
+    "**/api/auth/accounts",
+  ]);
   const linkedAccount = createLinkedAccountRecord(accountId, "wallet-only");
 
   await page.route("**/api/auth/get-session", (route) => {

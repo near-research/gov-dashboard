@@ -9,14 +9,16 @@ import {
 } from "@/lib/db/schema";
 import { DiscourseRouter, discourseRouter } from "@/server/plugins/discourse";
 import { protectedProcedure, publicProcedure } from "./procedures";
+import type { Context } from "@/lib/context";
+import type { DiscourseCompleteLinkResult } from "@/types/discourse-linkage";
 
 const proxyPublic = (
-  fn: (args: { input: unknown; context: unknown }) => Promise<unknown>
+  fn: (args: { input: unknown; context: Context | undefined }) => Promise<unknown>
 ) =>
   publicProcedure.handler(async ({ input, context }) => fn({ input, context }));
 
 const proxyProtected = (
-  fn: (args: { input: unknown; context: unknown }) => Promise<unknown>
+  fn: (args: { input: unknown; context: Context }) => Promise<unknown>
 ) =>
   protectedProcedure.handler(async ({ input, context }) =>
     fn({ input, context })
@@ -83,6 +85,51 @@ const getDiscourseLinkageFromDb = async (
   };
 };
 
+const persistDiscourseLinkage = async (
+  linkage: DiscourseCompleteLinkResult | null,
+  userId: string | null | undefined
+) => {
+  if (!linkage || !userId) {
+    return;
+  }
+
+  const { discourseUsername, discourseUserId } = linkage;
+  if (!discourseUsername || discourseUserId === undefined) {
+    return;
+  }
+
+  const drizzleClient = db as DrizzleClient;
+  if (typeof drizzleClient.insert !== "function") {
+    return;
+  }
+
+  const existing = await drizzleClient
+    .select({
+      id: discourseAccount.id,
+    })
+    .from(discourseAccount)
+    .where(eq(discourseAccount.discourseUsername, discourseUsername))
+    .limit(1);
+
+  if (existing.length) {
+    await drizzleClient
+      .update(discourseAccount)
+      .set({
+        userId,
+        discourseUserId: String(discourseUserId),
+        updatedAt: new Date(),
+      })
+      .where(eq(discourseAccount.discourseUsername, discourseUsername));
+    return;
+  }
+
+  await drizzleClient.insert(discourseAccount).values({
+    userId,
+    discourseUsername,
+    discourseUserId: String(discourseUserId),
+  });
+};
+
 const resolvePath = (obj: unknown, path: string[]) =>
   path.reduce<unknown | undefined>(
     (value, key) =>
@@ -109,6 +156,31 @@ const logRouterShape = () => {
       .sort()
       .join(", ")
   );
+};
+
+const deleteDiscourseAccountForNearAccount = async (nearAccount: string) => {
+  const drizzleClient = db as DrizzleClient;
+  if (
+    typeof drizzleClient.select !== "function" ||
+    typeof drizzleClient.delete !== "function"
+  ) {
+    return;
+  }
+
+  const nearRecord = await drizzleClient
+    .select({ userId: nearAccountTable.userId })
+    .from(nearAccountTable)
+    .where(eq(nearAccountTable.accountId, nearAccount))
+    .limit(1);
+
+  const userId = nearRecord[0]?.userId;
+  if (!userId) {
+    return;
+  }
+
+  await drizzleClient
+    .delete(discourseAccount)
+    .where(eq(discourseAccount.userId, userId));
 };
 
 /**
@@ -210,7 +282,7 @@ const invokeOrpcProcedure = async (
 
 const callAuthRoute = async (
   name: string,
-  args: { input: unknown; context: unknown }
+  args: { input: unknown; context: Context | undefined }
 ) => {
   logRouterShape();
 
@@ -317,7 +389,14 @@ export const router = publicProcedure.router({
           : [];
       console.log("[completeLink] Starting with input keys:", inputKeys);
       try {
-        const result = await callAuthRoute("completeLink", { input, context });
+        const result =
+          (await callAuthRoute("completeLink", { input, context })) as
+            | DiscourseCompleteLinkResult
+            | null;
+        await persistDiscourseLinkage(
+          result,
+          context?.session?.user?.id ?? null
+        );
         console.log("[completeLink] Success");
         return result;
       } catch (error) {
@@ -334,7 +413,7 @@ export const router = publicProcedure.router({
       const nearAccount = parseNearAccountInput(input);
       return getDiscourseLinkageFromDb(
         nearAccount,
-        context.session?.user?.id ?? null
+        context?.session?.user?.id ?? null
       );
     }),
     ping: proxyPublic(({ input }) =>
@@ -364,15 +443,17 @@ export const router = publicProcedure.router({
 
       const unlinkFn = (discourseRouter as Record<string, unknown>)
         ?.linkageStore as Record<string, unknown> | undefined;
-      if (typeof unlinkFn?.unlink !== "function") {
-        throw new ORPCError("NOT_FOUND", {
-          message: "Discourse unlink not supported by plugin",
-        });
+      if (typeof unlinkFn?.unlink === "function") {
+        await (unlinkFn.unlink as (account: string) => Promise<void>)(
+          nearAccount as string
+        );
+      } else {
+        console.warn(
+          "[discourse] Plugin does not expose linkageStore.unlink; skipping cleanup."
+        );
       }
 
-      await (unlinkFn.unlink as (account: string) => Promise<void>)(
-        nearAccount as string
-      );
+      await deleteDiscourseAccountForNearAccount(nearAccount as string);
       return { success: true };
     }),
   }),

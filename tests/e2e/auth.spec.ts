@@ -454,6 +454,11 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     let nonceCallCount = 0;
     let hasAuthenticated = false;
 
+    await mockWalletConnected(page, walletAccountId);
+    await page.unroute("**/api/auth/get-session");
+    await page.unroute("**/api/auth/list-accounts");
+    await page.unroute("**/api/auth/accounts");
+
     await page.route("**/api/auth/near/nonce", (route) => {
       nonceCallCount++;
       if (nonceCallCount === 1) {
@@ -608,20 +613,48 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
   test("redirect to specified URL after successful login", async ({ page }) => {
     registerPlaywrightMocks(page);
     const walletAccountId = "redirect.flow.near";
-    await mockRequestSignIn(page, walletAccountId);
-    await mockCompleteSignIn(page, walletAccountId);
 
+    await mockUnauthenticatedSession(page);
+    await mockWalletConnected(page, walletAccountId);
+
+    await page.route("**/api/auth/near/nonce", (route) => {
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nonce: "test-nonce" }),
+      });
+    });
+
+    let sessionUpgraded = false;
+    await page.route("**/api/auth/near/verify", async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: "mock-token", success: true }),
+      });
+
+      if (sessionUpgraded) {
+        return;
+      }
+
+      sessionUpgraded = true;
+
+      await page.unroute("**/api/auth/get-session");
+      await page.unroute("**/api/auth/list-accounts");
+      await page.unroute("**/api/auth/accounts");
+      await page.unroute("**/api/auth/near/verify");
+
+      await mockAuthenticatedSession(page, walletAccountId);
+    });
     // Navigate to login with redirect param to /proposals
     await page.goto("/login?redirect=/proposals", {
       waitUntil: "domcontentloaded",
     });
     await page.waitForLoadState("networkidle");
 
-    const connectButton = page
-      .getByRole("button", { name: /Connect Wallet/i })
-      .first();
-    await expect(connectButton).toBeVisible({ timeout: 10000 });
-    await connectButton.click();
+    const signInButton = page.getByRole("button", { name: /Sign In/i }).first();
+    await expect(signInButton).toBeVisible({ timeout: 10000 });
+    await signInButton.click();
 
     await page.waitForURL(/\/proposals$/, { timeout: 10000 });
     await expect(page.getByRole("heading", { name: /Proposals/i })).toBeVisible();
@@ -685,8 +718,11 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
 
     registerPlaywrightMocks(page);
     const walletAccountId = "analytics.testnet";
-    await mockRequestSignIn(page, walletAccountId);
-    await mockCompleteSignIn(page, walletAccountId);
+    const accountRegex = new RegExp(
+      walletAccountId.replace(/\./g, "\\."),
+      "i"
+    );
+    await mockUnauthenticatedSession(page);
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle");
@@ -694,13 +730,20 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
     const connectButton = page
       .getByRole("button", { name: /Connect.*Wallet/i })
       .first();
-    await expect(connectButton).toBeVisible({ timeout: 10000 });
+    await expect(connectButton).toBeVisible({ timeout: 5000 });
+
+    await mockWalletConnected(page, walletAccountId);
     await connectButton.click();
 
-    const accountRegex = new RegExp(
-      walletAccountId.replace(/\./g, "\\."),
-      "i"
-    );
+    const signInButton = page
+      .getByRole("button", { name: /Sign In/i })
+      .filter({ hasText: accountRegex })
+      .first();
+    await expect(signInButton).toBeVisible({ timeout: 5000 });
+
+    await mockCompleteSignIn(page, walletAccountId);
+    await signInButton.click();
+
     const accountButton = page
       .getByRole("button")
       .filter({ hasText: accountRegex });
@@ -959,29 +1002,46 @@ describeSpec("Navigation Bar & Login Flows - Complete Authentication", () => {
   }) => {
     registerPlaywrightMocks(page);
     const walletAccountId = "fullflow.near";
-    await mockRequestSignIn(page, walletAccountId);
-    await mockCompleteSignIn(page, walletAccountId);
     await page.route("**/api/auth/sign-out", (route) => {
       route.fulfill({
         status: 204,
-        headers: { "Content-Type": "application/json" },
         body: "",
       });
     });
 
+    await mockUnauthenticatedSession(page);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle");
 
     const connectButton = page.getByRole("button", {
       name: /Connect.*Wallet/i,
     });
-    await expect(connectButton.first()).toBeVisible({ timeout: 10000 });
+    await expect(connectButton.first()).toBeVisible({ timeout: 5000 });
+
+    await mockWalletConnected(page, walletAccountId);
     await connectButton.first().click();
 
     const accountRegex = new RegExp(
       walletAccountId.replace(/\./g, "\\."),
       "i"
     );
+
+    const walletButton = page
+      .getByRole("button")
+      .filter({ hasText: accountRegex })
+      .first();
+    await expect(walletButton).toBeVisible({ timeout: 5000 });
+    await expect(walletButton).toHaveText(/Sign In/i);
+
+    await mockRequestSignIn(page, walletAccountId);
+    await mockCompleteSignIn(page, walletAccountId);
+
+    const signInButton = page
+      .getByRole("button")
+      .filter({ hasText: accountRegex })
+      .first();
+    await signInButton.click();
+
     const accountButton = page
       .getByRole("button")
       .filter({ hasText: accountRegex })
