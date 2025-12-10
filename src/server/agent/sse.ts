@@ -1,7 +1,7 @@
 import { PassThrough } from "stream";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { EventType, type AGUIEvent } from "@/types/agui-events";
-import { verificationService } from "@/verification/server";
+import { getNearAIClient } from "@/lib/near-ai";
 import type { ValidatedAgentRequest } from "./types";
 
 export const createEventWriter =
@@ -52,6 +52,7 @@ export function startSseSession({
     closeStream();
   });
 
+  const client = getNearAIClient();
   const maybeUpdateHashesFromEvent = (event: AGUIEvent) => {
     if (
       event.type === EventType.CUSTOM &&
@@ -64,7 +65,7 @@ export function startSseSession({
       const responseHashValue = (event.value as any).responseHash;
 
       if (typeof verificationIdValue === "string") {
-        verificationService.updateHashes(verificationIdValue, {
+        client.updateSessionHashes(verificationIdValue, {
           requestHash:
             typeof requestHashValue === "string" ? requestHashValue : undefined,
           responseHash:

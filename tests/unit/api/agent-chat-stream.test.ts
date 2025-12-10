@@ -13,10 +13,14 @@ vi.mock("@/server/agent/verification-flow", () => ({
   finalizeVerifications: vi.fn(),
 }));
 
+const createSessionSpy = vi.fn();
+const updateSessionHashesSpy = vi.fn();
 const mockNearAIClient = {
   chatCompletions: vi.fn(),
   chatCompletionsStream: vi.fn(),
   getConfig: () => ({ baseUrl: "https://api.near.ai", apiKey: "key" }),
+  createSession: createSessionSpy,
+  updateSessionHashes: updateSessionHashesSpy,
 };
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => mockNearAIClient,
@@ -32,7 +36,7 @@ import { EventType } from "@/types/agui-events";
 import * as streamingModule from "@/server/agent/streaming";
 import * as toolsModule from "@/server/agent/tools";
 import * as verificationFlowModule from "@/server/agent/verification-flow";
-import * as verificationServer from "@/verification/server";
+import { getNearAIClient } from "@/lib/near-ai";
 
 type StreamingModuleType = typeof streamingModule;
 const mockedStreamingModule = streamingModule as unknown as {
@@ -114,10 +118,9 @@ const parseSseEvents = (res: ReturnType<typeof createSseResponse>) =>
     .map((line) => line.replace(/\n\n$/, ""))
     .map((line) => JSON.parse(line));
 
-const { verificationService } = verificationServer;
-
 describe("agent SSE + chat streaming integration", () => {
   let updateHashesSpy: ReturnType<typeof vi.spyOn>;
+  let nearAiClient: ReturnType<typeof getNearAIClient>;
 
   beforeEach(() => {
     process.env.NEAR_AI_CLOUD_API_KEY = "test-key";
@@ -126,7 +129,8 @@ describe("agent SSE + chat streaming integration", () => {
     mockedStreamingModule.getStreamingResponse.mockResolvedValue(
       new Response(null, { status: 200 })
     );
-    updateHashesSpy = vi.spyOn(verificationService, "updateHashes");
+    nearAiClient = getNearAIClient();
+    updateHashesSpy = vi.spyOn(nearAiClient, "updateSessionHashes");
   });
 
   afterEach(() => {
@@ -223,10 +227,7 @@ describe("agent SSE + chat streaming integration", () => {
   });
 
   it("registers the verification session and forwards it to the streaming client", async () => {
-    const registerSessionSpy = vi.spyOn(
-      verificationService,
-      "registerSession"
-    );
+    const createSessionSpy = vi.spyOn(nearAiClient, "createSession");
     mockedStreamingModule.consumeStream.mockResolvedValueOnce({
       content: "Reasoning output",
       finishReason: "stop",
@@ -241,10 +242,14 @@ describe("agent SSE + chat streaming integration", () => {
     await new Promise<void>((resolve) => res.on("finish", resolve));
     await streamPromise;
 
-    expect(registerSessionSpy).toHaveBeenCalledWith(
+    expect(createSessionSpy).toHaveBeenCalledWith(
+      "agent-ver-1",
+      "nonce-abc"
+    );
+
+    expect(updateHashesSpy).toHaveBeenCalledWith(
+      "agent-ver-1",
       expect.objectContaining({
-        verificationId: "agent-ver-1",
-        nonce: "nonce-abc",
         requestHash: expect.stringMatching(/^[0-9a-f]{64}$/),
       })
     );
@@ -258,7 +263,7 @@ describe("agent SSE + chat streaming integration", () => {
     const events = parseSseEvents(res);
     expect(events.some((evt) => evt.type === EventType.RUN_STARTED)).toBe(true);
     expect(events.some((evt) => evt.type === EventType.RUN_FINISHED)).toBe(true);
-    registerSessionSpy.mockRestore();
+    createSessionSpy.mockRestore();
   });
 
   it("surfaces AGENT errors via RUN_ERROR events and closes the stream", async () => {
@@ -369,11 +374,11 @@ describe("agent SSE + chat streaming integration", () => {
       return res;
     }) as typeof res.end;
 
-    const registerSpy = vi.spyOn(verificationServer, "registerVerificationSession");
+    const sessionSpy = vi.spyOn(mockNearAIClient, "createSession");
     await chatHandler(req as any, res as any);
 
     expect(res.body).toContain("data: one");
-    expect(registerSpy).toHaveBeenCalled();
-    registerSpy.mockRestore();
+    expect(sessionSpy).toHaveBeenCalledWith("chat-ver");
+    sessionSpy.mockRestore();
   });
 });

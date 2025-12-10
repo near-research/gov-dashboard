@@ -4,8 +4,8 @@ import {
   calculateResponseHash,
   calculateStreamingHash,
   validateHashPair,
+  computeRequestHash,
 } from "@/verification/hashes";
-import { computeRequestHash } from "@/verification/server";
 
 // Official NEAR AI example payloads
 const officialRequestBody = `{

@@ -1,23 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHash } from "crypto";
 import handler from "@/pages/api/chat/completions";
-import { NearAIError, NearAITimeoutError } from "@/lib/near-ai/errors";
-import * as verificationServer from "@/verification/server";
+import { NearAIError, NearAITimeoutError } from "@/lib/near-ai";
 import { EventEmitter } from "events";
+import { createNearAiClientMock } from "../mocks/near-ai-client";
 
-const chatSpy = vi.fn();
-const streamSpy = vi.fn();
-const getNearAIClientSpy = vi.fn();
-const registerSpy = vi.spyOn(
-  verificationServer,
-  "registerVerificationSession"
-);
-
-const nearAIClientMock = {
-  chatCompletions: chatSpy,
-  chatCompletionsStream: streamSpy,
-  getConfig: () => ({ baseUrl: "https://example.com", apiKey: "test" }),
-};
+const { client: nearAIClientMock, spies } = createNearAiClientMock();
+const { createSession, updateSessionHashes, clearSession } = spies;
+const { chatCompletions: chatSpy, chatCompletionsStream: streamSpy } =
+  nearAIClientMock;
+const getNearAIClientSpy = vi.fn(() => nearAIClientMock);
 
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => getNearAIClientSpy(),
@@ -52,8 +44,8 @@ const createResponse = () => {
       const buf = Buffer.isBuffer(chunk)
         ? chunk
         : typeof chunk === "string"
-          ? Buffer.from(chunk)
-          : Buffer.from(chunk as Uint8Array);
+        ? Buffer.from(chunk)
+        : Buffer.from(chunk as Uint8Array);
       bodyChunks.push(buf);
       return true;
     },
@@ -99,7 +91,9 @@ describe("POST /api/chat/completions", () => {
     streamSpy.mockReset();
     getNearAIClientSpy.mockReset();
     getNearAIClientSpy.mockReturnValue(nearAIClientMock);
-    registerSpy.mockClear();
+    createSession.mockClear();
+    updateSessionHashes.mockClear();
+    clearSession.mockClear();
   });
 
   it("rejects invalid bodies with 400", async () => {
@@ -176,12 +170,11 @@ describe("POST /api/chat/completions", () => {
 
     await handler(req as any, res as any);
 
-    expect(registerSpy).toHaveBeenCalledWith(
-      "resp-123",
-      undefined,
+    expect(createSession).toHaveBeenCalledWith("resp-123");
+    expect(updateSessionHashes).toHaveBeenCalledWith("resp-123", {
       requestHash,
-      responseHash
-    );
+      responseHash,
+    });
     expect(res.body?.verificationId).toBe("resp-123");
     expect(res.body?.verification?.status).toBe("verified");
   });
@@ -201,11 +194,6 @@ describe("POST /api/chat/completions", () => {
         status: 200,
         headers: { "content-type": "text/event-stream" },
       })
-    );
-
-    const registerSpy = vi.spyOn(
-      verificationServer,
-      "registerVerificationSession"
     );
 
     const requestBody = {
@@ -237,19 +225,19 @@ describe("POST /api/chat/completions", () => {
       .update(JSON.stringify(requestBody))
       .digest("hex");
 
-    const [firstCall] = registerSpy.mock.calls;
-    expect(firstCall).toEqual([
+    expect(createSession).toHaveBeenCalledWith("ver-123");
+    expect(updateSessionHashes.mock.calls[0]).toEqual([
       "ver-123",
-      "nonce-xyz",
-      expectedRequestHash,
-      null,
+      { requestHash: expectedRequestHash },
     ]);
-
-    const lastCall = registerSpy.mock.calls.at(-1);
+    const lastCall = updateSessionHashes.mock.calls.at(-1);
     expect(lastCall?.[0]).toBe("ver-123");
-    expect(lastCall?.[1]).toBe("nonce-xyz");
-    expect(lastCall?.[2]).toBe(expectedRequestHash);
-    expect(lastCall?.[3]).toMatch(/^[0-9a-f]{64}$/); // response hash
+    expect(lastCall?.[1]).toEqual(
+      expect.objectContaining({
+        requestHash: expectedRequestHash,
+        responseHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      })
+    );
   });
 
   it("bubbles NEAR AI streaming failures into JSON error responses", async () => {
@@ -285,7 +273,7 @@ describe("POST /api/chat/completions", () => {
       error: "NEAR AI Cloud API Error: 502",
       details: "Stream failed unexpectedly",
     });
-    expect(registerSpy).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it("hashes the decoder flush chunk in streamed responses", async () => {
@@ -315,7 +303,7 @@ describe("POST /api/chat/completions", () => {
 
     await handler(req as any, res as any);
 
-    const lastCall = registerSpy.mock.calls.at(-1);
+    const lastCall = updateSessionHashes.mock.calls.at(-1);
     expect(lastCall?.[0]).toBe("ver-flush");
 
     const expectedHash = createHash("sha256")
@@ -323,7 +311,14 @@ describe("POST /api/chat/completions", () => {
       .update("�")
       .digest("hex");
 
-    expect(lastCall?.[3]).toBe(expectedHash);
+    const updateHashesSpy = updateSessionHashes;
+
+    expect(updateHashesSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        responseHash: expectedHash,
+      })
+    );
   });
 
   it("returns 500 when the NEAR AI client is not configured", async () => {
@@ -392,7 +387,10 @@ describe("POST /api/chat/completions", () => {
 
   it("sends negotiated tool metadata when provided", async () => {
     const tools = [{ name: "fetch-url", description: "Fetch remote data" }];
-    const toolChoice = { name: "fetch-url", arguments: { url: "https://example.com" } };
+    const toolChoice = {
+      name: "fetch-url",
+      arguments: { url: "https://example.com" },
+    };
     const reqBody = {
       model: "deepseek-ai/DeepSeek-V3.1",
       messages: [{ role: "user", content: "go fetch" }],

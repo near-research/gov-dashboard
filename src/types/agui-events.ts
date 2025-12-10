@@ -1,25 +1,13 @@
+import type {
+  VerificationMetadata,
+  VerificationStatus,
+} from "@/types/verification";
+
 /**
  * AG-UI Protocol Event Types
  * Based on Agent User Interaction Protocol specification
  * https://docs.agui.org
  */
-
-// Verification Metadata
-export type VerificationStatus = "pending" | "verified" | "failed";
-
-export interface VerificationMetadata {
-  source: "near-ai-cloud";
-  status: VerificationStatus;
-  messageId?: string;
-  nonce?: string;
-  attestationReport?: string;
-  attestationUrl?: string;
-  proof?: unknown;
-  signature?: string;
-  measurement?: string;
-  issuedAt?: string | number;
-  error?: string;
-}
 
 // Event Type Enum
 export enum EventType {
@@ -433,3 +421,5 @@ export interface CompletionMessage {
   content?: string;
   tool_calls?: CompletionToolCall[];
 }
+
+export type { VerificationMetadata, VerificationStatus } from "@/types/verification";

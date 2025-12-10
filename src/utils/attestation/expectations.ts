@@ -1,19 +1,10 @@
-export interface AttestationExpectations {
-  nonce: string;
-  arch: string;
-  deviceCertHash: string;
-  rimHash?: string;
-  ueid?: string;
-  measurements: string[];
-}
+import type { AttestationExpectations, PartialExpectations } from "@/types/verification";
 
-export type PartialExpectations = Partial<AttestationExpectations>;
-
-export interface ValidationResult {
+type ValidationResult = {
   complete: boolean;
   missing: Array<keyof AttestationExpectations>;
   message?: string;
-}
+};
 
 const pickFirst = (source: any, keys: string[]) => {
   for (const key of keys) {

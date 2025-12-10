@@ -1,7 +1,6 @@
 import { randomBytes } from "crypto";
 import { servicesConfig } from "@/config/services";
-import type { ModelAttestationResponse } from "@/types/verification";
-import type { AttestationExpectations } from "./expectations";
+import type { AttestationExpectations, ModelAttestationResponse } from "@/types/verification";
 import { extractHardwareExpectations } from "./hardware";
 
 const DEFAULT_SIGNING_ALGO = "ecdsa";

@@ -278,7 +278,7 @@ export default function VerificationTestPage() {
               {houseSummary.summary}
             </p>
           ) : (
-            <p className="text-xs text-slate-400">Awaiting NEAR AI response</p>
+            <p className="text-xs text-slate-400">Awaiting response...</p>
           )}
         </div>
       </section>

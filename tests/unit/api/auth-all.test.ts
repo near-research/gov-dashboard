@@ -1,6 +1,6 @@
 import handler from "@/pages/api/auth/[...all]";
 import { auth } from "@/lib/auth";
-import { NearAITimeoutError } from "@/lib/near-ai/errors";
+import { NearAITimeoutError } from "@/lib/near-ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PassThrough, Readable } from "stream";
 
@@ -17,7 +17,7 @@ const createReq = () =>
       host: "example.org",
     },
     url: "/api/auth",
-  }) as any;
+  } as any);
 
 const createRes = () => {
   const headers: Record<string, any> = {};
@@ -155,7 +155,9 @@ describe("auth proxy", () => {
   });
 
   it("propagates NearAI timeout errors for observability", async () => {
-    (auth.handler as any).mockRejectedValue(new NearAITimeoutError("Request timeout"));
+    (auth.handler as any).mockRejectedValue(
+      new NearAITimeoutError("Request timeout")
+    );
 
     const req = createReq();
     const res = createRes();
@@ -323,7 +325,9 @@ describe("auth proxy", () => {
         this.push(null);
       },
     });
-    const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+    const webStream = Readable.toWeb(
+      nodeStream
+    ) as unknown as ReadableStream<Uint8Array>;
 
     (auth.handler as any).mockResolvedValue(
       new Response(webStream, {

@@ -2,51 +2,9 @@ import { verifyMessage } from "ethers";
 import type {
   VerificationProofResponse,
   NonceCheck,
+  VerificationState,
+  DeriveArgs,
 } from "@/types/verification";
-
-type StepStatus = "pending" | "success" | "error";
-
-export type VerificationStepKey =
-  | "hash"
-  | "signature"
-  | "address"
-  | "attestation"
-  | "nonce"
-  | "gpu"
-  | "cpu";
-
-export interface VerificationStep {
-  status: StepStatus;
-  message?: string;
-  details?: string;
-}
-
-export interface VerificationState {
-  overall: "unverified" | "pending" | "verified" | "failed";
-  steps: Record<VerificationStepKey, VerificationStep>;
-  recoveredAddress?: string | null;
-  attestedAddress?: string | null;
-  reasons?: string[];
-}
-
-interface DeriveArgs {
-  proof?: VerificationProofResponse | null;
-  requestHash?: string | null;
-  responseHash?: string | null;
-  signatureText?: string | null;
-  signature?: string | null;
-  signatureAddress?: string | null;
-  signatureAlgo?: string | null;
-  attestedAddress?: string | null;
-  attestationResult?: string | null;
-  nrasVerified?: boolean;
-  nrasReasons?: string[];
-  intelVerified?: boolean;
-  nonceCheck?: NonceCheck | null;
-  intelRequired?: boolean;
-  intelConfigured?: boolean;
-  trustedAddresses?: string[];
-}
 
 const attestationDebugEnabled =
   process.env.ATTESTATION_DEBUG === "true" ||

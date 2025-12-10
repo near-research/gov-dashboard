@@ -2,53 +2,12 @@ import type { RemoteProof } from "@/components/verification/VerificationProof";
 import { extractHashesFromSignedText } from "@/verification/hash-utils";
 import { normalizeSignaturePayload } from "@/verification/normalize";
 import { decodeJwtPayload } from "@/utils/verification/shared";
-import type { PartialExpectations } from "@/utils/attestation/expectations";
-import type { NrasResult } from "@/types/verification";
+import type {
+  NrasVerificationResult,
+  PartialExpectations,
+} from "@/types/verification";
 
 export { decodeJwtPayload } from "@/utils/verification/shared";
-
-export const verifyNRASJWT = (
-  jwt?: string | null,
-  expectedNonce?: string | null
-) => {
-  if (!jwt || typeof jwt !== "string") return false;
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return false;
-
-    const header = JSON.parse(
-      atob(parts[0].replace(/-/g, "+").replace(/_/g, "/"))
-    );
-    const payload = JSON.parse(
-      atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
-    );
-
-    if (!header || !payload) return false;
-    if (payload.iss !== "https://nras.attestation.nvidia.com") return false;
-
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < now) return false;
-    if (payload.nbf && payload.nbf > now) return false;
-    if (payload["x-nvidia-overall-att-result"] !== true) return false;
-    if (expectedNonce) {
-      const tokenNonce =
-        payload.eat_nonce ||
-        payload["x-nvidia-eat-nonce"] ||
-        payload.nonce ||
-        null;
-      if (
-        !tokenNonce ||
-        tokenNonce.toString().toLowerCase() !== expectedNonce.toLowerCase()
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 export const parseJsonPayload = (value: unknown) => {
   if (!value) return null;
@@ -112,7 +71,7 @@ export const buildAttestationSummary = ({
   nrasData,
 }: {
   remoteProof: RemoteProof | null;
-  nrasData: NrasResult | null;
+  nrasData: NrasVerificationResult | null;
 }) => {
   const nras = remoteProof?.nras || nrasData;
 
@@ -268,9 +227,9 @@ export const buildAttestationSummary = ({
 
 export const buildNrasSummary = (
   remoteProof: RemoteProof | null,
-  nrasData: NrasResult | null
+  nrasData: NrasVerificationResult | null
 ) => {
-  const nras: NrasResult | null = remoteProof?.nras ?? nrasData;
+  const nras: NrasVerificationResult | null = remoteProof?.nras ?? nrasData;
   if (!nras) return null;
 
   return {

@@ -2,10 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { consumeStream } from "@/server/agent/streaming";
 import { createHash } from "crypto";
 
-var updateVerificationHashes = vi.fn();
+const updateSessionHashes = vi.fn();
+const createSession = vi.fn();
 
-vi.mock("@/verification/server", () => ({
-  updateVerificationHashes: (...args: any[]) => updateVerificationHashes(...args),
+vi.mock("@/lib/near-ai", () => ({
+  getNearAIClient: () => ({
+    createSession,
+    updateSessionHashes,
+  }),
 }));
 
 describe("consumeStream response hashing", () => {
@@ -27,7 +31,9 @@ describe("consumeStream response hashing", () => {
     });
 
     const expectedHash = createHash("sha256").update(ssePayload).digest("hex");
-    expect(updateVerificationHashes).toHaveBeenCalledWith("ver-123", {
+    expect(createSession).toHaveBeenCalledWith("ver-123");
+    expect(updateSessionHashes).toHaveBeenCalledWith("ver-123", {
+      requestHash: undefined,
       responseHash: expectedHash,
     });
   });

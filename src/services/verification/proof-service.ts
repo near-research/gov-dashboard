@@ -1,5 +1,5 @@
 import type { RemoteProof } from "@/components/verification/VerificationProof";
-import type { PartialExpectations } from "@/utils/attestation/expectations";
+import type { PartialExpectations } from "@/types/verification";
 
 interface FetchVerificationProofParams {
   verificationId?: string;

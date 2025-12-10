@@ -5,17 +5,14 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { EventType } from "@/types/agui-events";
 import { AGENT_MODEL, buildAgentRequest } from "@/server/tools";
-import { computeRequestHash, verificationService } from "@/verification/server";
-import { getNearAIClient } from "@/lib/near-ai/client";
+import { getNearAIClient } from "@/lib/near-ai";
+import { calculateRequestHash } from "@/verification/hashes";
 import { executeToolCallsWithEvents } from "@/server/agent/tools";
 import {
   finalizeVerifications,
   performSecondCompletion,
 } from "@/server/agent/verification-flow";
-import {
-  getStreamingResponse,
-  consumeStream,
-} from "@/server/agent/streaming";
+import { getStreamingResponse, consumeStream } from "@/server/agent/streaming";
 import { startSseSession, createEventWriter } from "@/server/agent/sse";
 import { validateAgentRequest } from "@/server/agent/validation";
 import type { ToolMessage } from "@/server/agent/types";
@@ -56,14 +53,12 @@ export default async function handler(
       model: AGENT_MODEL,
     });
     const requestBodyString = JSON.stringify(requestBody);
-    const requestHash = computeRequestHash(requestBodyString);
+    const requestHash = calculateRequestHash(requestBodyString);
 
+    const client = getNearAIClient();
     if (body.verificationId) {
-      verificationService.registerSession({
-        verificationId: body.verificationId,
-        nonce: body.verificationNonce,
-        requestHash,
-      });
+      client.createSession(body.verificationId, body.verificationNonce);
+      client.updateSessionHashes(body.verificationId, { requestHash });
     }
 
     console.log("[Agent] Tool choice:", toolChoice);
@@ -73,7 +68,6 @@ export default async function handler(
       });
     }
 
-    const client = getNearAIClient();
     const nearAIResponse = await getStreamingResponse(client, {
       requestBodyString,
       verificationId: body.verificationId,
@@ -97,6 +91,7 @@ export default async function handler(
       writeEvent,
       captureToolCalls: true,
       sessionVerificationId: body.verificationId,
+      sessionRequestHash: requestHash,
     });
 
     if (
@@ -139,19 +134,16 @@ export default async function handler(
         });
       }
 
-      const {
-        secondId,
-        nonce,
-        remoteVerificationId,
-      } = await performSecondCompletion({
-        client,
-        runtimeBaseUrl,
-        requestMessages: requestBody.messages,
-        toolCalls: firstResult.toolCalls,
-        toolMessages,
-        writeEvent,
-        baseVerificationId: body.verificationId,
-      });
+      const { secondId, nonce, remoteVerificationId } =
+        await performSecondCompletion({
+          client,
+          runtimeBaseUrl,
+          requestMessages: requestBody.messages,
+          toolCalls: firstResult.toolCalls,
+          toolMessages,
+          writeEvent,
+          baseVerificationId: body.verificationId,
+        });
 
       secondVerificationId = secondId;
       secondNonce = nonce;
@@ -177,7 +169,8 @@ export default async function handler(
 
     closeStream();
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
 
     if (!stream) {
       if (error instanceof Error && error.name === "AbortError") {

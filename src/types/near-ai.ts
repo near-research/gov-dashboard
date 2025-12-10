@@ -1,6 +1,4 @@
-/**
- * NEAR AI Cloud API Types
- */
+import type { NearAIVerificationOptions } from "@/types/verification";
 
 export type ChatMessageRole = "system" | "user" | "assistant";
 
@@ -56,54 +54,17 @@ export interface ChatCompletionResponse {
     completion_tokens: number;
     total_tokens: number;
   };
-  [key: string]: unknown; // Allow additional properties for verification metadata
+  [key: string]: unknown;
 }
 
 export interface ChatCompletionOptions {
-  /**
-   * Request timeout in milliseconds (default: 120000 = 2 minutes)
-   */
   timeout?: number;
-  /**
-   * Optional unique request identifier (sent as X-Request-Id). When omitted, a
-   * random UUID will be generated per client request.
-   */
   requestId?: string;
-  /**
-   * Custom API base URL (default: https://cloud-api.near.ai)
-   */
   baseUrl?: string;
-  /**
-   * Custom API key (default: from NEAR_AI_CLOUD_API_KEY env var)
-   */
   apiKey?: string;
-  /**
-   * Verification ID for request verification
-   */
   verificationId?: string;
-  /**
-   * Nonce for request verification
-   */
   verificationNonce?: string;
-  /**
-   * Number of retry attempts for transient errors (default: 0)
-   */
   retryAttempts?: number;
-  /**
-   * Base delay in milliseconds for exponential backoff (default: 100)
-   */
   retryBaseDelayMs?: number;
-  /**
-   * Verification metadata for NEAR AI requests (creates standard headers)
-   */
   verification?: NearAIVerificationOptions;
-}
-
-export interface NearAIVerificationOptions {
-  verificationId?: string;
-  verificationNonce?: string;
-  requestHash?: string;
-  responseHash?: string;
-  signingAlgo?: "ecdsa" | "ed25519";
-  extraHeaders?: Record<string, string>;
 }

@@ -4,9 +4,17 @@ import {
   type AGUIEvent,
   type TextMessageContentEvent,
 } from "@/types/agui-events";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { consumeStream } from "@/server/agent/streaming";
-import * as verificationServer from "@/verification/server";
+import { createNearAiClientMock } from "../mocks/near-ai-client";
+
+const { client: nearAIClientMock, spies } = createNearAiClientMock();
+const { createSession, updateSessionHashes, clearSession } = spies;
+const getNearAIClientSpy = vi.fn(() => nearAIClientMock);
+
+vi.mock("@/lib/near-ai/client", () => ({
+  getNearAIClient: () => getNearAIClientSpy(),
+}));
 
 const createMockResponse = (chunks: string[]) => {
   let index = 0;
@@ -28,9 +36,16 @@ const createMockResponse = (chunks: string[]) => {
 };
 
 describe("consumeStream", () => {
+  beforeEach(() => {
+    getNearAIClientSpy.mockClear();
+    getNearAIClientSpy.mockReturnValue(nearAIClientMock);
+    createSession.mockClear();
+    updateSessionHashes.mockClear();
+    clearSession.mockClear();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
-    verificationServer.clearVerificationSession("session-42");
   });
 
   it("emits text message events as the SSE stream starts", async () => {
@@ -230,8 +245,6 @@ describe("consumeStream", () => {
     const expectedRaw = sseChunks.join("");
     const expectedHash = createHash("sha256").update(expectedRaw).digest("hex");
     const mockResponse = createMockResponse(sseChunks);
-    const updateSpy = vi.spyOn(verificationServer, "updateVerificationHashes");
-    verificationServer.registerVerificationSession("session-42");
 
     await consumeStream({
       response: mockResponse,
@@ -239,11 +252,10 @@ describe("consumeStream", () => {
       sessionVerificationId: "session-42",
     });
 
-    expect(updateSpy).toHaveBeenCalledWith(
-      "session-42",
-      expect.objectContaining({
-        responseHash: expectedHash,
-      })
-    );
+    expect(createSession).toHaveBeenCalledWith("session-42");
+    expect(updateSessionHashes).toHaveBeenCalledWith("session-42", {
+      requestHash: undefined,
+      responseHash: expectedHash,
+    });
   });
 });

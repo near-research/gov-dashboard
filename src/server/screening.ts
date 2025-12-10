@@ -2,13 +2,16 @@ import type { NextApiResponse } from "next";
 import type { Evaluation } from "@/types/evaluation";
 import type { VerificationMetadata } from "@/types/agui-events";
 import { extractVerificationMetadata } from "@/verification/normalize";
-import { normalizeVerificationPayload } from "@/verification/server";
+import { normalizeVerificationPayload } from "@/verification/normalize";
 import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
-import { createHash, randomBytes } from "crypto";
-import { verify, type VerificationResult, type VerifyOptions } from "near-sign-verify";
-import { getNearAIClient } from "@/lib/near-ai/client";
+import { createHash } from "crypto";
+import {
+  verify,
+  type VerificationResult,
+  type VerifyOptions,
+} from "near-sign-verify";
+import { getNearAIClient } from "@/lib/near-ai";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-import { registerVerificationSession } from "@/verification/server";
 import { z } from "zod";
 import { siwnRecipient } from "@/config/siwn";
 
@@ -123,7 +126,9 @@ export const parseEvaluation = (raw: string): Evaluation => {
     if (normalizedSse) {
       candidates.add(normalizedSse);
     }
-    extractJsonFragments(trimmed).forEach((fragment) => candidates.add(fragment));
+    extractJsonFragments(trimmed).forEach((fragment) =>
+      candidates.add(fragment)
+    );
   }
 
   for (const candidate of candidates) {
@@ -243,7 +248,9 @@ export async function requestEvaluation(
     stream: false,
   };
   const requestBodyString = JSON.stringify(requestPayload);
-  const requestHash = createHash("sha256").update(requestBodyString).digest("hex");
+  const requestHash = createHash("sha256")
+    .update(requestBodyString)
+    .digest("hex");
 
   try {
     const data = await client.chatCompletions(requestPayload);
@@ -268,13 +275,9 @@ export async function requestEvaluation(
 
     let sessionNonce: string | undefined;
     if (sessionVerificationId) {
-      sessionNonce = randomBytes(32).toString("hex");
-      registerVerificationSession(
-        sessionVerificationId,
-        sessionNonce,
-        requestHash,
-        null
-      );
+      const session = client.createSession(sessionVerificationId);
+      client.updateSessionHashes(sessionVerificationId, { requestHash });
+      sessionNonce = session.nonce;
     }
 
     const verificationWithNonce: VerificationMetadata | undefined = verification

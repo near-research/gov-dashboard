@@ -3,7 +3,7 @@ import { extractVerificationMetadata } from "@/verification/normalize";
 import type { StreamResult } from "./types";
 import { generateId } from "./ids";
 import { createHash } from "crypto";
-import { updateVerificationHashes } from "@/verification/server";
+import { getNearAIClient } from "@/lib/near-ai";
 
 export async function getStreamingResponse(
   client: { chatCompletionsStream: (body: any, opts?: any) => Promise<Response> },
@@ -44,11 +44,13 @@ export async function consumeStream({
   writeEvent,
   captureToolCalls = false,
   sessionVerificationId,
+  sessionRequestHash,
 }: {
   response: Response;
   writeEvent: (event: AGUIEvent) => void;
   captureToolCalls?: boolean;
   sessionVerificationId?: string;
+  sessionRequestHash?: string | null;
 }): Promise<StreamResult> {
   const reader = response.body?.getReader();
   if (!reader) {
@@ -345,7 +347,10 @@ export async function consumeStream({
     const responseHash = createHash("sha256")
       .update(rawSseText)
       .digest("hex");
-    updateVerificationHashes(sessionVerificationId, {
+    const sessionClient = getNearAIClient();
+    sessionClient.createSession(sessionVerificationId);
+    sessionClient.updateSessionHashes(sessionVerificationId, {
+      requestHash: sessionRequestHash ?? undefined,
       responseHash,
     });
   }

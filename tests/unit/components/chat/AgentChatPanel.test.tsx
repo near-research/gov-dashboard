@@ -16,16 +16,19 @@ vi.mock("sonner", () => ({
   },
 }));
 
-type VerificationAuthTokenFn = typeof import("@/lib/verification/near-ai")["createVerificationAuthToken"];
+type VerificationAuthTokenFn =
+  typeof import("@/utils/verification/auth")["createVerificationAuthToken"];
 const walletSignerMock = { signMessage: vi.fn() };
-const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(async () => "proof-token");
+const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(
+  async () => "proof-token"
+);
 vi.mock("@/hooks/useNear", () => ({
   useNear: () => ({
     walletSigner: walletSignerMock,
     signedAccountId: "test.near",
   }),
 }));
-vi.mock("@/lib/verification/near-ai", () => ({
+vi.mock("@/utils/verification/auth", () => ({
   createVerificationAuthToken: (...args: Parameters<VerificationAuthTokenFn>) =>
     createAuthTokenMock(...args),
 }));
@@ -74,7 +77,7 @@ const stubStreamingFetch = (
   const fetchMock = vi.fn((input: RequestInfo) => {
     if (
       typeof input === "string" &&
-      input.includes("/api/verification/register-session")
+      input.includes("/api/verification/session")
     ) {
       return Promise.resolve(verificationResponse);
     }
@@ -122,7 +125,7 @@ describe("AgentChatPanel", () => {
     fetchMock.mockImplementation((input) => {
       if (
         typeof input === "string" &&
-        input.includes("/api/verification/register-session")
+        input.includes("/api/verification/session")
       ) {
         return Promise.resolve(
           new Response(JSON.stringify({ nonce: "stream-nonce" }), {
@@ -168,7 +171,7 @@ describe("AgentChatPanel", () => {
     const fetchMock = vi.fn((input) => {
       if (
         typeof input === "string" &&
-        input.includes("/api/verification/register-session")
+        input.includes("/api/verification/session")
       ) {
         return Promise.resolve(
           new Response(JSON.stringify({ nonce: "error-nonce" }), {
@@ -249,9 +252,7 @@ describe("AgentChatPanel", () => {
     fireEvent.change(textarea, { target: { value: "Broken" } });
     fireEvent.click(screen.getByRole("button", { name: /Send message/i }));
 
-    expect(
-      await screen.findByText(/Run interrupted/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Run interrupted/i)).toBeInTheDocument();
     const errorMessages = await screen.findAllByText(
       /Agent crashed unexpectedly/i
     );

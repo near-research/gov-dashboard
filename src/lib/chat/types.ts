@@ -1,4 +1,4 @@
-import type { PartialExpectations } from "@/utils/attestation/expectations";
+import type { PartialExpectations } from "@/types/verification";
 import type { RemoteProof } from "@/components/verification/VerificationProof";
 import type { VerificationMetadata } from "@/types/agui-events";
 

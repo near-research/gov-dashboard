@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer } from "react";
 import { toast } from "sonner";
-import {
-  validateExpectations,
-  type PartialExpectations,
-} from "@/utils/attestation/expectations";
+import { validateExpectations } from "@/utils/attestation/expectations";
 import { verifyMessage } from "ethers";
 import { deriveVerificationState } from "@/utils/attestation/state";
 import {
@@ -13,7 +10,6 @@ import {
   buildSignaturePayload,
   resolveEffectiveHash,
   resolveNvidiaPayloadForNras,
-  verifyNRASJWT,
   buildNrasSummary,
 } from "@/utils/verification/proof-helpers";
 import {
@@ -25,11 +21,12 @@ import type {
   VerificationStatus,
 } from "@/types/agui-events";
 import type {
+  NrasVerificationResult,
+  PartialExpectations,
   VerificationProofResponse,
-  NrasResult,
 } from "@/types/verification";
 import { normalizeHashValue } from "@/utils/verification/shared";
-import { createVerificationAuthToken } from "@/lib/verification/near-ai";
+import { createVerificationAuthToken } from "@/utils/verification/auth";
 import { useNear } from "@/hooks/useNear";
 import { siwnRecipient } from "@/config/siwn";
 import { sign } from "near-sign-verify";
@@ -58,7 +55,7 @@ interface VerificationProofState {
   remoteProof: RemoteProof | null;
   loading: boolean;
   fetchError: string | null;
-  nrasData: NrasResult | null;
+  nrasData: NrasVerificationResult | null;
   nrasLoading: boolean;
   nrasError: string | null;
   retrying: boolean;
@@ -83,7 +80,7 @@ type VerificationProofAction =
   | { type: "FETCH_ERROR"; error: string }
   | { type: "SET_REMOTE_PROOF"; proof: RemoteProof | null }
   | { type: "NRAS_START" }
-  | { type: "NRAS_SUCCESS"; data: NrasResult | null }
+  | { type: "NRAS_SUCCESS"; data: NrasVerificationResult | null }
   | { type: "NRAS_ERROR"; error: string }
   | { type: "SET_RETRYING"; value: boolean }
   | {
@@ -355,12 +352,7 @@ export const useVerificationProof = ({
         payload: nvidiaPayloadForNras,
       });
 
-      const expectedNonce = expectationInput.nonce || nonce || verification?.nonce;
-      const verified =
-        data?.verified ||
-        (data?.jwt && typeof data.jwt === "string"
-          ? verifyNRASJWT(data.jwt, expectedNonce ?? null)
-          : false);
+      const verified = Boolean(data?.verified);
 
       dispatch({
         type: "NRAS_SUCCESS",
@@ -386,13 +378,7 @@ export const useVerificationProof = ({
       dispatch({ type: "NRAS_ERROR", error: errorMessage });
       toast.error(errorMessage);
     }
-  }, [
-    nvidiaPayloadForNras,
-    verificationId,
-    expectationInput.nonce,
-    nonce,
-    verification?.nonce,
-  ]);
+  }, [nvidiaPayloadForNras, verificationId]);
 
   const verifyIndependently = useCallback(async () => {
     if (!signaturePayload || !effectiveRequestHash || !effectiveResponseHash) {

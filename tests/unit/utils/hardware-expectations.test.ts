@@ -103,4 +103,40 @@ describe("hardware-expectations", () => {
     expect(result.nonce).toBe("n1");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("reads expectations from nested model attestation payloads/info", async () => {
+    const modelNode = {
+      nvidia_payload: JSON.stringify({
+        eat_nonce: "model-nonce",
+        arch: "H200",
+        measurements: [{ hash: "model-measurement" }],
+      }),
+      info: JSON.stringify({
+        device_cert_hash: "model-device-hash",
+        rim: "model-rim",
+        ueid: "model-ueid",
+      }),
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        nvidia_payload: {
+          model_attestations: [modelNode],
+        },
+      }),
+    });
+    // @ts-ignore
+    global.fetch = fetchMock;
+
+    const expectations = await fetchHardwareExpectations("modelNested");
+    expect(expectations).toEqual({
+      nonce: "model-nonce",
+      arch: "H200",
+      deviceCertHash: "model-device-hash",
+      rimHash: "model-rim",
+      ueid: "model-ueid",
+      measurements: ["model-measurement"],
+    });
+  });
 });

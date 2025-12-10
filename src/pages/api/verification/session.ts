@@ -1,48 +1,55 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import {
-  registerVerificationSession,
-  getVerificationSession,
-  syncVerificationNonce,
-} from "@/verification/server";
+import { getNearAIClient } from "@/lib/near-ai";
+import { rateLimit } from "@/lib/rate-limit";
+import type { VerificationSession } from "@/types/verification";
 
-type SessionResponse = {
-  verificationId: string;
-  nonce: string;
-  requestHash?: string | null;
-  responseHash?: string | null;
-  expiresAt: number;
-  createdAt: number;
-};
+type SuccessResponse = VerificationSession & { verificationId: string };
+type ErrorResponse = { error: string };
 
-export default function handler(
+const limiter = rateLimit({
+  interval: 60 * 1000,
+  uniqueTokenPerInterval: 500,
+});
+
+export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<SessionResponse | { error: string }>
+  res: NextApiResponse<SuccessResponse | ErrorResponse>
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { verificationId, nonce, requestHash, responseHash, attestedNonce } = req.body ?? {};
+  const forwarded = req.headers["x-forwarded-for"];
+  const identifier = (typeof forwarded === "string"
+    ? forwarded.split(",")[0].trim()
+    : typeof forwarded === "object" && forwarded && forwarded.length
+    ? String(forwarded[0])
+    : undefined) || req.socket?.remoteAddress || "anonymous";
+
+  try {
+    await limiter.check(res, 20, identifier);
+  } catch {
+    return res.status(429).json({ error: "Rate limit exceeded" });
+  }
+
+  const { verificationId } = req.body ?? {};
 
   if (!verificationId || typeof verificationId !== "string") {
-    return res.status(400).json({ error: "verificationId is required" });
+    return res.status(400).json({ error: "verificationId required" });
   }
 
-  let session =
-    getVerificationSession(verificationId) ||
-    registerVerificationSession(verificationId, nonce, requestHash, responseHash);
+  try {
+    const client = getNearAIClient();
+    const session = client.createSession(verificationId);
 
-  if (attestedNonce && attestedNonce !== session?.nonce) {
-    session =
-      syncVerificationNonce(verificationId, attestedNonce, requestHash, responseHash) || session;
+    return res.status(200).json({
+      verificationId,
+      ...session,
+    });
+  } catch (error) {
+    console.error("[verification/session] Error:", error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to create session",
+    });
   }
-
-  return res.status(200).json({
-    verificationId,
-    nonce: session.nonce,
-    requestHash: session.requestHash ?? requestHash ?? null,
-    responseHash: session.responseHash ?? responseHash ?? null,
-    expiresAt: session.expiresAt,
-    createdAt: session.createdAt,
-  });
 }

@@ -1,11 +1,13 @@
 import { AGENT_MODEL } from "@/server/tools";
-import { computeRequestHash, verificationService } from "@/verification/server";
+import { getNearAIClient } from "@/lib/near-ai";
+import { calculateRequestHash } from "@/verification/hashes";
 import {
   EventType,
   type AGUIEvent,
   type CompletionMessage,
 } from "@/types/agui-events";
 import { getStreamingResponse, consumeStream } from "./streaming";
+import type { VerificationPayload, VerificationStage } from "@/types/verification";
 import type { ToolMessage } from "./types";
 
 export async function registerSecondVerificationSession(
@@ -22,7 +24,7 @@ export async function registerSecondVerificationSession(
 
   try {
     const secondNonceResp = await fetch(
-      `${runtimeBaseUrl}/api/verification/register-session`,
+      `${runtimeBaseUrl}/api/verification/session`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -44,14 +46,52 @@ export async function registerSecondVerificationSession(
     );
   }
 
-  verificationService.registerSession({
-    verificationId: secondVerificationId,
-    nonce: secondNonce,
-    requestHash: secondRequestHash,
-  });
+  const client = getNearAIClient();
+  client.createSession(secondVerificationId, secondNonce);
+  client.updateSessionHashes(secondVerificationId, { requestHash: secondRequestHash });
 
   return { secondVerificationId, secondNonce };
 }
+
+const finalizeStageWithHashes = async (args: {
+  verificationId?: string;
+  remoteMessageId?: string;
+  nonce?: string;
+  model: string;
+  stage: VerificationStage;
+  signingAlgo?: string;
+}): Promise<VerificationPayload | null> => {
+  const { verificationId, remoteMessageId, nonce, model, stage, signingAlgo } = args;
+  if (!verificationId || !remoteMessageId) {
+    return null;
+  }
+
+  const client = getNearAIClient();
+  const canonicalHashes = await client.fetchCanonicalHashes({
+    remoteMessageId,
+    fallbackId: verificationId,
+    model,
+    signingAlgo,
+  });
+
+  if (!canonicalHashes) {
+    return null;
+  }
+
+  client.updateSessionHashes(verificationId, {
+    requestHash: canonicalHashes.requestHash,
+    responseHash: canonicalHashes.responseHash,
+  });
+
+  return {
+    messageId: remoteMessageId,
+    verificationId,
+    requestHash: canonicalHashes.requestHash,
+    responseHash: canonicalHashes.responseHash,
+    nonce: nonce ?? null,
+    stage,
+  };
+};
 
 export async function performSecondCompletion({
   client,
@@ -62,7 +102,9 @@ export async function performSecondCompletion({
   writeEvent,
   baseVerificationId,
 }: {
-  client: { chatCompletionsStream: (body: any, opts?: any) => Promise<Response> };
+  client: {
+    chatCompletionsStream: (body: any, opts?: any) => Promise<Response>;
+  };
   runtimeBaseUrl: string;
   requestMessages: any[];
   toolCalls: NonNullable<CompletionMessage["tool_calls"]>;
@@ -85,7 +127,7 @@ export async function performSecondCompletion({
   };
 
   const secondRequestBodyString = JSON.stringify(secondRequestBody);
-  const secondRequestHash = computeRequestHash(secondRequestBodyString);
+  const secondRequestHash = calculateRequestHash(secondRequestBodyString);
 
   const { secondVerificationId, secondNonce } =
     await registerSecondVerificationSession(
@@ -104,6 +146,7 @@ export async function performSecondCompletion({
     response: secondNearAIResponse,
     writeEvent,
     sessionVerificationId: secondVerificationId,
+    sessionRequestHash: secondRequestHash,
   });
 
   return {
@@ -132,7 +175,7 @@ export async function finalizeVerifications({
   signingAlgo?: string;
   writeEvent: (event: AGUIEvent) => void;
 }) {
-  const initialPayload = await verificationService.finalizeStage({
+  const initialPayload = await finalizeStageWithHashes({
     verificationId: initialVerificationId,
     remoteMessageId: initialRemoteId,
     nonce: initialNonce,
@@ -142,7 +185,10 @@ export async function finalizeVerifications({
   });
 
   if (initialPayload) {
-    console.log("[verification][agent] initial reasoning verified", initialPayload);
+    console.log(
+      "[verification][agent] initial reasoning verified",
+      initialPayload
+    );
     writeEvent({
       type: EventType.CUSTOM,
       name: "verification",
@@ -156,7 +202,7 @@ export async function finalizeVerifications({
     );
   }
 
-  const secondPayload = await verificationService.finalizeStage({
+  const secondPayload = await finalizeStageWithHashes({
     verificationId: secondVerificationId,
     remoteMessageId: secondRemoteVerificationId,
     nonce: secondNonce,
@@ -166,7 +212,10 @@ export async function finalizeVerifications({
   });
 
   if (secondPayload) {
-    console.log("[verification][agent] second completion verified", secondPayload);
+    console.log(
+      "[verification][agent] second completion verified",
+      secondPayload
+    );
     writeEvent({
       type: EventType.CUSTOM,
       name: "verification",

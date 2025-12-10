@@ -1,8 +1,6 @@
 import { extractVerificationMetadata } from "@/verification/normalize";
-import {
-  extractExpectationsFromMessage,
-  type PartialExpectations,
-} from "@/utils/attestation/expectations";
+import { extractExpectationsFromMessage } from "@/utils/attestation/expectations";
+import type { PartialExpectations } from "@/types/verification";
 import type { AgentUIEvent } from "@/types/agent-ui";
 import type {
   AgentEvent,

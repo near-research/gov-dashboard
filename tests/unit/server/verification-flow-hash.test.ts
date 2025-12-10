@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AGENT_MODEL } from "@/server/tools";
-import { computeRequestHash } from "@/verification/server/service";
+import { computeRequestHash } from "@/verification/hashes";
 import { performSecondCompletion } from "@/server/agent/verification-flow";
 
 const requestStrings: string[] = [];

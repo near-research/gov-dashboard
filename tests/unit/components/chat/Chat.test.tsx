@@ -46,10 +46,7 @@ describe("Chat", () => {
 
   it("shows the welcome placeholder when no history exists", async () => {
     render(
-      <Chat
-        welcomeMessage="Custom welcome text"
-        placeholder="Ask the agent…"
-      />
+      <Chat welcomeMessage="Custom welcome text" placeholder="Ask the agent…" />
     );
 
     expect(await screen.findByText("Welcome")).toBeInTheDocument();
@@ -80,7 +77,7 @@ describe("Chat", () => {
     const fetchMock = vi.fn((url) => {
       if (
         typeof url === "string" &&
-        url.includes("/api/verification/register-session")
+        url.includes("/api/verification/session")
       ) {
         return Promise.resolve(
           new Response(JSON.stringify({ nonce: "mock-nonce" }), {
@@ -111,7 +108,9 @@ describe("Chat", () => {
     fireEvent.click(sendButton);
 
     await screen.findByText("Run interrupted");
-    expect(screen.getByRole("button", { name: /^Retry$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Retry$/i })
+    ).toBeInTheDocument();
     expect(toast.error).toHaveBeenCalledWith("Agent error", {
       description: "Stream aborted",
     });
@@ -182,7 +181,7 @@ describe("Chat", () => {
     const fetchMock = vi.fn((url) => {
       if (
         typeof url === "string" &&
-        url.includes("/api/verification/register-session")
+        url.includes("/api/verification/session")
       ) {
         return Promise.resolve(
           new Response(JSON.stringify({ nonce: "mock-nonce" }), {

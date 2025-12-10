@@ -2,16 +2,33 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import handler from "@/pages/api/summarize/test";
-import { NearAIError } from "@/lib/near-ai/errors";
+import { NearAIError, getNearAIClient } from "@/lib/near-ai";
 import type { TextSummaryResponse } from "@/types/summaries";
 import type { VerificationProofResponse } from "@/types/verification";
-import { clearVerificationSession } from "@/verification/server";
 import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 
 const mockChatCompletions = vi.fn();
+const mockCreateSession = vi.fn((id: string) => ({
+  nonce: `mock-nonce-${id}`,
+  createdAt: Date.now(),
+  expiresAt: Date.now() + 300000,
+}));
+const mockGetSession = vi.fn((id: string) => ({
+  nonce: `mock-nonce-${id}`,
+  createdAt: Date.now(),
+  expiresAt: Date.now() + 300000,
+}));
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
+    createSession: mockCreateSession,
+    getSession: mockGetSession,
+    updateSessionHashes: vi.fn(),
+    clearSession: vi.fn(),
+    verify: vi.fn().mockResolvedValue({
+      verified: true,
+      reasons: [],
+    }),
   }),
 }));
 
@@ -118,7 +135,7 @@ describe("/api/summarize/test", () => {
     expect(body.verification?.status).toBe("verified");
 
     if (body.verificationId) {
-      clearVerificationSession(body.verificationId);
+      getNearAIClient().clearSession(body.verificationId);
     }
   });
 

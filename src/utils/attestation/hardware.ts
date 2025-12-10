@@ -1,5 +1,5 @@
 import { servicesConfig } from "@/config/services";
-import type { AttestationExpectations } from "./expectations";
+import type { AttestationExpectations } from "@/types/verification";
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -22,8 +22,9 @@ const parseJsonSafe = (value: any) => {
 };
 
 const getFirst = (obj: any, keys: string[]) => {
+  if (!obj || typeof obj !== "object") return undefined;
   for (const key of keys) {
-    const v = obj?.[key];
+    const v = obj[key];
     if (v !== undefined && v !== null) return v;
   }
   return undefined;
@@ -40,46 +41,77 @@ const normalizeMeasurements = (value: any): string[] => {
   return [];
 };
 
+const gatherSections = (payload: any) => {
+  const sections: any[] = [];
+  const pushSection = (value: any) => {
+    const parsed = parseJsonSafe(value);
+    const entry = parsed ?? value;
+    if (!entry) return;
+    if (Array.isArray(entry)) {
+      entry.forEach((item) => pushSection(item));
+      return;
+    }
+    if (typeof entry === "object") {
+      sections.push(entry);
+      pushSection(entry?.nvidia_payload);
+      pushSection(entry?.info);
+    }
+  };
+
+  pushSection(payload);
+  pushSection(payload?.attestation);
+  pushSection(payload?.attestation?.gateway_attestation);
+  pushSection(payload?.attestation?.nvidia_payload);
+  pushSection(payload?.gateway_attestation);
+  pushSection(payload?.gateway_attestation?.nvidia_payload);
+  pushSection(payload?.model_attestations);
+  pushSection(payload?.all_attestations);
+  return sections;
+};
+
+const pickFromSections = (sections: any[], keys: string[]) => {
+  for (const section of sections) {
+    const value = getFirst(section, keys);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
 const parseExpectationsPayload = (payload: any): Partial<AttestationExpectations> => {
-  const parsed = parseJsonSafe(payload) ?? payload ?? {};
+  const sections = gatherSections(payload);
 
   const expectations: Partial<AttestationExpectations> = {
-    nonce:
-      getFirst(parsed, ["nonce", "eat_nonce", "x-nvidia-eat-nonce", "expectedNonce", "request_nonce"]) ??
-      getFirst(parsed.gateway_attestation, [
-        "nonce",
-        "eat_nonce",
-        "x-nvidia-eat-nonce",
-        "expectedNonce",
-        "request_nonce",
-      ]),
-    arch:
-      getFirst(parsed, ["arch", "gpu_arch", "expectedArch", "expected_arch"]) ??
-      getFirst(parsed.gateway_attestation, ["arch", "gpu_arch", "expectedArch", "expected_arch"]),
-    deviceCertHash:
-      getFirst(parsed, ["deviceCertHash", "device_cert_hash", "expectedDeviceCertHash", "expected_device_cert_hash"]) ??
-      getFirst(parsed.gateway_attestation, [
-        "deviceCertHash",
-        "device_cert_hash",
-        "expectedDeviceCertHash",
-        "expected_device_cert_hash",
-      ]),
-    rimHash:
-      getFirst(parsed, ["rimHash", "rim", "expectedRimHash", "expected_rim_hash"]) ??
-      getFirst(parsed.gateway_attestation, ["rimHash", "rim", "expectedRimHash", "expected_rim_hash"]),
-    ueid:
-      getFirst(parsed, ["ueid", "expectedUeid", "expected_ueid", "device_id"]) ??
-      getFirst(parsed.gateway_attestation, ["ueid", "expectedUeid", "expected_ueid", "device_id"]),
+    nonce: pickFromSections(sections, [
+      "nonce",
+      "eat_nonce",
+      "x-nvidia-eat-nonce",
+      "expectedNonce",
+      "request_nonce",
+    ]),
+    arch: pickFromSections(sections, ["arch", "gpu_arch", "expectedArch", "expected_arch"]),
+    deviceCertHash: pickFromSections(sections, [
+      "deviceCertHash",
+      "device_cert_hash",
+      "expectedDeviceCertHash",
+      "expected_device_cert_hash",
+    ]),
+    rimHash: pickFromSections(sections, ["rimHash", "rim", "expectedRimHash", "expected_rim_hash"]),
+    ueid: pickFromSections(sections, ["ueid", "expectedUeid", "expected_ueid", "device_id"]),
     measurements: normalizeMeasurements(
-      getFirst(parsed, ["measurements", "expectedMeasurements", "expected_measurements"])
+      pickFromSections(sections, ["measurements", "expectedMeasurements", "expected_measurements"])
     ),
   };
 
   const evidenceList =
-    parsed?.attestation?.evidence ||
-    parsed?.attestation?.all_attestations ||
-    parsed?.evidence_list ||
-    parsed?.evidence;
+    sections
+      .flatMap((section) => {
+        const list =
+          section?.attestation?.evidence ||
+          section?.attestation?.all_attestations ||
+          section?.evidence_list ||
+          section?.evidence;
+        return Array.isArray(list) ? list : [];
+      }) ?? [];
   if (Array.isArray(evidenceList)) {
     evidenceList.forEach((item: any) => {
       expectations.deviceCertHash ??= getFirst(item, [
@@ -87,7 +119,13 @@ const parseExpectationsPayload = (payload: any): Partial<AttestationExpectations
         "cert_hash",
         "deviceCertHash",
       ]);
-      expectations.rimHash ??= getFirst(item, ["rim", "rim_hash", "rimHash", "driver_rim_hash", "vbios_rim_hash"]);
+      expectations.rimHash ??= getFirst(item, [
+        "rim",
+        "rim_hash",
+        "rimHash",
+        "driver_rim_hash",
+        "vbios_rim_hash",
+      ]);
       expectations.ueid ??= getFirst(item, ["ueid", "device_id", "device_id_hex"]);
       const meas = normalizeMeasurements(
         getFirst(item, ["measurements", "measurement", "expected_measurements"])

@@ -4,12 +4,12 @@ import {
   createNearAIClient,
   getNearAIClient,
   resetNearAIClient,
-} from "@/lib/near-ai/client";
+} from "@/lib/near-ai";
 import {
   NearAIConfigurationError,
   NearAIError,
   NearAITimeoutError,
-} from "@/lib/near-ai/errors";
+} from "@/lib/near-ai";
 
 const requestPayload = { model: "test-model", messages: [] };
 
@@ -40,7 +40,10 @@ describe("NearAIClient", () => {
     expect(second.getConfig().baseUrl).toBe("https://one");
 
     resetNearAIClient();
-    const fresh = getNearAIClient({ apiKey: "three", baseUrl: "https://three" });
+    const fresh = getNearAIClient({
+      apiKey: "three",
+      baseUrl: "https://three",
+    });
     expect(fresh.getConfig().apiKey).toBe("three");
     expect(fresh.getConfig().baseUrl).toBe("https://three");
   });
@@ -59,7 +62,10 @@ describe("NearAIClient", () => {
       json: async () => ({ choices: [] }),
     });
 
-    const client = new NearAIClient({ apiKey: "key-123", baseUrl: "https://api" });
+    const client = new NearAIClient({
+      apiKey: "key-123",
+      baseUrl: "https://api",
+    });
     await client.chatCompletions(requestPayload, {
       verificationId: "ver-id",
       verificationNonce: "nonce",
@@ -81,7 +87,10 @@ describe("NearAIClient", () => {
       json: async () => ({ choices: [] }),
     });
 
-    const client = new NearAIClient({ apiKey: "key-123", baseUrl: "https://api" });
+    const client = new NearAIClient({
+      apiKey: "key-123",
+      baseUrl: "https://api",
+    });
     await client.chatCompletions(requestPayload);
 
     const [, init] = fetchMock.mock.calls[0];

@@ -37,8 +37,18 @@ export function BasicInfoPanel({
       {renderCodeField("Request Hash (SHA-256)", requestHash)}
       {renderCodeField("Response Hash (SHA-256)", responseHash)}
       {renderTimestamp("Issued At", verification?.issuedAt)}
-      {renderTimestamp("JWT Issued At", remoteProof?.nras?.claims?.iat)}
-      {renderTimestamp("JWT Exp", remoteProof?.nras?.claims?.exp)}
+      {renderTimestamp(
+        "JWT Issued At",
+        typeof remoteProof?.nras?.claims?.iat === "number"
+          ? remoteProof.nras?.claims?.iat
+          : undefined
+      )}
+      {renderTimestamp(
+        "JWT Exp",
+        typeof remoteProof?.nras?.claims?.exp === "number"
+          ? remoteProof.nras?.claims?.exp
+          : undefined
+      )}
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { officialNearAIExample } from "../../fixtures/verificationMocks";
 import { toast } from "sonner";
 import { verifyMessage } from "ethers";
 
-type VerificationAuthTokenFn = typeof import("@/lib/verification/near-ai")["createVerificationAuthToken"];
+type VerificationAuthTokenFn = typeof import("@/utils/verification/auth")["createVerificationAuthToken"];
 
 const walletSignerMock = { signMessage: vi.fn() };
 const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(async () => "proof-token");
@@ -24,7 +24,7 @@ vi.mock("@/hooks/useNear", () => ({
     signedAccountId: "test.near",
   }),
 }));
-vi.mock("@/lib/verification/near-ai", () => ({
+vi.mock("@/utils/verification/auth", () => ({
   createVerificationAuthToken: (...args: Parameters<VerificationAuthTokenFn>) =>
     createAuthTokenMock(...args),
 }));

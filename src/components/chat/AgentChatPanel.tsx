@@ -27,7 +27,7 @@ import { normalizeSignaturePayload } from "@/verification/normalize";
 import { extractHashesFromSignedText } from "@/verification/hash-utils";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 import { useNear } from "@/hooks/useNear";
-import { createVerificationAuthToken } from "@/lib/verification/near-ai";
+import { createVerificationAuthToken } from "@/utils/verification/auth";
 
 type AgentRole = "user" | "assistant" | "system";
 
@@ -608,7 +608,7 @@ export const AgentChatPanel = ({
 
     try {
       const verificationId = `chatcmpl-${crypto.randomUUID()}`;
-      const sessionResp = await fetch("/api/verification/register-session", {
+      const sessionResp = await fetch("/api/verification/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ verificationId }),

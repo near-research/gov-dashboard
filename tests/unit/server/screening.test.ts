@@ -10,20 +10,19 @@ import {
   verifyNearAuth,
 } from "@/server/screening";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-import { NearAITimeoutError } from "@/lib/near-ai/errors";
+import { NearAITimeoutError } from "@/lib/near-ai";
 import { verify as verifyNearToken } from "near-sign-verify";
-import * as verificationSessions from "@/verification/server";
 import { siwnRecipient } from "@/config/siwn";
 
 const mockChatCompletions = vi.fn();
-const registerVerificationSessionSpy = vi.spyOn(
-  verificationSessions,
-  "registerVerificationSession"
-);
+const createSessionSpy = vi.fn();
+const updateSessionHashesSpy = vi.fn();
 
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
+    createSession: createSessionSpy,
+    updateSessionHashes: updateSessionHashesSpy,
   }),
 }));
 
@@ -47,14 +46,14 @@ const evaluationFixture: Evaluation = {
 };
 
 describe("screening", () => {
-  afterAll(() => {
-    registerVerificationSessionSpy.mockRestore();
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockChatCompletions.mockReset();
-    registerVerificationSessionSpy.mockReturnValue({ nonce: "mock-nonce" } as any);
+    createSessionSpy.mockReset();
+    createSessionSpy.mockReturnValue({
+      nonce: "mock-nonce",
+    });
+    updateSessionHashesSpy.mockReset();
   });
 
   it("sanitizes control characters, strips HTML, and truncates long content", () => {
@@ -145,11 +144,12 @@ describe("screening", () => {
     );
     expect(result.verificationId).toBe("verification-123");
     expect(result.verification?.nonce).toBeDefined();
-    expect(registerVerificationSessionSpy).toHaveBeenCalledWith(
+    expect(createSessionSpy).toHaveBeenCalledWith("verification-123");
+    expect(updateSessionHashesSpy).toHaveBeenCalledWith(
       "verification-123",
-      expect.any(String),
-      expect.any(String),
-      null
+      expect.objectContaining({
+        requestHash: expect.any(String),
+      })
     );
   });
 

@@ -36,3 +36,5 @@ export const calculateStreamingHash = (sseText: string): string => {
 };
 
 export { extractHashesFromSignedText, validateHashPair };
+
+export const computeRequestHash = calculateRequestHash;

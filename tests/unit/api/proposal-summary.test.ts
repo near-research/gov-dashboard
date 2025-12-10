@@ -7,9 +7,27 @@ import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { proposalCache, CacheKeys } from "@/utils/cache-utils";
 
 const mockChatCompletions = vi.fn();
+const mockCreateSession = vi.fn((id: string) => ({
+  nonce: `mock-nonce-${id}`,
+  createdAt: Date.now(),
+  expiresAt: Date.now() + 300000,
+}));
+const mockGetSession = vi.fn((id: string) => ({
+  nonce: `mock-nonce-${id}`,
+  createdAt: Date.now(),
+  expiresAt: Date.now() + 300000,
+}));
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
+    createSession: mockCreateSession,
+    getSession: mockGetSession,
+    updateSessionHashes: vi.fn(),
+    clearSession: vi.fn(),
+    verify: vi.fn().mockResolvedValue({
+      verified: true,
+      reasons: [],
+    }),
   }),
 }));
 

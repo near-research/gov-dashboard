@@ -3,7 +3,7 @@ import {
   registerSecondVerificationSession,
   finalizeVerifications,
 } from "@/server/agent/verification-flow";
-import { verificationService } from "@/verification/server";
+import { getNearAIClient } from "@/lib/near-ai";
 
 describe("agent verification flow", () => {
   const baseUrl = "https://runtime.example.com";
@@ -24,9 +24,9 @@ describe("agent verification flow", () => {
       })
     );
     vi.stubGlobal("fetch", fetchMock);
-    const registerSpy = vi
-      .spyOn(verificationService, "registerSession")
-      .mockImplementation(() => ({} as any));
+    const client = getNearAIClient();
+    const createSessionSpy = vi.spyOn(client, "createSession");
+    const updateHashesSpy = vi.spyOn(client, "updateSessionHashes");
 
     const result = await registerSecondVerificationSession(
       baseUrl,
@@ -35,15 +35,17 @@ describe("agent verification flow", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${baseUrl}/api/verification/register-session`,
+      `${baseUrl}/api/verification/session`,
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ verificationId: "base-id-synthesis" }),
       })
     );
-    expect(registerSpy).toHaveBeenCalledWith({
-      verificationId: "base-id-synthesis",
-      nonce: "second-nonce",
+    expect(createSessionSpy).toHaveBeenCalledWith(
+      "base-id-synthesis",
+      "second-nonce"
+    );
+    expect(updateHashesSpy).toHaveBeenCalledWith("base-id-synthesis", {
       requestHash: "request-hash",
     });
     expect(result).toEqual({
@@ -55,9 +57,9 @@ describe("agent verification flow", () => {
   it("still registers session even when the fetch fails", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("network"));
     vi.stubGlobal("fetch", fetchMock);
-    const registerSpy = vi
-      .spyOn(verificationService, "registerSession")
-      .mockImplementation(() => ({} as any));
+    const client = getNearAIClient();
+    const createSessionSpy = vi.spyOn(client, "createSession");
+    const updateHashesSpy = vi.spyOn(client, "updateSessionHashes");
 
     const result = await registerSecondVerificationSession(
       baseUrl,
@@ -65,22 +67,27 @@ describe("agent verification flow", () => {
       "req"
     );
 
-    expect(registerSpy).toHaveBeenCalledWith({
-      verificationId: "base-ok-synthesis",
-      nonce: undefined,
+    expect(createSessionSpy).toHaveBeenCalledWith("base-ok-synthesis", undefined);
+    expect(updateHashesSpy).toHaveBeenCalledWith("base-ok-synthesis", {
       requestHash: "req",
     });
     expect(result.secondNonce).toBeUndefined();
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it("emits verification events when finalizeStage returns payloads", async () => {
-    const initialPayload = { verificationId: "init" };
-    const secondPayload = { verificationId: "second" };
-    const finalizeSpy = vi
-      .spyOn(verificationService, "finalizeStage")
-      .mockResolvedValueOnce(initialPayload as any)
-      .mockResolvedValueOnce(secondPayload as any);
+  it("emits verification events when canonical hashes are available", async () => {
+    const client = getNearAIClient();
+    const canonicalSpy = vi
+      .spyOn(client, "fetchCanonicalHashes")
+      .mockResolvedValueOnce({
+        requestHash: "req-hash-1",
+        responseHash: "res-hash-1",
+      })
+      .mockResolvedValueOnce({
+        requestHash: "req-hash-2",
+        responseHash: "res-hash-2",
+      });
+    const updateHashSpy = vi.spyOn(client, "updateSessionHashes");
 
     const writeEvent = vi.fn();
 
@@ -95,39 +102,52 @@ describe("agent verification flow", () => {
       writeEvent,
     });
 
-    expect(finalizeSpy).toHaveBeenCalledWith(
+    expect(canonicalSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        verificationId: "init-ver",
-        stage: "initial_reasoning",
-        nonce: "nonce1",
+        fallbackId: "init-ver",
         remoteMessageId: "remote-init",
+        model: expect.any(String),
         signingAlgo: "ed25519",
       })
     );
-    expect(finalizeSpy).toHaveBeenCalledWith(
+    expect(canonicalSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        verificationId: "second-ver",
-        stage: "final_synthesis",
-        nonce: "nonce2",
+        fallbackId: "second-ver",
         remoteMessageId: "remote-second",
+        model: expect.any(String),
         signingAlgo: "ed25519",
       })
     );
+
+    expect(updateHashSpy).toHaveBeenCalledWith("init-ver", {
+      requestHash: "req-hash-1",
+      responseHash: "res-hash-1",
+    });
+    expect(updateHashSpy).toHaveBeenCalledWith("second-ver", {
+      requestHash: "req-hash-2",
+      responseHash: "res-hash-2",
+    });
 
     expect(writeEvent).toHaveBeenCalledTimes(2);
     expect(writeEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: expect.any(String),
         name: "verification",
-        value: initialPayload,
+        value: expect.objectContaining({
+          verificationId: "init-ver",
+          requestHash: "req-hash-1",
+          responseHash: "res-hash-1",
+          stage: "initial_reasoning",
+        }),
       })
     );
   });
 
-  it("logs warnings instead of emitting events when finalizeStage yields nothing", async () => {
+  it("logs warnings instead of emitting events when canonical hashes are missing", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const finalizeSpy = vi
-      .spyOn(verificationService, "finalizeStage")
+    const client = getNearAIClient();
+    const canonicalSpy = vi
+      .spyOn(client, "fetchCanonicalHashes")
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
     const writeEvent = vi.fn();
@@ -156,7 +176,7 @@ describe("agent verification flow", () => {
       })
     );
 
-    finalizeSpy.mockRestore();
+    canonicalSpy.mockRestore();
     warnSpy.mockRestore();
   });
 });

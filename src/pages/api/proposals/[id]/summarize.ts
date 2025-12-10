@@ -9,15 +9,11 @@ import { servicesConfig } from "@/config/services";
 import type { ApiErrorResponse } from "@/types/api";
 import type { ProposalSummaryResponse, SummaryProof } from "@/types/summaries";
 import { extractVerificationMetadata } from "@/verification/normalize";
-import { normalizeVerificationPayload } from "@/verification/server";
-import {
-  registerVerificationSession,
-  updateVerificationHashes,
-} from "@/verification/server";
+import { normalizeVerificationPayload } from "@/verification/normalize";
 import { getModelExpectations } from "@/server/attestation-cache";
 import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
-import { getNearAIClient } from "@/lib/near-ai/client";
+import { getNearAIClient } from "@/lib/near-ai";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
 
 const ensureVerificationSession = (
@@ -26,12 +22,12 @@ const ensureVerificationSession = (
 ) => {
   if (!verificationId || !proof) return;
   try {
-    registerVerificationSession(
-      verificationId,
-      proof.nonce || undefined,
-      proof.requestHash || null,
-      proof.responseHash || null
-    );
+    const client = getNearAIClient();
+    client.createSession(verificationId);
+    client.updateSessionHashes(verificationId, {
+      requestHash: proof.requestHash ?? null,
+      responseHash: proof.responseHash ?? null,
+    });
   } catch (err) {
     console.error(
       "[proposal summary] Failed to ensure verification session:",
@@ -202,12 +198,7 @@ export default async function handler(
     const requestBody = JSON.stringify(nearRequest);
     const requestHash = createHash("sha256").update(requestBody).digest("hex");
     const generatedVerificationId = `summary-${randomBytes(8).toString("hex")}`;
-    const session = registerVerificationSession(
-      generatedVerificationId,
-      undefined,
-      requestHash,
-      null
-    );
+    const session = client.createSession(generatedVerificationId);
     let expectations: Awaited<ReturnType<typeof getModelExpectations>> | null =
       null;
     try {
@@ -236,18 +227,17 @@ export default async function handler(
     const effectiveVerificationId =
       normalizedVerificationId || generatedVerificationId;
 
-    updateVerificationHashes(generatedVerificationId, {
+    client.updateSessionHashes(generatedVerificationId, {
       requestHash,
       responseHash,
     });
 
     if (effectiveVerificationId !== generatedVerificationId) {
-      registerVerificationSession(
-        effectiveVerificationId,
-        session.nonce,
+      client.createSession(effectiveVerificationId);
+      client.updateSessionHashes(effectiveVerificationId, {
         requestHash,
-        responseHash
-      );
+        responseHash,
+      });
     }
 
     if (!summary) {

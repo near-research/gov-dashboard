@@ -1,66 +1,117 @@
-export interface NonceCheck {
-  expected?: string | null;
-  attested?: string | null;
-  nras?: string | null;
-  valid: boolean;
+// ============================================================================
+// Session Types
+// ============================================================================
+/** Tracks the lifecycle state of a NEAR verification session. */
+export interface VerificationSession {
+  nonce: string;
+  createdAt: number;
+  expiresAt: number;
+  requestHash?: string | null;
+  responseHash?: string | null;
 }
 
-/**
- * NRAS (NVIDIA Remote Attestation Service) verification result
- */
-export interface NrasResult {
-  /** JWT token from NRAS */
-  token?: string | null;
+// ============================================================================
+// Client Verification Options
+// ============================================================================
+/** Options for NEAR AI verification headers. */
+export interface NearAIVerificationOptions {
+  verificationId?: string;
+  verificationNonce?: string;
+  requestHash?: string;
+  responseHash?: string;
+  signingAlgo?: "ecdsa" | "ed25519";
+  extraHeaders?: Record<string, string>;
+}
+
+// ============================================================================
+// Verification Result Types
+// ============================================================================
+/** NRAS verification status returned to clients. */
+export interface NrasVerificationResult {
+  verified: boolean;
   jwt?: string | null;
-  /** Decoded JWT claims */
-  claims?: {
-    /** Issued at timestamp */
-    iat?: number;
-    /** Expiration timestamp */
-    exp?: number;
-    /** Not before timestamp */
-    nbf?: number;
-    /** Issuer (should be https://nras.attestation.nvidia.com) */
-    iss?: string;
-    /** Overall attestation result */
-    "x-nvidia-overall-att-result"?: boolean;
-    /** Nonce */
-    eat_nonce?: string;
-    "x-nvidia-eat-nonce"?: string;
-    nonce?: string;
-    /** Hardware model */
-    hwmodel?: string;
-    "x-nvidia-gpu-hwmodel"?: string;
-    /** GPU driver version */
-    "x-nvidia-gpu-driver-version"?: string;
-    /** GPU VBIOS version */
-    "x-nvidia-gpu-vbios-version"?: string;
-    /** Secure boot status */
-    secboot?: boolean | string;
-    /** Debug status */
-    dbgstat?: string;
-    "x-nvidia-dbgstat"?: string;
-    /** OEM ID */
-    oemid?: string;
-    overall_result?: boolean;
-    overall_pass?: boolean;
-  } | null;
-
-  /** Verification status from backend */
-  verified?: boolean;
-
-  /** GPU-specific tokens */
-  gpus?: Record<string, string> | null;
-
-  /** Verification failure reasons */
+  claims?: Record<string, unknown> | null;
   reasons?: string[];
-
-  /** Raw NRAS response */
+  token?: string | null;
+  gpus?: Record<string, string> | null;
   raw?: unknown;
 }
-// Backwards compatibility alias
-export type NrasVerificationResult = NrasResult;
+/** Results of signature verification checks. */
+export interface SignatureVerificationResult {
+  verified: boolean;
+  recoveredAddress?: string | null;
+  attestedAddresses?: string[];
+  reason?: string;
+}
 
+/** Metadata for signature payloads exposed via verification results. */
+export interface SignaturePayload {
+  text?: string | null;
+  signature?: string | null;
+  signing_address?: string | null;
+  signing_algo?: string | null;
+}
+
+/** Aggregated verification result shared across UI and API consumers. */
+export interface VerificationResult {
+  verified: boolean;
+  reasons: string[];
+  attestation?: unknown;
+  signature?: SignaturePayload | null;
+  nras?: NrasVerificationResult | null;
+  signatureVerification?: SignatureVerificationResult;
+  nonceCheck?: NonceCheck;
+  requestHash?: string | null;
+  responseHash?: string | null;
+}
+
+/** Named stages within the NEAR verification workflow. */
+export type VerificationStage = "initial_reasoning" | "final_synthesis";
+
+/** Canonical payload emitted when a verification stage completes. */
+export interface VerificationPayload {
+  messageId: string;
+  verificationId: string;
+  requestHash: string;
+  responseHash: string;
+  nonce: string | null;
+  stage: VerificationStage;
+}
+
+// ============================================================================
+// Hardware Expectation Types
+// ============================================================================
+/** Expectations derived from attestation metadata (nonce, hardware profile, etc.). */
+export interface AttestationExpectations {
+  nonce: string;
+  arch: string;
+  deviceCertHash: string;
+  rimHash?: string;
+  ueid?: string;
+  measurements: string[];
+}
+
+/** Partial attestation expectations during incremental extraction/validation. */
+export type PartialExpectations = Partial<AttestationExpectations>;
+
+// ============================================================================
+// NRAS (NVIDIA) Types
+// ============================================================================
+/** Payload sent to NRAS to validate a node. */
+export interface NrasVerificationRequest {
+  nvidia_payload: any;
+  nonce?: string | null;
+  expectedArch?: string | null;
+  expectedDeviceCertHash?: string | null;
+  expectedRimHash?: string | null;
+  expectedUeid?: string | null;
+  expectedMeasurements?: string[] | null;
+}
+
+// ============================================================================
+// Intel TDX Types
+// ============================================================================
+/** Intel attestation verification result wrapper. */
 export interface IntelVerificationResult {
   verified: boolean;
   raw?: any;
@@ -69,6 +120,68 @@ export interface IntelVerificationResult {
   reasons?: string[];
 }
 
+// ============================================================================
+// Verification State Types
+// ============================================================================
+/** Keys representing the discrete verification checks displayed in the UI. */
+export type VerificationStepKey =
+  | "hash"
+  | "signature"
+  | "address"
+  | "attestation"
+  | "nonce"
+  | "gpu"
+  | "cpu";
+
+/** Status and messaging for a single verification step. */
+export interface VerificationStep {
+  status: "pending" | "success" | "error";
+  message?: string;
+  details?: string;
+}
+
+/** Aggregated verification state used by UI components. */
+export interface VerificationState {
+  overall: "unverified" | "pending" | "verified" | "failed";
+  steps: Record<VerificationStepKey, VerificationStep>;
+  recoveredAddress?: string | null;
+  attestedAddress?: string | null;
+  reasons?: string[];
+}
+
+/** Nonce verification outcome combining attestation + optional NRAS signals. */
+export interface NonceCheck {
+  valid: boolean;
+  expected?: string | null;
+  attested?: string | null;
+  /** Nonce extracted from NRAS JWT claims (only present after NRAS verification). */
+  nras?: string | null;
+}
+
+/** Arguments accepted by `deriveVerificationState`. */
+export interface DeriveArgs {
+  proof?: VerificationProofResponse | null;
+  requestHash?: string | null;
+  responseHash?: string | null;
+  signatureText?: string | null;
+  signature?: string | null;
+  signatureAddress?: string | null;
+  signatureAlgo?: string | null;
+  attestedAddress?: string | null;
+  attestationResult?: string | null;
+  nrasVerified?: boolean;
+  nrasReasons?: string[];
+  intelVerified?: boolean;
+  nonceCheck?: NonceCheck | null;
+  intelRequired?: boolean;
+  intelConfigured?: boolean;
+  trustedAddresses?: string[];
+}
+
+// ============================================================================
+// Proof Response Types
+// ============================================================================
+/** Error returned while fetching a signature. */
 export interface SignatureFetchError {
   status?: number;
   statusText?: string | null;
@@ -76,11 +189,12 @@ export interface SignatureFetchError {
   url?: string;
 }
 
+/** Payload returned by the verification proof endpoint. */
 export interface VerificationProofResponse {
   attestation?: any;
   signature?: any;
   signatureError?: SignatureFetchError | null;
-  nras?: NrasResult | null;
+  nras?: NrasVerificationResult | null;
   nrasRaw?: any;
   nonceCheck?: NonceCheck | null;
   intel?: IntelVerificationResult | null;
@@ -91,11 +205,14 @@ export interface VerificationProofResponse {
     intelApiKey?: boolean;
     hardwareExpectations?: boolean;
   };
+  verified?: boolean;
+  reasons?: string[];
+  info?: string[];
   results?: {
     verified: boolean;
     reasons: string[];
     info?: string[];
-    gpu?: NrasResult | null;
+    gpu?: NrasVerificationResult | null;
     cpu?: IntelVerificationResult | null;
     nonce?: NonceCheck | null;
     signature?: {
@@ -111,28 +228,18 @@ export interface VerificationProofResponse {
   sessionResponseHash?: string | null;
 }
 
-export interface NrasVerificationRequest {
-  nvidia_payload: any;
-  nonce?: string | null;
-  expectedArch?: string | null;
-  expectedDeviceCertHash?: string | null;
-  expectedRimHash?: string | null;
-  expectedUeid?: string | null;
-  expectedMeasurements?: string[] | null;
-}
-
+/** Summary for attestation nodes discovered in a proof. */
 export interface AttestationNodeSummary {
   signingAddress: string | null;
   nvidiaPayload: unknown;
   intelQuote: unknown;
   composeManifest: string | null;
   composeHash: string | null;
-  nras?: NrasResult | null;
+  nras?: NrasVerificationResult | null;
   intel?: IntelVerificationResult | null;
 }
 
-export type { VerificationMetadata, VerificationStatus } from "@/types/agui-events";
-
+/** Response returned during model attestation discovery flows. */
 export interface ModelAttestationResponse {
   model?: string;
   model_id?: string;
@@ -144,4 +251,25 @@ export interface ModelAttestationResponse {
   model_attestations?: Array<Record<string, unknown>>;
   attestation?: Record<string, unknown>;
   evidence_list?: unknown;
+}
+
+// ============================================================================
+// Metadata Types
+// ============================================================================
+/** High-level verification status reported through AGUI events. */
+export type VerificationStatus = "pending" | "verified" | "failed";
+
+/** Metadata attached to AGUI events for NEAR proofs. */
+export interface VerificationMetadata {
+  source: "near-ai-cloud";
+  status: VerificationStatus;
+  messageId?: string;
+  nonce?: string;
+  attestationReport?: string;
+  attestationUrl?: string;
+  proof?: unknown;
+  signature?: string;
+  measurement?: string;
+  issuedAt?: string | number;
+  error?: string;
 }

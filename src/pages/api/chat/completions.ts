@@ -1,17 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import {
-  extractVerificationMetadata,
-} from "@/verification/normalize";
-import { normalizeVerificationPayload } from "@/verification/server";
+import { extractVerificationMetadata, normalizeVerificationPayload } from "@/verification/normalize";
 import { createHash } from "crypto";
-import { registerVerificationSession } from "@/verification/server";
-import { getNearAIClient } from "@/lib/near-ai/client";
-import { NearAIError, NearAITimeoutError } from "@/lib/near-ai/errors";
+import { getNearAIClient, NearAIError, NearAITimeoutError } from "@/lib/near-ai";
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
   ToolChoice,
-} from "@/lib/near-ai/types";
+} from "@/types/near-ai";
 import { z } from "zod";
 
 type ChatMessage = {
@@ -176,7 +171,9 @@ export default async function handler(
 
     // Hash body BEFORE adding verification (headers carry verification)
     const requestBodyString = JSON.stringify(requestBody);
-    const requestHash = createHash("sha256").update(requestBodyString).digest("hex");
+    const requestHash = createHash("sha256")
+      .update(requestBodyString)
+      .digest("hex");
 
     if (shouldLogVerification) {
       console.log("[verification] Pre-request:", {
@@ -197,10 +194,12 @@ export default async function handler(
         });
       } catch (error) {
         console.error("NEAR AI Cloud API error:", error);
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        const statusCode = error instanceof Error && "statusCode" in error
-          ? (error as { statusCode?: number }).statusCode || 500
-          : 500;
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        const statusCode =
+          error instanceof Error && "statusCode" in error
+            ? (error as { statusCode?: number }).statusCode || 500
+            : 500;
         return res.status(statusCode).json({
           error: `NEAR AI Cloud API Error: ${statusCode}`,
           details: errorMessage,
@@ -255,14 +254,10 @@ export default async function handler(
       req.on("close", handleClose);
       res.on("close", handleClose);
 
-      // Pre-register session with provided verificationId/nonce and requestHash
+      // Pre-register verification session
       if (verificationId) {
-        registerVerificationSession(
-          verificationId,
-          verificationNonce,
-          requestHash,
-          null
-        );
+        client.createSession(verificationId);
+        client.updateSessionHashes(verificationId, { requestHash });
       }
 
       try {
@@ -305,12 +300,7 @@ export default async function handler(
 
         if (verificationId && !aborted && hash) {
           const responseHash = hash.digest("hex");
-          registerVerificationSession(
-            verificationId,
-            verificationNonce,
-            requestHash,
-            responseHash
-          );
+          client.updateSessionHashes(verificationId, { requestHash, responseHash });
           if (shouldLogVerification) {
             console.log("[verification] Stream complete:", {
               verificationId,
@@ -326,7 +316,6 @@ export default async function handler(
             bufferedLength: rawResponseBuffer.length,
           });
         }
-
       } catch (streamError) {
         if (!aborted) {
           console.error("Stream error:", streamError);
@@ -348,24 +337,26 @@ export default async function handler(
         });
 
         const responseText = JSON.stringify(responseData);
-        const responseHash = createHash("sha256").update(responseText).digest("hex");
+        const responseHash = createHash("sha256")
+          .update(responseText)
+          .digest("hex");
 
         const rawVerification = extractVerificationMetadata(responseData);
         const { verification, verificationId: normalizedVerificationId } =
           normalizeVerificationPayload(rawVerification, responseData?.id);
 
-        const payload = responseData as ChatCompletionResponse & Record<string, unknown>;
+        const payload = responseData as ChatCompletionResponse &
+          Record<string, unknown>;
         if (verification) {
           payload.verification = verification;
         }
         if (normalizedVerificationId) {
           payload.verificationId = normalizedVerificationId;
-          registerVerificationSession(
-            normalizedVerificationId,
-            undefined,
+          client.createSession(normalizedVerificationId);
+          client.updateSessionHashes(normalizedVerificationId, {
             requestHash,
-            responseHash
-          );
+            responseHash,
+          });
         }
 
         res.status(200).json(payload);

@@ -3,14 +3,17 @@ import {
   fetchModelAttestation,
   extractExpectationsFromAttestation,
 } from "@/utils/attestation/fetch-model-attestation";
-import { verificationConfig } from "@/config/verification";
-import { verifyNodeWithIntel, verifyNodeWithNras } from "@/utils/verification/node-verification";
 import {
   collectSigningAddressesFromAttestation,
   validateIntelBinding,
 } from "@/utils/verification/intel";
-import type { AttestationExpectations } from "@/utils/attestation/expectations";
-import type { AttestationNodeSummary } from "@/types/verification";
+import type {
+  AttestationExpectations,
+  AttestationNodeSummary,
+  IntelVerificationResult,
+} from "@/types/verification";
+import { getNearAIClient } from "@/lib/near-ai";
+import { verificationConfig } from "@/config/verification";
 
 type CachedExpectations = {
   nonce: string;
@@ -161,10 +164,139 @@ const collectIntelQuote = (attestation: any): any | null => {
   return quote ?? null;
 };
 
+const LOG_PREFIX = "[attestation-cache]";
+
+type IntelVerifierConfig = {
+  url: string;
+  apiKey: string;
+};
+
+const getIntelVerifierConfig = (): IntelVerifierConfig | null => {
+  const url =
+    process.env.INTEL_TDX_ATTESTATION_URL || process.env.INTEL_ATTESTATION_URL;
+  const apiKey = process.env.INTEL_TDX_API_KEY;
+  if (!url || !apiKey) {
+    console.warn(
+      `${LOG_PREFIX} Intel verification not configured; skipping remote verifier.`
+    );
+    return null;
+  }
+  return { url, apiKey };
+};
+
+const buildIntelFailureReasons = (
+  binding: ReturnType<typeof validateIntelBinding>,
+  successFlag: boolean
+) => {
+  const reasons: string[] = [];
+  if (!successFlag) {
+    reasons.push("Intel service reported failure");
+  }
+  if (!binding.nonceMatch) {
+    reasons.push("Nonce mismatch detected in Intel quote");
+  }
+  if (!binding.signingMatch) {
+    reasons.push("Signing address mismatch in Intel quote");
+  }
+  if (!reasons.length) {
+    reasons.push("Intel attestation validation failed");
+  }
+  return reasons;
+};
+
+const verifyIntelQuote = async (
+  intelQuote: unknown,
+  expectations: AttestationExpectations | null,
+  attestation: any
+): Promise<IntelVerificationResult | null> => {
+  if (!intelQuote || !expectations) return null;
+  const config = getIntelVerifierConfig();
+  if (!config) return null;
+
+  try {
+    const response = await fetch(config.url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        quote: intelQuote,
+        nonce: expectations.nonce,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return {
+        verified: false,
+        raw: payload,
+        error: `Intel verification failed (${response.status})`,
+        reasons: [`Intel verification failed (${response.status})`],
+      };
+    }
+
+    const signingAddresses =
+      collectSigningAddressesFromAttestation(attestation);
+    const binding = validateIntelBinding(
+      payload,
+      expectations.nonce,
+      signingAddresses
+    );
+    if (process.env.NODE_ENV === "test") {
+      binding.nonceMatch = true;
+      binding.signingMatch = true;
+    }
+
+    const successFlag =
+      payload?.verified === true ||
+      payload?.is_valid === true ||
+      payload?.result === "OK" ||
+      payload?.verdict === "SUCCESS";
+
+    if (!successFlag || !binding.nonceMatch || !binding.signingMatch) {
+      return {
+        verified: false,
+        raw: payload,
+        reasons: buildIntelFailureReasons(binding, successFlag),
+      };
+    }
+
+    return {
+      verified: true,
+      raw: payload,
+      reasons: [],
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Intel verification error";
+    return {
+      verified: false,
+      error: message,
+      reasons: [message],
+    };
+  }
+};
+
+const verifyNodeWithIntel = async (
+  node: AttestationNodeSummary,
+  expectations: AttestationExpectations | null,
+  attestation: any
+): Promise<IntelVerificationResult | null> => {
+  if (!node.intelQuote || !expectations) return null;
+  return verifyIntelQuote(node.intelQuote, expectations, attestation);
+};
+
 const verifyNrasPayload = async (
-  payload: any,
+  attestation: any,
   expectations: AttestationExpectations
 ) => {
+  const payload = pickNvidiaPayload(attestation);
+  if (!payload) {
+    throw new Error("Missing NVIDIA attestation payload");
+  }
   const nrasUrl = verificationConfig.nras.url;
   const body = {
     nonce:
@@ -221,75 +353,26 @@ const verifyNrasPayload = async (
   }
 };
 
-const verifyIntelQuote = async (
-  intelQuote: any,
-  expectations: AttestationExpectations,
-  attestation: any
-) => {
-  if (!intelQuote) return;
-  const intelUrl =
-    process.env.INTEL_TDX_ATTESTATION_URL ||
-    process.env.INTEL_ATTESTATION_URL;
-  const intelApiKey = process.env.INTEL_TDX_API_KEY;
-  if (!intelUrl || !intelApiKey) {
-    throw new Error("Intel verification not configured");
-  }
-
-  const resp = await fetch(intelUrl, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${intelApiKey}`,
-    },
-    body: JSON.stringify({
-      quote: intelQuote,
-      nonce: expectations.nonce,
-    }),
-  });
-
-  if (!resp.ok) {
-    throw new Error(`Intel verification failed (${resp.status})`);
-  }
-  const json = await resp.json().catch(() => ({}));
-
-  const signingAddresses = collectSigningAddressesFromAttestation(attestation);
-    const binding = validateIntelBinding(
-      json,
-      expectations.nonce,
-      signingAddresses
-    );
-
-    const isTest = process.env.NODE_ENV === "test";
-    if (isTest) {
-      binding.nonceMatch = true;
-      binding.signingMatch = true;
-    }
-
-    const successFlag =
-      json?.verified === true ||
-      json?.is_valid === true ||
-      json?.result === "OK" ||
-    json?.verdict === "SUCCESS";
-
-  if (!successFlag || !binding.nonceMatch || !binding.signingMatch) {
-    throw new Error("Intel attestation validation failed");
-  }
-};
-
 const verifyAttestation = async (
   attestation: any,
   expectations: AttestationExpectations
 ) => {
-  const payload = pickNvidiaPayload(attestation);
-  if (!payload) {
-    throw new Error("Missing NVIDIA attestation payload");
-  }
-  await verifyNrasPayload(payload, expectations);
+  await verifyNrasPayload(attestation, expectations);
 
   const intelQuote = collectIntelQuote(attestation);
   if (intelQuote) {
-    await verifyIntelQuote(intelQuote, expectations, attestation);
+    const intelResult = await verifyIntelQuote(
+      intelQuote,
+      expectations,
+      attestation
+    );
+    if (intelResult && !intelResult.verified) {
+      throw new Error(
+        intelResult.reasons?.join("; ") ||
+          intelResult.error ||
+          "Intel attestation validation failed"
+      );
+    }
   }
 };
 
@@ -328,6 +411,7 @@ export async function getModelExpectations(
         console.warn("[attestation-cache] Expectations incomplete, skipping:", {
           error: err instanceof Error ? err.message : err,
         });
+        console.debug("[attestation-cache] Attestation payload missing expectations:", attestation);
         return null;
       }
     })();
@@ -358,10 +442,24 @@ export async function getModelExpectations(
       : null;
 
     const nodes = buildNodeSummaries(attestation);
+    const client = getNearAIClient();
+    const expectationNonce = expectations?.nonce ?? null;
     const nodesWithResults = await Promise.all(
       nodes.map(async (node) => ({
         ...node,
-        nras: await verifyNodeWithNras(node, expectations),
+        nras: expectationNonce
+          ? await client.verifyWithNras(
+              {
+                model_attestations: [
+                  {
+                    signing_address: node.signingAddress || undefined,
+                    nvidia_payload: node.nvidiaPayload,
+                  },
+                ],
+              },
+              expectationNonce
+            )
+          : null,
         intel: await verifyNodeWithIntel(node, expectations, attestation),
       }))
     );

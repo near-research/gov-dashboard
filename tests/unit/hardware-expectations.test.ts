@@ -5,7 +5,10 @@ import {
   extractExpectationsFromMessage,
   extractExpectationsFromProposal,
 } from "@/utils/attestation/expectations";
-import type { AttestationExpectations, PartialExpectations } from "@/utils/attestation/expectations";
+import type {
+  AttestationExpectations,
+  PartialExpectations,
+} from "@/types/verification";
 
 const fullExpectations: AttestationExpectations = {
   nonce: "abc",
