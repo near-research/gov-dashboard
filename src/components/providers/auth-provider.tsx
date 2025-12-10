@@ -51,6 +51,7 @@ type AuthContextType = {
 
   // Combined loading state
   isPending: boolean;
+  isSignInPending: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -72,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     viewFunction,
     callFunction,
     nearClient,
+    isSignInPending,
   } = useNear();
   const walletAccountId = walletAccountIdRaw || null;
 
@@ -152,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Combined
       isPending,
+      isSignInPending,
     }),
     [
       sessionData?.user,
@@ -170,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       viewFunction,
       callFunction,
       isPending,
+      isSignInPending,
       accountsError,
     ]
   );

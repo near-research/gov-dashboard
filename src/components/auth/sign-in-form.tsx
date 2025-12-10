@@ -9,11 +9,16 @@ import { isUserRejected, shouldRetryNonce } from "@/lib/auth/retry";
 export function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isPending, walletAccountId, walletSignIn, walletSignOut } =
-    useAuth();
+  const {
+    user,
+    isPending,
+    walletAccountId,
+    walletSignIn,
+    walletSignOut,
+    isSignInPending,
+  } = useAuth();
   const redirect = searchParams.get("redirect") || "/";
 
-  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasRedirected, setHasRedirected] = useState(false);
 
@@ -25,8 +30,9 @@ export function SignInForm() {
   }, [user, isPending, hasRedirected, router, redirect]);
 
   const handleSignIn = async () => {
-    if (isConnecting) return;
-    setIsConnecting(true);
+    if (isSignInPending) {
+      return;
+    }
     setError(null);
 
     let retriedNonce = false;
@@ -45,7 +51,6 @@ export function SignInForm() {
         retriedNonce = true;
         try {
           await executeSignIn();
-          setIsConnecting(false);
           return;
         } catch (retryErr: any) {
           errorToReport = retryErr;
@@ -60,8 +65,6 @@ export function SignInForm() {
       if (!rejected) {
         toast.error(message);
       }
-    } finally {
-      setIsConnecting(false);
     }
   };
 
@@ -99,10 +102,10 @@ export function SignInForm() {
             <button
               data-testid="sign-in-connect-button"
               onClick={handleSignIn}
-              disabled={isConnecting}
+              disabled={isSignInPending}
               className="w-full py-3 px-4 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50"
             >
-              {isConnecting ? "Connecting & Signing..." : "Connect Wallet"}
+              {isSignInPending ? "Connecting & Signing..." : "Connect Wallet"}
             </button>
           ) : (
             <div className="space-y-4">

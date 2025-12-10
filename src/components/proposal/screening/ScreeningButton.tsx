@@ -22,7 +22,7 @@ export function ScreeningButton({
   revisionNumber,
   onScreeningComplete,
 }: ScreeningButtonProps) {
-  const { signedAccountId, nearClient, loading } = useNear();
+  const { signedAccountId, walletSigner, loading } = useNear();
   const track = useGovernanceAnalytics();
 
   const [screening, setScreening] = useState(false);
@@ -61,7 +61,7 @@ export function ScreeningButton({
     });
 
     try {
-      if (!nearClient)
+      if (!walletSigner)
         throw new Error(
           "Wallet not connected. Please connect your NEAR wallet."
         );
@@ -69,7 +69,7 @@ export function ScreeningButton({
         throw new Error("NEAR account not found. Please connect your wallet.");
 
       const authToken = await sign(`Screen proposal ${topicId}`, {
-        signer: nearClient,
+        signer: walletSigner,
         recipient: "social.near",
       });
 

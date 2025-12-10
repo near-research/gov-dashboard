@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import type { VerificationProofResponse } from "@/types/verification";
 import { verificationConfig } from "@/config/verification";
 
@@ -90,6 +91,29 @@ export const verifiedProofMock: VerificationProofResponse = {
     verified: true,
     raw: { nonce: mockNonce },
   },
+  attestationNodes: [
+    {
+      signingAddress: mockAddress,
+      nvidiaPayload: {
+        eat_nonce: mockNonce,
+      },
+      intelQuote: `intel-${mockNonce}`,
+      composeManifest: "services:\n  ai:\n    image: near/nearai-cloud-api@sha256:abcdef",
+      composeHash: createHash("sha256")
+        .update("services:\n  ai:\n    image: near/nearai-cloud-api@sha256:abcdef")
+        .digest("hex"),
+      nras: {
+        verified: true,
+        reasons: [],
+        raw: {},
+      },
+      intel: {
+        verified: true,
+        reasons: [],
+        raw: {},
+      },
+    },
+  ],
 };
 
 export const failedProofMock: VerificationProofResponse = {

@@ -411,21 +411,28 @@ export default async function handler(
       const expectations = await getModelExpectations(
         model || verificationConfig.defaultModel
       );
-      expectedArch = expectedArch || expectations.arch;
-      expectedDeviceCertHash =
-        expectedDeviceCertHash || expectations.deviceCertHash;
-      expectedRimHash = expectedRimHash || expectations.rimHash;
-      expectedUeid = expectedUeid || expectations.ueid;
-      expectedMeasurements = expectedMeasurements || expectations.measurements;
-      console.log("[verification/proof] Using expectations:", {
-        arch: expectedArch,
-        deviceCertHash: expectedDeviceCertHash
-          ? `${expectedDeviceCertHash.slice(0, 16)}...`
-          : null,
-        rimHash: expectedRimHash ? `${expectedRimHash.slice(0, 16)}...` : null,
-        ueid: expectedUeid ? `${expectedUeid.slice(0, 16)}...` : null,
-        measurements: expectedMeasurements?.length ?? 0,
-      });
+      if (expectations) {
+        expectedArch = expectedArch || expectations.arch;
+        expectedDeviceCertHash =
+          expectedDeviceCertHash || expectations.deviceCertHash;
+        expectedRimHash = expectedRimHash || expectations.rimHash;
+        expectedUeid = expectedUeid || expectations.ueid;
+        expectedMeasurements = expectedMeasurements || expectations.measurements;
+        console.log("[verification/proof] Using expectations:", {
+          arch: expectedArch,
+          deviceCertHash: expectedDeviceCertHash
+            ? `${expectedDeviceCertHash.slice(0, 16)}...`
+            : null,
+          rimHash: expectedRimHash ? `${expectedRimHash.slice(0, 16)}...` : null,
+          ueid: expectedUeid ? `${expectedUeid.slice(0, 16)}...` : null,
+          measurements: expectedMeasurements?.length ?? 0,
+        });
+      } else {
+        console.warn(
+          "[verification/proof] Model expectations endpoint returned null",
+          { model }
+        );
+      }
     } catch (error: unknown) {
       console.error(
         "[verification/proof] Failed to fetch expectations:",

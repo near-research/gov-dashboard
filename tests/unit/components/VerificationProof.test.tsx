@@ -13,6 +13,20 @@ import {
 import { verifyMessage } from "ethers";
 var fetchProofMock = vi.fn();
 
+type VerificationAuthTokenFn = typeof import("@/lib/verification/near-ai")["createVerificationAuthToken"];
+const walletSignerMock = { signMessage: vi.fn() };
+const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(async () => "proof-token");
+vi.mock("@/hooks/useNear", () => ({
+  useNear: () => ({
+    walletSigner: walletSignerMock,
+    signedAccountId: "test.near",
+  }),
+}));
+vi.mock("@/lib/verification/near-ai", () => ({
+  createVerificationAuthToken: (...args: Parameters<VerificationAuthTokenFn>) =>
+    createAuthTokenMock(...args),
+}));
+
 vi.mock("@/services/verification/proof-service", () => ({
   fetchVerificationProof: (...args: any[]) => fetchProofMock(...args),
   verifyWithNrasService: vi.fn(),
@@ -91,6 +105,9 @@ describe("VerificationProof component", () => {
       (id: number) => clearTimeout(id)
     );
     fetchProofMock.mockResolvedValue(verifiedProofMock as VerificationProofResponse);
+    walletSignerMock.signMessage.mockReset();
+    createAuthTokenMock.mockReset();
+    createAuthTokenMock.mockResolvedValue("proof-token");
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
       configurable: true,

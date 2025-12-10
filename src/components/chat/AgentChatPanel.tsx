@@ -26,6 +26,8 @@ import { AGENT_MODEL } from "@/agent/contract";
 import { normalizeSignaturePayload } from "@/verification/normalize";
 import { extractHashesFromSignedText } from "@/verification/hash-utils";
 import { useGovernanceAnalytics } from "@/lib/analytics";
+import { useNear } from "@/hooks/useNear";
+import { createVerificationAuthToken } from "@/lib/verification/near-ai";
 
 type AgentRole = "user" | "assistant" | "system";
 
@@ -265,6 +267,7 @@ export const AgentChatPanel = ({
 
   const track = useGovernanceAnalytics();
   const analyticsPath = trackingPath ?? "/";
+  const { walletSigner } = useNear();
 
   useEffect(() => {
     track("agent_chat_opened", {
@@ -422,6 +425,14 @@ export const AgentChatPanel = ({
       },
     });
 
+    if (!walletSigner) {
+      console.info(
+        "[verification] Wallet not connected; skipping automatic proof fetch.",
+        { verificationId, messageId: messageIdForStatus }
+      );
+      return;
+    }
+
     try {
       console.log("[verification] Fetching proof:", {
         verificationId,
@@ -431,10 +442,20 @@ export const AgentChatPanel = ({
         nonce: proof.nonce,
       });
 
+      const authToken = await createVerificationAuthToken({
+        walletSigner,
+        verificationId,
+      });
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      };
+
       const response = await fetch("/api/verification/proof", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           verificationId,
           messageId: messageIdForStatus,

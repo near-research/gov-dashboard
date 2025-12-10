@@ -93,4 +93,17 @@ export interface ChatCompletionOptions {
    * Base delay in milliseconds for exponential backoff (default: 100)
    */
   retryBaseDelayMs?: number;
+  /**
+   * Verification metadata for NEAR AI requests (creates standard headers)
+   */
+  verification?: NearAIVerificationOptions;
+}
+
+export interface NearAIVerificationOptions {
+  verificationId?: string;
+  verificationNonce?: string;
+  requestHash?: string;
+  responseHash?: string;
+  signingAlgo?: "ecdsa" | "ed25519";
+  extraHeaders?: Record<string, string>;
 }

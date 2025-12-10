@@ -84,6 +84,12 @@ DATABASE_URL=postgresql://user:password@localhost:5432/neargov
 NEAR_AI_CLOUD_API_KEY=your_api_key_here
 ```
 
+### Verification & Attestation
+
+- `NEAR_AI_CLOUD_API_KEY`: Required for all NEAR AI Cloud interactions (already listed above).
+- `INTEL_TDX_ATTESTATION_URL` / `INTEL_TDX_API_KEY`: Required when Intel TDX verification is enabled (attestation proof pages, agents). Both values must be configured together and point at your Intel attestation verifier endpoint.
+- `VERIFICATION_SERVICE_TOKEN` (optional): When set, the server-side prefetcher includes this bearer-free token so `/api/verification/proof` can skip wallet auth. In development, the prefetch call also sets `x-verification-prefetch: true` allowing the handler to bypass authentication even if no token is configured.
+
 ### Database Setup
 
 1. Create PostgreSQL database:

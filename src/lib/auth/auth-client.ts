@@ -35,6 +35,11 @@ export const disconnectNear = async (): Promise<void> => {
  * Safe sign-out that handles NEAR disconnect before session clear
  */
 export const safeSignOut = async (): Promise<void> => {
+  try {
+    await disconnectNear();
+  } catch (disconnectError) {
+    console.error("NEAR disconnect during sign-out failed:", disconnectError);
+  }
   await signOut();
 };
 

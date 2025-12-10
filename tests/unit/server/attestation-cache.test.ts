@@ -87,7 +87,8 @@ describe("attestation-cache verification", () => {
     });
 
     const expectations = await attestationCache.getModelExpectations("deepseek-ai/DeepSeek-V3.1");
-    expect(expectations.nonce).toBe(nonce);
+    expect(expectations).not.toBeNull();
+    expect(expectations!.nonce).toBe(nonce);
     expect(attestationCache.getCachedAttestation("deepseek-ai/DeepSeek-V3.1")).toBeTruthy();
   });
 

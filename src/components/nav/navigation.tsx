@@ -44,11 +44,11 @@ export const Navigation = () => {
     isPending,
     walletSignIn,
     walletSignOut,
+    isSignInPending,
   } = useAuth();
   const track = useGovernanceAnalytics();
   const [isDiscourseLinked, setIsDiscourseLinked] = useState(false);
   const [checkingDiscourse, setCheckingDiscourse] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
 
   // Use the authenticated NEAR account, falling back to connected wallet
   const displayAccountId = nearAccountId || walletAccountId;
@@ -87,8 +87,10 @@ export const Navigation = () => {
   }, [displayAccountId]);
 
   const handleSignIn = async () => {
+    if (isSignInPending) {
+      return;
+    }
     track("wallet_connect_clicked");
-    setIsSigningIn(true);
     let retriedNonce = false;
 
     const reportSuccess = () => {
@@ -133,8 +135,6 @@ export const Navigation = () => {
         });
         toast.error(message);
       }
-    } finally {
-      setIsSigningIn(false);
     }
   };
 
@@ -154,7 +154,7 @@ export const Navigation = () => {
   };
 
   const isOnNewProposalPage = router.pathname === "/proposals/new";
-  const isLoading = isPending || isSigningIn;
+  const isLoading = isPending || isSignInPending;
 
   return (
     <nav className="sticky top-0 z-50 bg-background border-b">

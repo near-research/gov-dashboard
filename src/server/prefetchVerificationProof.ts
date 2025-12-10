@@ -32,9 +32,18 @@ export async function prefetchVerificationProof(
     ) || "http://localhost:3000";
 
   try {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+      "x-verification-prefetch": "true",
+    };
+    const serviceToken = process.env.VERIFICATION_SERVICE_TOKEN;
+    if (serviceToken) {
+      headers["x-verification-service-token"] = serviceToken;
+    }
+
     const response = await fetch(`${baseUrl}/api/verification/proof`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         verificationId: params.verificationId,
         model: params.model,

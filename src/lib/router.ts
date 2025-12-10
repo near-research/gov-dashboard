@@ -443,13 +443,16 @@ export const router = publicProcedure.router({
           message: "Discourse createPost procedure returned no handler",
         });
       } catch (error) {
-        console.error("[discourse] createPost failed", {
-          payload,
-          sessionUserId,
-          error,
-        });
-        throw error;
-      }
+      const errorName = error instanceof Error ? error.name : undefined;
+      const errorMessage = error instanceof Error ? error.message : undefined;
+      console.error("[discourse] createPost failed", {
+        payload,
+        sessionUserId,
+        errorName,
+        errorMessage,
+      });
+      throw error;
+    }
     }),
     unlink: protectedProcedure.handler(async ({ input }) => {
       const nearAccount =

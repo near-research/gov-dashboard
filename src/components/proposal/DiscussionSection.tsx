@@ -69,7 +69,7 @@ export function DiscussionSection({
   topicId,
   onReplyPosted,
 }: DiscussionSectionProps) {
-  const { signedAccountId, nearClient } = useNear();
+  const { signedAccountId, walletSigner } = useNear();
   const track = useGovernanceAnalytics();
   const [replyContent, setReplyContent] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
@@ -116,11 +116,11 @@ export function DiscussionSection({
       setReplyError("Add a reply before submitting.");
       return;
     }
-    if (!nearClient) {
+    if (!signedAccountId) {
       setReplyError("Connect your NEAR wallet before replying.");
       return;
     }
-    if (!signedAccountId) {
+    if (!walletSigner) {
       setReplyError("Connect your NEAR wallet before replying.");
       return;
     }
@@ -137,7 +137,7 @@ export function DiscussionSection({
 
     try {
       const authToken = await sign(`Reply to proposal ${topicId}`, {
-        signer: nearClient,
+        signer: walletSigner,
         recipient: "social.near",
       });
 
@@ -383,7 +383,7 @@ export function DiscussionSection({
                 disabled={
                   replyLoading ||
                   !signedAccountId ||
-                  !nearClient ||
+                  !walletSigner ||
                   !replyContent.trim() ||
                   !isLinked
                 }

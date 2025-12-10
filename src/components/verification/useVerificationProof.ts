@@ -29,6 +29,10 @@ import type {
   NrasResult,
 } from "@/types/verification";
 import { normalizeHashValue } from "@/utils/verification/shared";
+import { createVerificationAuthToken } from "@/lib/verification/near-ai";
+import { useNear } from "@/hooks/useNear";
+import { siwnRecipient } from "@/config/siwn";
+import { sign } from "near-sign-verify";
 
 export type RemoteProof = VerificationProofResponse;
 
@@ -295,6 +299,18 @@ export const useVerificationProof = ({
 
   const expectationsReady = expectationsValidation?.complete ?? false;
 
+  const { walletSigner } = useNear();
+
+  const signProofRequest = useCallback(async () => {
+    if (!walletSigner) {
+      throw new Error("Connect your NEAR wallet to fetch the verification proof.");
+    }
+    return createVerificationAuthToken({
+      walletSigner,
+      verificationId,
+    });
+  }, [verificationId, walletSigner]);
+
   const intelQuote = useMemo(() => {
     const att = remoteProof?.attestation;
     if (!att) return null;
@@ -499,6 +515,7 @@ export const useVerificationProof = ({
       try {
         dispatch({ type: "FETCH_START" });
 
+        const authToken = await signProofRequest();
         const proof = await fetchVerificationProof({
           verificationId,
           model,
@@ -506,6 +523,7 @@ export const useVerificationProof = ({
           responseHash,
           expectationInput,
           signingAlgo,
+          authToken,
         });
         dispatch({ type: "FETCH_SUCCESS", proof });
       } catch (error) {
@@ -529,6 +547,7 @@ export const useVerificationProof = ({
     expectationsReady,
     expectationInput,
     signingAlgo,
+    signProofRequest,
   ]);
 
   const hasAnyData = useMemo(
@@ -717,6 +736,47 @@ export const useVerificationProof = ({
     ];
   }, [verificationState.steps]);
 
+  const attestationNodes = useMemo(
+    () =>
+      remoteProof?.attestationNodes?.map((node) => ({
+        ...node,
+        nrasVerified: node.nras?.verified,
+        intelVerified: node.intel?.verified,
+      })) ?? [],
+    [remoteProof?.attestationNodes]
+  );
+
+  const signatureBinding = useMemo(() => {
+    const signingAddress = signaturePayload?.signing_address?.toLowerCase() ?? null;
+    if (!signingAddress) {
+      return {
+        matches: false,
+        reason: "No signing address available yet",
+      };
+    }
+    const addresses = Array.from(
+      new Set(
+        attestationNodes
+          .map((node) => node.signingAddress ?? "")
+          .filter((addr) => Boolean(addr))
+          .map((addr) => addr.toLowerCase())
+      )
+    );
+    if (!addresses.length) {
+      return {
+        matches: true,
+        reason: "No attested nodes to compare against",
+      };
+    }
+    const matches = addresses.includes(signingAddress);
+    return {
+      matches,
+      reason: matches
+        ? "Signature matches an attested node"
+        : "Signature does not match any attested node",
+    };
+  }, [attestationNodes, signaturePayload?.signing_address]);
+
   const retryFetch = () => {
     dispatch({ type: "SET_RETRYING", value: true });
     dispatch({ type: "RESET_FETCH" });
@@ -811,5 +871,7 @@ export const useVerificationProof = ({
     localSignedText,
     retryFetch,
     exportProof,
+    attestationNodes,
+    signatureBinding,
   };
 };

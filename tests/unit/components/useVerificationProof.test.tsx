@@ -14,6 +14,21 @@ import { officialNearAIExample } from "../../fixtures/verificationMocks";
 import { toast } from "sonner";
 import { verifyMessage } from "ethers";
 
+type VerificationAuthTokenFn = typeof import("@/lib/verification/near-ai")["createVerificationAuthToken"];
+
+const walletSignerMock = { signMessage: vi.fn() };
+const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(async () => "proof-token");
+vi.mock("@/hooks/useNear", () => ({
+  useNear: () => ({
+    walletSigner: walletSignerMock,
+    signedAccountId: "test.near",
+  }),
+}));
+vi.mock("@/lib/verification/near-ai", () => ({
+  createVerificationAuthToken: (...args: Parameters<VerificationAuthTokenFn>) =>
+    createAuthTokenMock(...args),
+}));
+
 const fetchVerificationProofMock = vi.fn();
 const verifyWithNrasServiceMock = vi.fn();
 const mockRecoveredAddress = mockAddress;
@@ -46,6 +61,9 @@ describe("useVerificationProof hook", () => {
     verifyWithNrasServiceMock.mockReset();
     verifyMessageMock.mockReset();
     verifyMessageMock.mockReturnValue(mockRecoveredAddress);
+    walletSignerMock.signMessage.mockReset();
+    createAuthTokenMock.mockReset();
+    createAuthTokenMock.mockResolvedValue("proof-token");
   });
 
   afterEach(() => {
@@ -200,5 +218,38 @@ describe("useVerificationProof hook", () => {
         result.current.independentVerification?.checks &&
         result.current.independentVerification.checks.address === false
     );
+  });
+
+  it("exposes attestation node summaries and signature binding info", async () => {
+    const proofWithNodes: VerificationProofResponse = {
+      ...verifiedProofMock,
+      attestationNodes: [
+        {
+          signingAddress: mockAddress,
+          composeManifest: "services: {}",
+          composeHash: "abcdef123456",
+          nvidiaPayload: {},
+          intelQuote: "intel-quote",
+          nras: { verified: true, reasons: [], raw: {} },
+          intel: { verified: true, reasons: [], raw: {} },
+        },
+      ],
+    };
+
+    const { result } = renderHookWithParams({
+      open: true,
+      prefetchedProof: proofWithNodes,
+      requestHash: "a".repeat(64),
+      responseHash: "b".repeat(64),
+    });
+
+    await waitFor(() => {
+      expect(result.current.attestationNodes).toHaveLength(1);
+    });
+
+    expect(result.current.attestationNodes[0].composeHash).toBe(
+      "abcdef123456"
+    );
+    expect(result.current.signatureBinding.matches).toBe(true);
   });
 });

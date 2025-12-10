@@ -12,6 +12,7 @@ import type {
 } from "./types";
 import { NearAIError, NearAITimeoutError, NearAIConfigurationError } from "./errors";
 import { randomUUID } from "crypto";
+import { buildVerificationHeaders } from "@/lib/verification/near-ai";
 
 const DEFAULT_BASE_URL = "https://cloud-api.near.ai";
 const DEFAULT_TIMEOUT = 120000; // 2 minutes
@@ -65,18 +66,22 @@ export class NearAIClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+      const verificationHeaders = buildVerificationHeaders({
+        verificationId: mergedOptions.verificationId ?? mergedOptions.verification?.verificationId,
+        verificationNonce:
+          mergedOptions.verificationNonce ??
+          mergedOptions.verification?.verificationNonce,
+        requestHash: mergedOptions.verification?.requestHash,
+        responseHash: mergedOptions.verification?.responseHash,
+        signingAlgo: mergedOptions.verification?.signingAlgo,
+        extraHeaders: mergedOptions.verification?.extraHeaders,
+      });
       const headers: HeadersInit = {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "X-Request-Id": requestId,
+        ...verificationHeaders,
       };
-
-      if (mergedOptions?.verificationId) {
-        headers["X-Verification-Id"] = mergedOptions.verificationId;
-      }
-      if (mergedOptions?.verificationNonce) {
-        headers["X-Nonce"] = mergedOptions.verificationNonce;
-      }
 
       try {
         const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
@@ -166,18 +171,21 @@ export class NearAIClient {
     const apiKey = this.resolveApiKey(mergedOptions);
 
     try {
+      const verificationHeaders = buildVerificationHeaders({
+        verificationId: mergedOptions.verificationId ?? mergedOptions.verification?.verificationId,
+        verificationNonce:
+          mergedOptions.verificationNonce ??
+          mergedOptions.verification?.verificationNonce,
+        requestHash: mergedOptions.verification?.requestHash,
+        responseHash: mergedOptions.verification?.responseHash,
+        signingAlgo: mergedOptions.verification?.signingAlgo,
+        extraHeaders: mergedOptions.verification?.extraHeaders,
+      });
       const headers: HeadersInit = {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        ...verificationHeaders,
       };
-
-      // Add verification headers if provided
-      if (mergedOptions?.verificationId) {
-        headers["X-Verification-Id"] = mergedOptions.verificationId;
-      }
-      if (mergedOptions?.verificationNonce) {
-        headers["X-Nonce"] = mergedOptions.verificationNonce;
-      }
 
       const bodyString =
         typeof request === "string"

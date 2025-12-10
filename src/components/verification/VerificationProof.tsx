@@ -18,6 +18,7 @@ import { HardwareAttestationPanel } from "@/components/verification/HardwareAtte
 import { AlertsPanel } from "@/components/verification/AlertsPanel";
 import { InlineProofPanel } from "@/components/verification/InlineProofPanel";
 import { AttestationDetailsPanel } from "@/components/verification/AttestationDetailsPanel";
+import { AttestationNodesPanel } from "@/components/verification/AttestationNodesPanel";
 import { SignatureDetailsPanel } from "@/components/verification/SignatureDetailsPanel";
 import { UnrecognizedFormatPanel } from "@/components/verification/UnrecognizedFormatPanel";
 import { ExternalLink } from "lucide-react";
@@ -97,6 +98,8 @@ export function VerificationProof({
     attestedHashes,
     verificationState,
     derivedStatus,
+    attestationNodes,
+    signatureBinding,
     missingExpectations,
     exportProof,
     retryFetch,
@@ -280,6 +283,13 @@ export function VerificationProof({
                   model={model}
                 />
               )}
+
+              {attestationNodes?.length ? (
+                <AttestationNodesPanel
+                  nodes={attestationNodes}
+                  signatureBinding={signatureBinding}
+                />
+              ) : null}
 
               <AlertsPanel
                 missingExpectations={missingExpectations}

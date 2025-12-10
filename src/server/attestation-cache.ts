@@ -1,13 +1,16 @@
+import { createHash } from "crypto";
 import {
   fetchModelAttestation,
   extractExpectationsFromAttestation,
 } from "@/utils/attestation/fetch-model-attestation";
 import { verificationConfig } from "@/config/verification";
+import { verifyNodeWithIntel, verifyNodeWithNras } from "@/utils/verification/node-verification";
 import {
   collectSigningAddressesFromAttestation,
   validateIntelBinding,
 } from "@/utils/verification/intel";
 import type { AttestationExpectations } from "@/utils/attestation/expectations";
+import type { AttestationNodeSummary } from "@/types/verification";
 
 type CachedExpectations = {
   nonce: string;
@@ -22,7 +25,8 @@ type CachedExpectations = {
 type CachedAttestation = {
   attestation: any;
   nonce: string;
-  expectations: CachedExpectations;
+  expectations: CachedExpectations | null;
+  nodes: AttestationNodeSummary[];
   fetchedAt: number;
   expiresAt: number;
 };
@@ -72,6 +76,17 @@ export function getCachedAttestation(model: string) {
   return entry ? entry.attestation : null;
 }
 
+export function getCachedAttestationDetails(model: string) {
+  const entry = getCachedEntry(model);
+  if (!entry) return null;
+  return {
+    nonce: entry.nonce,
+    nodes: entry.nodes,
+    attestation: entry.attestation,
+    expectations: entry.expectations,
+  };
+}
+
 const parseJsonSafe = (value: any) => {
   if (!value) return null;
   if (typeof value === "object") return value;
@@ -83,6 +98,42 @@ const parseJsonSafe = (value: any) => {
     }
   }
   return null;
+};
+
+const normalizeString = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  return String(value);
+};
+
+const hashComposeManifest = (value: string | null): string | null => {
+  if (!value) return null;
+  return createHash("sha256").update(value).digest("hex");
+};
+
+const buildNodeSummaries = (attestation: any): AttestationNodeSummary[] => {
+  const nodes =
+    Array.isArray(attestation?.model_attestations)
+      ? attestation.model_attestations
+      : Array.isArray(attestation?.attestation?.model_attestations)
+      ? attestation.attestation.model_attestations
+      : [];
+
+  if (!nodes.length && attestation?.attestation && typeof attestation.attestation === "object") {
+    nodes.push(attestation.attestation);
+  }
+
+  return nodes.map((node: any) => {
+    const info = node?.info || {};
+    const compose = normalizeString(info?.compose ?? info?.manifest ?? null);
+    return {
+      signingAddress: normalizeString(node?.signing_address ?? node?.signingAddress ?? null),
+      nvidiaPayload: parseJsonSafe(node?.nvidia_payload ?? node?.nvidiaPayload ?? null) ?? null,
+      intelQuote: node?.intel_quote ?? node?.intelQuote ?? null,
+      composeManifest: compose,
+      composeHash: hashComposeManifest(compose),
+    };
+  });
 };
 
 const pickNvidiaPayload = (attestation: any): any | null => {
@@ -244,7 +295,7 @@ const verifyAttestation = async (
 
 export async function getModelExpectations(
   model: string
-): Promise<CachedExpectations> {
+): Promise<CachedExpectations | null> {
   const cached = getCachedEntry(model);
   if (cached) {
     console.log("[attestation-cache] Using cached expectations:", {
@@ -270,27 +321,55 @@ export async function getModelExpectations(
       nonce: fetchedNonce ? `${fetchedNonce.slice(0, 8)}…` : null,
     });
 
-    const expectations = await extractExpectationsFromAttestation(attestation);
-    console.log("[attestation-cache] Expectations extracted:", {
-      arch: expectations.arch,
-      hasDeviceCertHash: !!expectations.deviceCertHash,
-      hasRimHash: !!expectations.rimHash,
-      hasUeid: !!expectations.ueid,
-      measurementsCount: expectations.measurements?.length || 0,
-    });
+    const expectations = await (async () => {
+      try {
+        return await extractExpectationsFromAttestation(attestation);
+      } catch (err) {
+        console.warn("[attestation-cache] Expectations incomplete, skipping:", {
+          error: err instanceof Error ? err.message : err,
+        });
+        return null;
+      }
+    })();
+    if (expectations) {
+      console.log("[attestation-cache] Expectations extracted:", {
+        arch: expectations.arch,
+        hasDeviceCertHash: !!expectations.deviceCertHash,
+        hasRimHash: !!expectations.rimHash,
+        hasUeid: !!expectations.ueid,
+        measurementsCount: expectations.measurements?.length || 0,
+      });
+    } else {
+      console.warn(
+        "[attestation-cache] Missing required attestation fields; expectations undefined"
+      );
+    }
 
-    await verifyAttestation(attestation, expectations);
+    if (expectations) {
+      await verifyAttestation(attestation, expectations);
+    }
     console.log("[attestation-cache] Attestation verified");
 
-    const cachedExpectations: CachedExpectations = {
-      ...expectations,
-      fetchedAt: Date.now(),
-    };
+    const cachedExpectations: CachedExpectations | null = expectations
+      ? {
+          ...expectations,
+          fetchedAt: Date.now(),
+        }
+      : null;
 
+    const nodes = buildNodeSummaries(attestation);
+    const nodesWithResults = await Promise.all(
+      nodes.map(async (node) => ({
+        ...node,
+        nras: await verifyNodeWithNras(node, expectations),
+        intel: await verifyNodeWithIntel(node, expectations, attestation),
+      }))
+    );
     const entry: CachedAttestation = {
       attestation,
-      nonce: fetchedNonce || expectations.nonce,
+      nonce: fetchedNonce || expectations?.nonce || "",
       expectations: cachedExpectations,
+      nodes: nodesWithResults,
       fetchedAt: Date.now(),
       expiresAt: Date.now() + CACHE_TTL_MS,
     };

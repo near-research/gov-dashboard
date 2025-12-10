@@ -8,6 +8,7 @@ interface FetchVerificationProofParams {
   responseHash?: string;
   expectationInput: PartialExpectations;
   signingAlgo?: string;
+  authToken?: string;
 }
 
 export const fetchVerificationProof = async ({
@@ -17,11 +18,17 @@ export const fetchVerificationProof = async ({
   responseHash,
   expectationInput,
   signingAlgo,
+  authToken,
 }: FetchVerificationProofParams): Promise<RemoteProof> => {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const response = await fetch("/api/verification/proof", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       verificationId,
       model,

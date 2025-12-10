@@ -16,6 +16,20 @@ vi.mock("sonner", () => ({
   },
 }));
 
+type VerificationAuthTokenFn = typeof import("@/lib/verification/near-ai")["createVerificationAuthToken"];
+const walletSignerMock = { signMessage: vi.fn() };
+const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(async () => "proof-token");
+vi.mock("@/hooks/useNear", () => ({
+  useNear: () => ({
+    walletSigner: walletSignerMock,
+    signedAccountId: "test.near",
+  }),
+}));
+vi.mock("@/lib/verification/near-ai", () => ({
+  createVerificationAuthToken: (...args: Parameters<VerificationAuthTokenFn>) =>
+    createAuthTokenMock(...args),
+}));
+
 const createStreamingReader = (chunks: string[]) => {
   const encoder = new TextEncoder();
   let readCount = 0;
@@ -78,6 +92,9 @@ describe("AgentChatPanel", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     window.sessionStorage.clear();
+    walletSignerMock.signMessage.mockReset();
+    createAuthTokenMock.mockReset();
+    createAuthTokenMock.mockResolvedValue("proof-token");
   });
 
   afterEach(() => {

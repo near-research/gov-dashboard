@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authClient, safeSignOut, useSession } from "@/lib/auth/auth-client";
 import { siwnRecipient } from "@/config/siwn";
 import { shouldRetryNonce } from "@/lib/auth/retry";
-import { NearError, type Near } from "near-kit";
+import { NearError, type Near, type SignMessageParams } from "near-kit";
+import type { WalletInterface } from "near-sign-verify";
 
 export interface ViewFunctionParams {
   contractId: string;
@@ -59,6 +60,8 @@ export function useNear() {
   );
   const [isClientReady, setIsClientReady] = useState(false);
   const [clientInitKey, setClientInitKey] = useState(0);
+  const [isSignInPending, setIsSignInPending] = useState(false);
+  const signInPromiseRef = useRef<Promise<string> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,40 +135,70 @@ export function useNear() {
     return walletAccountId ?? "";
   }, [session, walletAccountId]);
 
+  const walletSigner = useMemo<WalletInterface | null>(() => {
+    if (!signedAccountId) {
+      return null;
+    }
+
+    return {
+      signMessage(params: SignMessageParams) {
+        const client = authClient.near.getNearClient();
+        return client.signMessage(params, { signerId: signedAccountId });
+      },
+    };
+  }, [signedAccountId]);
+
   const signIn = useCallback(async () => {
     if (!getSafeNearClient()) {
       throw new Error("NEAR client not initialized");
     }
 
-    let retriedNonce = false;
-
-    while (true) {
-      try {
-        await authClient.requestSignIn.near({ recipient: siwnRecipient });
-        await authClient.signIn.near({ recipient: siwnRecipient });
-
-        const accountId = authClient.near.getAccountId() ?? "";
-        setWalletAccountId(accountId);
-
-        if (refetchSession) {
-          try {
-            await refetchSession();
-          } catch (error) {
-            console.error("Failed to refresh session after NEAR sign-in:", error);
-          }
-        }
-
-        return accountId;
-      } catch (error) {
-        if (!retriedNonce && shouldRetryNonce(error)) {
-          retriedNonce = true;
-          continue;
-        }
-
-        setWalletAccountId("");
-        throw error;
-      }
+    if (signInPromiseRef.current) {
+      return signInPromiseRef.current;
     }
+
+    const runSignIn = async () => {
+      let retriedNonce = false;
+
+      while (true) {
+        try {
+          await authClient.requestSignIn.near({ recipient: siwnRecipient });
+          await authClient.signIn.near({ recipient: siwnRecipient });
+
+          const accountId = authClient.near.getAccountId() ?? "";
+          setWalletAccountId(accountId);
+
+          if (refetchSession) {
+            try {
+              await refetchSession();
+            } catch (error) {
+              console.error("Failed to refresh session after NEAR sign-in:", error);
+            }
+          }
+
+          return accountId;
+        } catch (error) {
+          if (!retriedNonce && shouldRetryNonce(error)) {
+            retriedNonce = true;
+            continue;
+          }
+
+          setWalletAccountId("");
+          throw error;
+        }
+      }
+    };
+
+    const promise = runSignIn();
+    signInPromiseRef.current = promise;
+    setIsSignInPending(true);
+
+    promise.finally(() => {
+      signInPromiseRef.current = null;
+      setIsSignInPending(false);
+    });
+
+    return promise;
   }, [getSafeNearClient, refetchSession]);
 
   const signOut = useCallback(async () => {
@@ -185,6 +218,10 @@ export function useNear() {
       setNearClient(null);
       setIsClientReady(false);
       setClientInitKey((prev) => prev + 1);
+      if (signInPromiseRef.current) {
+        signInPromiseRef.current = null;
+      }
+      setIsSignInPending(false);
     }
   }, [refetchSession]);
 
@@ -255,7 +292,9 @@ export function useNear() {
     viewFunction,
     callFunction,
     nearClient,
+    walletSigner,
     session,
+    isSignInPending,
   };
 }
 

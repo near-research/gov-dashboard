@@ -84,6 +84,7 @@ export interface VerificationProofResponse {
   nrasRaw?: any;
   nonceCheck?: NonceCheck | null;
   intel?: IntelVerificationResult | null;
+  attestationNodes?: AttestationNodeSummary[] | null;
   configMissing?: {
     nearApiKey?: boolean;
     intel?: boolean;
@@ -118,6 +119,16 @@ export interface NrasVerificationRequest {
   expectedRimHash?: string | null;
   expectedUeid?: string | null;
   expectedMeasurements?: string[] | null;
+}
+
+export interface AttestationNodeSummary {
+  signingAddress: string | null;
+  nvidiaPayload: unknown;
+  intelQuote: unknown;
+  composeManifest: string | null;
+  composeHash: string | null;
+  nras?: NrasResult | null;
+  intel?: IntelVerificationResult | null;
 }
 
 export type { VerificationMetadata, VerificationStatus } from "@/types/agui-events";
