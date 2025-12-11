@@ -256,7 +256,9 @@ beforeEach(() => {
       await handler(req, res);
 
       expect(res._getStatusCode()).toBe(400);
-      expect(JSON.parse(res._getData()).error).toMatch(/nvidia_payload/i);
+      expect(JSON.parse(res._getData()).error).toBe(
+        "NRAS verification only supports NVIDIA attestations"
+      );
     });
 
     it("returns 400 when nonce missing", async () => {

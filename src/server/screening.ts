@@ -1,16 +1,8 @@
 import type { NextApiResponse } from "next";
 import type { Evaluation } from "@/types/evaluation";
-import type { VerificationMetadata } from "@/types/agui-events";
-import { extractVerificationMetadata } from "@/verification/normalize";
-import { normalizeVerificationPayload } from "@/verification/normalize";
+import type { VerificationResult } from "@/types/verification";
 import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
-import { computeHash } from "@/verification/hashes";
-import { createHash } from "crypto";
-import {
-  verify,
-  type VerificationResult,
-  type VerifyOptions,
-} from "near-sign-verify";
+import { verify, type VerificationResult as NearAuthVerificationResult, type VerifyOptions } from "near-sign-verify";
 import { getNearAIClient } from "@/lib/near-ai";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
 import { z } from "zod";
@@ -39,13 +31,6 @@ export class ScreeningError extends Error {
     this.statusCode = statusCode;
     this.details = details;
   }
-}
-
-export interface EvaluationProof {
-  verificationId?: string;
-  requestHash: string;
-  responseHash: string;
-  nonce?: string;
 }
 
 export const MAX_TITLE_LENGTH = 500;
@@ -206,7 +191,7 @@ export function sanitizeProposalInput(
 export async function verifyNearAuth(
   authHeader: string | undefined,
   options?: VerifyOptions
-): Promise<{ token: string; result: VerificationResult }> {
+): Promise<{ token: string; result: NearAuthVerificationResult }> {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     throw new ScreeningError(401, "NEAR authentication required", {
       code: "missing_token",
@@ -236,14 +221,22 @@ export async function verifyNearAuth(
 
 export interface EvaluationRequestResult {
   evaluation: Evaluation;
-  verification?: VerificationMetadata;
-  verificationId?: string;
+  verificationResult: VerificationResult;
   model: string;
-  proof?: EvaluationProof;
-  requestHash: string;
-  responseHash: string;
-  nonce?: string;
+  chatId?: string | null;
+  verificationId?: string | null;
+  requestBody: string;
+  responseText: string;
 }
+
+const buildFailedVerificationResult = (
+  message: string
+): VerificationResult => ({
+  verified: false,
+  reasons: [message],
+  status: "failed",
+  warnings: [message],
+});
 
 export async function requestEvaluation(
   title: string,
@@ -260,15 +253,10 @@ export async function requestEvaluation(
     stream: false,
   };
   const requestBodyString = JSON.stringify(requestPayload);
-  const requestHash = createHash("sha256")
-    .update(requestBodyString)
-    .digest("hex");
 
   try {
     const data = await client.chatCompletions(requestPayload);
-
-    const responseHash = computeHash(JSON.stringify(data));
-
+    const responseText = JSON.stringify(data);
     const contentText = data.choices?.[0]?.message?.content;
 
     if (!contentText) {
@@ -278,78 +266,45 @@ export async function requestEvaluation(
     const evaluation = parseEvaluation(contentText);
     evaluation.model = model;
 
-    const verificationRaw = extractVerificationMetadata(data);
-    const verificationMessageId = data?.id ?? undefined;
-    const { verification, verificationId } = normalizeVerificationPayload(
-      verificationRaw,
-      verificationMessageId
-    );
-    const sessionVerificationId =
-      verificationId || verificationMessageId || undefined;
-
-    let sessionNonce: string | undefined;
-    if (sessionVerificationId) {
-      const session = client.createSession(sessionVerificationId);
-      client.updateSessionHashes(sessionVerificationId, {
-        requestHash,
-        responseHash,
-      });
-      sessionNonce = session.nonce;
-    }
-
-    const verificationWithNonce: VerificationMetadata | undefined = verification
-      ? { ...verification, nonce: verification.nonce ?? sessionNonce }
-      : sessionNonce
-      ? {
-          source: "near-ai-cloud",
-          status: "pending",
-          nonce: sessionNonce,
-          messageId: sessionVerificationId ?? undefined,
-        }
-      : undefined;
-
-    const proof: EvaluationProof | undefined =
-      sessionVerificationId && requestHash && responseHash
-        ? {
-            verificationId: sessionVerificationId,
-            requestHash,
-            responseHash,
-            nonce: sessionNonce,
-          }
-        : undefined;
+    const chatId = data?.id ?? null;
+    const verificationResult =
+      chatId
+        ? await client.verifyChatPayload({
+            requestBody: requestBodyString,
+            responseText,
+            chatId,
+            model,
+          })
+        : buildFailedVerificationResult(
+            "Missing chat ID from NEAR AI response"
+          );
 
     return {
       evaluation,
-      verification: verificationWithNonce ?? undefined,
-      verificationId: sessionVerificationId ?? undefined,
+      verificationResult,
       model,
-      proof,
-      requestHash,
-      responseHash,
-      nonce: sessionNonce,
+      chatId,
+      verificationId: chatId,
+      requestBody: requestBodyString,
+      responseText,
     };
   } catch (error) {
-    // Re-throw ScreeningError as-is
     if (error instanceof ScreeningError) {
       throw error;
     }
 
-    // Handle NEAR AI client errors
     if (error instanceof Error) {
       console.error("[Screening] NEAR AI API error:", error.message);
-
       const statusCategory =
         error.message.includes("timeout") || error.message.includes("504")
           ? "NEAR AI timed out while evaluating the proposal. Please try again or shorten the content."
           : "NEAR AI API error";
-
       throw new ScreeningError(502, statusCategory, {
         message: error.message,
         details: error.message,
       });
     }
 
-    // Unknown error
     throw new ScreeningError(500, "Failed to evaluate proposal", {
       message: error instanceof Error ? error.message : "Unknown error",
     });

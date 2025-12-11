@@ -1,5 +1,8 @@
 import type { VerificationMetadata } from "@/types/agui-events";
-import type { PartialExpectations } from "@/types/verification";
+import type {
+  PartialExpectations,
+  VerificationResult,
+} from "@/types/verification";
 import type { VerificationProofResponse } from "@/types/verification";
 
 export interface SummaryProof extends PartialExpectations {
@@ -27,6 +30,7 @@ export interface TextSummaryResponse {
   verificationId?: string | null;
   proof?: SummaryProof | null;
   remoteProof?: VerificationProofResponse | null;
+  verificationResult?: VerificationResult | null;
 }
 
 export interface ProposalSummaryResponse extends TextSummaryResponse {

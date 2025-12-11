@@ -10,8 +10,6 @@ import {
   requestEvaluation,
   respondWithScreeningError,
 } from "@/server/screening";
-import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
-import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 
 /**
  * POST /api/saveAnalysis/[topicId]
@@ -145,13 +143,9 @@ export default async function handler(
   try {
     const {
       evaluation,
-      verification,
+      verificationResult,
       verificationId,
       model,
-      proof,
-      requestHash,
-      responseHash,
-      nonce,
     } = await requestEvaluation(sanitizedTitle, sanitizedContent);
 
     // Extract computed scores from evaluation
@@ -195,49 +189,18 @@ export default async function handler(
       throw dbError;
     }
 
-    const proofPayload =
-      proof ??
-      (verificationId
-        ? {
-            verificationId,
-            requestHash,
-            responseHash,
-            nonce,
-          }
-        : undefined);
-
-    let remoteProof = null;
-    if (
-      proofPayload?.verificationId &&
-      proofPayload.requestHash &&
-      proofPayload.responseHash
-    ) {
-      remoteProof = await prefetchVerificationProof(origin, {
-        verificationId: proofPayload.verificationId,
-        model,
-        requestHash: proofPayload.requestHash,
-        responseHash: proofPayload.responseHash,
-        nonce: proofPayload.nonce ?? null,
-      });
-    }
-
-    const mergedVerification =
-      mergeVerificationStatusFromProof(verification, remoteProof) ?? verification;
-
     return res.status(200).json({
       success: true,
       saved: true,
       passed: evaluation.overallPass,
       evaluation,
-      verification: mergedVerification,
+      verificationResult,
       verificationId,
       qualityScore,
       attentionScore,
       version: versionToScreen,
       evaluatedBy: signerAccountId,
       model,
-      proof: proofPayload ?? null,
-      remoteProof,
       message: evaluation.overallPass
         ? `Evaluation passed and saved for revision ${versionToScreen}`
         : `Evaluation failed but saved for revision ${versionToScreen}`,

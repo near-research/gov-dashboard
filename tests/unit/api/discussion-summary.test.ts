@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import handler from "@/pages/api/discourse/topics/[id]/summarize";
 import { rateLimitConfig } from "@/config/rateLimit";
-import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { discussionCache, CacheKeys } from "@/utils/cache-utils";
+import { streamChatCompletion } from "@/lib/near-ai/stream";
+import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 
 const mockChatCompletions = vi.fn();
 const mockCreateSession = vi.fn((id: string) => ({
@@ -17,6 +18,17 @@ const mockGetSession = vi.fn((id: string) => ({
   createdAt: Date.now(),
   expiresAt: Date.now() + 300000,
 }));
+const mockVerifyChatPayload = vi.fn().mockResolvedValue({
+  verified: true,
+  status: "verified",
+  hashValidation: null,
+  signatureValidation: null,
+  chatId: "discussion-stream",
+  requestHash: "",
+  responseHash: "",
+  signature: null,
+  warnings: [],
+});
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
@@ -24,12 +36,14 @@ vi.mock("@/lib/near-ai/client", () => ({
     getSession: mockGetSession,
     updateSessionHashes: vi.fn(),
     clearSession: vi.fn(),
-    verify: vi.fn().mockResolvedValue({
-      verified: true,
-      reasons: [],
-    }),
+    verifyChatPayload: mockVerifyChatPayload,
   }),
 }));
+
+vi.mock("@/lib/near-ai/stream", () => ({
+  streamChatCompletion: vi.fn(),
+}));
+const mockStreamChatCompletion = vi.mocked(streamChatCompletion);
 
 vi.mock("@/server/prefetchVerificationProof", () => ({
   prefetchVerificationProof: vi.fn(),
@@ -171,6 +185,24 @@ describe("discussion summary API", () => {
     mockChatCompletions.mockReset();
     prefetchMock.mockReset();
     stubDiscourseFetch();
+    mockStreamChatCompletion.mockReset();
+    mockStreamChatCompletion.mockResolvedValue({
+      summary: "Community summary",
+      chatId: "chatcmpl-discussion",
+      responseText: "stream-response",
+    });
+    mockVerifyChatPayload.mockReset();
+    mockVerifyChatPayload.mockResolvedValue({
+      verified: true,
+      status: "verified",
+      hashValidation: null,
+      signatureValidation: null,
+      chatId: "discussion-stream",
+      requestHash: "",
+      responseHash: "",
+      signature: null,
+      warnings: [],
+    });
   });
 
   afterEach(() => {
@@ -200,7 +232,7 @@ describe("discussion summary API", () => {
     expect(res.getStatusCode()).toBe(200);
     expect(body.summary).toBe("Community summary");
     expect(body.cached).toBe(false);
-    expect(body.verification?.status).toBe("verified");
+    expect(body.verificationResult?.status).toBe("verified");
     expect(body.remoteProof).toBe(remoteProof);
     expect(body.engagement.totalLikes).toBe(3);
     expect(body.engagement.highlyEngagedReplies).toBe(0);
@@ -250,13 +282,15 @@ describe("discussion summary API", () => {
 
     expect(res.getStatusCode()).toBe(200);
     expect(body.remoteProof).toBeUndefined();
-    expect(body.verification?.status).toBe("pending");
+    expect(body.verificationResult?.status).toBe("verified");
   });
 
   it("returns details when the AI summary is empty during development", async () => {
     setEnvVar("NODE_ENV", "development");
-    mockChatCompletions.mockResolvedValue({
-      choices: [],
+    mockStreamChatCompletion.mockResolvedValueOnce({
+      summary: "",
+      chatId: "empty-summary",
+      responseText: "",
     } as any);
 
     const req = createRequest();

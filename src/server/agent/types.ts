@@ -46,4 +46,5 @@ export type StreamResult = {
   finishReason: string | null;
   verificationId?: string;
   toolStepStarted: boolean;
+  rawSseText: string;
 };

@@ -13,9 +13,12 @@ import {
 import { verifyMessage } from "ethers";
 var fetchProofMock = vi.fn();
 
-type VerificationAuthTokenFn = typeof import("@/utils/verification/auth")["createVerificationAuthToken"];
+type VerificationAuthTokenFn =
+  typeof import("@/utils/verification/auth")["createVerificationAuthToken"];
 const walletSignerMock = { signMessage: vi.fn() };
-const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(async () => "proof-token");
+const createAuthTokenMock = vi.fn<VerificationAuthTokenFn>(
+  async () => "proof-token"
+);
 vi.mock("@/hooks/useNear", () => ({
   useNear: () => ({
     walletSigner: walletSignerMock,
@@ -47,7 +50,9 @@ const ensureDom = () => {
   (globalThis as any).Blob = dom.window.Blob;
   (globalThis as any).File = dom.window.File;
   (globalThis as any).URL = dom.window.URL;
-  (globalThis as any).getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  (globalThis as any).getComputedStyle = dom.window.getComputedStyle.bind(
+    dom.window
+  );
   (globalThis as any).MutationObserver = dom.window.MutationObserver;
   (globalThis as any).requestAnimationFrame =
     (globalThis as any).requestAnimationFrame ||
@@ -60,21 +65,21 @@ const ensureDom = () => {
 // Ensure a DOM exists even if another test file restored globals.
 ensureDom();
 
-const {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-  act,
-  within,
-} = await import("@testing-library/react");
+const { render, screen, waitFor, fireEvent, act, within } = await import(
+  "@testing-library/react"
+);
 
 const compatVi = vi as any;
 if (!compatVi.stubGlobal) {
   compatVi.stubGlobal = (name: string, value: any) => {
     const previous = (globalThis as any)[name];
     (globalThis as any)[name] = value;
-    return { restore: () => (previous === undefined ? delete (globalThis as any)[name] : (globalThis as any)[name] = previous) };
+    return {
+      restore: () =>
+        previous === undefined
+          ? delete (globalThis as any)[name]
+          : ((globalThis as any)[name] = previous),
+    };
   };
 }
 if (!compatVi.resetModules) {
@@ -100,11 +105,10 @@ describe("VerificationProof component", () => {
       "requestAnimationFrame",
       (cb: FrameRequestCallback) => setTimeout(cb, 0) as unknown as number
     );
-    vi.stubGlobal(
-      "cancelAnimationFrame",
-      (id: number) => clearTimeout(id)
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
+    fetchProofMock.mockResolvedValue(
+      verifiedProofMock as VerificationProofResponse
     );
-    fetchProofMock.mockResolvedValue(verifiedProofMock as VerificationProofResponse);
     walletSignerMock.signMessage.mockReset();
     createAuthTokenMock.mockReset();
     createAuthTokenMock.mockResolvedValue("proof-token");
@@ -123,7 +127,9 @@ describe("VerificationProof component", () => {
     delete navigator.clipboard;
   });
 
-  const renderComponent = (props: Partial<React.ComponentProps<typeof VerificationProof>> = {}) =>
+  const renderComponent = (
+    props: Partial<React.ComponentProps<typeof VerificationProof>> = {}
+  ) =>
     render(
       <VerificationProof
         verificationId="id1"
@@ -168,13 +174,15 @@ describe("VerificationProof component", () => {
   });
 
   it("shows unverified hardware when not validated", async () => {
-    fetchProofMock.mockResolvedValueOnce({ ...failedProofMock } as VerificationProofResponse);
+    fetchProofMock.mockResolvedValueOnce({
+      ...failedProofMock,
+    } as VerificationProofResponse);
     renderComponent();
     await act(async () => fireEvent.click(screen.getByRole("button")));
     await waitFor(() => expect(fetchProofMock).toHaveBeenCalled());
-    expect(
-      screen.getAllByText(/Attestation failed/i).length
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Attestation failed/i).length).toBeGreaterThan(
+      0
+    );
   });
 
   it("renders badge reasons when NRAS/intel/nonce fail", async () => {
@@ -192,9 +200,9 @@ describe("VerificationProof component", () => {
     await act(async () => fireEvent.click(screen.getByRole("button")));
     await waitFor(() => expect(fetchProofMock).toHaveBeenCalled());
     expect(screen.getAllByText(/Nonce mismatch/i).length).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText(/Attestation failed/i).length
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Attestation failed/i).length).toBeGreaterThan(
+      0
+    );
     expect(
       screen.getAllByText(/Intel attestation failed or missing/i).length
     ).toBeGreaterThan(0);
@@ -205,7 +213,9 @@ describe("VerificationProof component", () => {
     renderComponent();
     await act(async () => fireEvent.click(screen.getByRole("button")));
     await waitFor(() => expect(fetchProofMock).toHaveBeenCalled());
-    expect(screen.getAllByText(/Failed to fetch proof/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Failed to fetch proof/i).length
+    ).toBeGreaterThan(0);
   });
 
   it("shows hash mismatch in steps and badge reasons", async () => {
@@ -230,7 +240,10 @@ describe("VerificationProof component", () => {
     fetchProofMock.mockResolvedValueOnce({
       ...failedProofMock,
       configMissing: { intel: true, intelApiKey: true },
-      results: { verified: false, reasons: ["Intel attestation not configured"] },
+      results: {
+        verified: false,
+        reasons: ["Intel attestation not configured"],
+      },
     } as VerificationProofResponse);
     renderComponent();
     await act(async () => fireEvent.click(screen.getByRole("button")));
@@ -256,7 +269,12 @@ describe("VerificationProof component", () => {
   it("shows nonce mismatch step/error", async () => {
     fetchProofMock.mockResolvedValueOnce({
       ...verifiedProofMock,
-      nonceCheck: { expected: mockNonce, attested: "wrong", nras: "wrong", valid: false },
+      nonceCheck: {
+        expected: mockNonce,
+        attested: "wrong",
+        nras: "wrong",
+        valid: false,
+      },
       results: { verified: false, reasons: ["Nonce mismatch"] },
     } as VerificationProofResponse);
     renderComponent();
@@ -279,9 +297,9 @@ describe("VerificationProof component", () => {
     renderComponent();
     await act(async () => fireEvent.click(screen.getByRole("button")));
     await waitFor(() => expect(fetchProofMock).toHaveBeenCalled());
-    expect(
-      screen.getAllByText(/Attestation failed/i).length
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Attestation failed/i).length).toBeGreaterThan(
+      0
+    );
     expect(
       screen.getAllByText(/Intel attestation failed or missing/i).length
     ).toBeGreaterThan(0);
@@ -306,7 +324,9 @@ describe("VerificationProof component", () => {
   });
 
   it("renders NRAS summary when verification passes", async () => {
-    fetchProofMock.mockResolvedValueOnce({ ...verifiedProofMock } as VerificationProofResponse);
+    fetchProofMock.mockResolvedValueOnce({
+      ...verifiedProofMock,
+    } as VerificationProofResponse);
     renderComponent();
     await act(async () => fireEvent.click(screen.getByRole("button")));
     await waitFor(() => expect(fetchProofMock).toHaveBeenCalled());
@@ -331,7 +351,11 @@ describe("VerificationProof component", () => {
           attestation: {
             gateway_attestation: {
               signing_address: mockAddress,
-              nvidia_payload: { nonce: mockNonce, arch: "HOPPER", evidence_list: [] },
+              nvidia_payload: {
+                nonce: mockNonce,
+                arch: "HOPPER",
+                evidence_list: [],
+              },
             },
           },
           signature: verifiedProofMock.signature,
@@ -377,9 +401,8 @@ describe("VerificationProof component", () => {
     await act(async () => fireEvent.click(screen.getByRole("button")));
     await waitFor(() => expect(fetchProofMock).toHaveBeenCalled());
 
-    const intelTile =
-      screen.getByText(/Intel TDX Quote/i).closest("div")?.parentElement
-        ?.parentElement;
+    const intelTile = screen.getByText(/Intel TDX Quote/i).closest("div")
+      ?.parentElement?.parentElement;
     expect(intelTile).toBeTruthy();
     const copyBtn = within(intelTile as HTMLElement).getByRole("button", {
       name: /Copy/i,
@@ -420,7 +443,7 @@ describe("VerificationProof component", () => {
     expect(button).toHaveTextContent(/Failed/i);
   });
 
-  it("renders inline verification data when provided", async () => {
+  it("renders verification data when provided", async () => {
     fetchProofMock.mockResolvedValueOnce({
       ...verifiedProofMock,
       verification: {
@@ -442,7 +465,7 @@ describe("VerificationProof component", () => {
     });
     await act(async () => fireEvent.click(screen.getByRole("button")));
     await waitFor(() => expect(fetchProofMock).toHaveBeenCalled());
-    expect(screen.getByText(/Inline Verification Data/i)).toBeInTheDocument();
+    expect(screen.getByText(/Verification Data/i)).toBeInTheDocument();
     expect(screen.getByText(/TEE Signature/i)).toBeInTheDocument();
     expect(screen.getByText(/Measurement/i)).toBeInTheDocument();
   });

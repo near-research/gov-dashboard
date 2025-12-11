@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useNear } from "@/hooks/useNear";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 import { VerificationProof } from "@/components/verification/VerificationProof";
+import { siwnRecipient } from "@/config/siwn";
 
 interface ScreeningButtonProps {
   topicId: string;
@@ -70,7 +71,7 @@ export function ScreeningButton({
 
       const authToken = await sign(`Screen proposal ${topicId}`, {
         signer: walletSigner,
-        recipient: "social.near",
+        recipient: siwnRecipient,
       });
 
       const saveResponse = await fetch(`/api/saveAnalysis/${topicId}`, {

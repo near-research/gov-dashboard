@@ -95,7 +95,7 @@ export default async function handler(
 
   // Request evaluation from AI
   try {
-    const { evaluation, verification, verificationId, model } =
+    const { evaluation, verificationResult, verificationId, model } =
       await requestEvaluation(sanitizedTitle, sanitizedContent);
 
     let expectations: Awaited<
@@ -125,7 +125,7 @@ export default async function handler(
     return res.status(200).json({
       evaluation,
       authenticatedAs: accountId,
-      verification,
+      verificationResult,
       verificationId,
       model,
       expectations,

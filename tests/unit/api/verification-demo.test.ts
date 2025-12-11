@@ -19,6 +19,12 @@ const mockGetSession = vi.fn((id: string) => ({
 const mockVerify = vi
   .fn()
   .mockResolvedValue({ verified: true, reasons: [] });
+const mockVerifyChatPayload = vi.fn().mockResolvedValue({
+  verified: true,
+  reasons: [],
+  status: "verified",
+  chatId: "verify-chat",
+});
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
@@ -27,6 +33,7 @@ vi.mock("@/lib/near-ai/client", () => ({
     updateSessionHashes: vi.fn(),
     clearSession: vi.fn(),
     verify: mockVerify,
+    verifyChatPayload: mockVerifyChatPayload,
   }),
 }));
 
@@ -126,14 +133,14 @@ describe("/api/summarize/test", () => {
     expect(body.summary).toContain("House of Stake");
     expect(body.verificationId).toBeDefined();
     expect(body.proof?.requestHash).toBeDefined();
-    expect(mockVerify).toHaveBeenCalledWith({
-      verificationId: body.verificationId,
-      model: expect.anything(),
-      chatId: "chatcmpl-house",
-      requestHash: body.proof?.requestHash,
-      responseHash: body.proof?.responseHash,
-    });
-    expect(body.remoteProof?.verified).toBe(true);
+    expect(mockVerifyChatPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: "chatcmpl-house",
+        model: "deepseek-ai/DeepSeek-V3.1",
+        requestBody: expect.any(String),
+        responseText: expect.any(String),
+      })
+    );
     expect(body.verification?.status).toBe("verified");
 
     if (body.verificationId) {

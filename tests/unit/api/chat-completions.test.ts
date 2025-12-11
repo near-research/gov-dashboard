@@ -6,7 +6,7 @@ import { EventEmitter } from "events";
 import { createNearAiClientMock } from "../mocks/near-ai-client";
 
 const { client: nearAIClientMock, spies } = createNearAiClientMock();
-const { createSession, updateSessionHashes, clearSession } = spies;
+const { createSession, updateSessionHashes, clearSession, verifyChatPayload } = spies;
 const { chatCompletions: chatSpy, chatCompletionsStream: streamSpy } =
   nearAIClientMock;
 const getNearAIClientSpy = vi.fn(() => nearAIClientMock);
@@ -94,6 +94,13 @@ describe("POST /api/chat/completions", () => {
     createSession.mockClear();
     updateSessionHashes.mockClear();
     clearSession.mockClear();
+    verifyChatPayload.mockReset();
+    verifyChatPayload.mockResolvedValue({
+      verified: true,
+      reasons: [],
+      status: "verified",
+      chatId: "abc",
+    });
   });
 
   it("rejects invalid bodies with 400", async () => {
@@ -129,6 +136,13 @@ describe("POST /api/chat/completions", () => {
     };
     const req = createRequest(reqBody);
     const res = createResponse();
+    const verificationResult = {
+      verified: true,
+      reasons: [],
+      status: "verified",
+      chatId: "abc",
+    };
+    verifyChatPayload.mockResolvedValue(verificationResult);
 
     await handler(req as any, res as any);
 
@@ -137,46 +151,51 @@ describe("POST /api/chat/completions", () => {
       verificationNonce: undefined,
       timeout: undefined,
     });
+    const responseText = JSON.stringify({ id: "abc", choices: [] });
+    expect(verifyChatPayload).toHaveBeenCalledWith({
+      requestBody: JSON.stringify(reqBody),
+      responseText,
+      chatId: "abc",
+      model: "m",
+    });
     expect(res.statusCode).toBe(200);
     expect(res.body?.id).toBe("abc");
+    expect(res.body?.verification).toBe(verificationResult);
   });
 
-  it("registers verification hashes when NearAI returns metadata", async () => {
+  it("attaches the verification result from the NEAR AI client", async () => {
     const reqBody = {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       stream: false,
     };
-    const verificationPayload = {
-      status: "verified",
-      messageId: "resp-123",
-    };
     const responseData = {
       id: "resp-123",
       choices: [],
-      verification: verificationPayload,
+    };
+    const verificationResult = {
+      verified: true,
+      reasons: [],
+      status: "verified",
+      chatId: "resp-123",
     };
     chatSpy.mockResolvedValue(responseData);
+    verifyChatPayload.mockResolvedValue(verificationResult);
+    const responseText = JSON.stringify(responseData);
 
     const req = createRequest(reqBody);
     const res = createResponse();
 
-    const requestHash = createHash("sha256")
-      .update(JSON.stringify(reqBody))
-      .digest("hex");
-    const responseHash = createHash("sha256")
-      .update(JSON.stringify(responseData))
-      .digest("hex");
-
     await handler(req as any, res as any);
 
-    expect(createSession).toHaveBeenCalledWith("resp-123");
-    expect(updateSessionHashes).toHaveBeenCalledWith("resp-123", {
-      requestHash,
-      responseHash,
+    expect(verifyChatPayload).toHaveBeenCalledWith({
+      requestBody: JSON.stringify(reqBody),
+      responseText,
+      chatId: "resp-123",
+      model: "m",
     });
     expect(res.body?.verificationId).toBe("resp-123");
-    expect(res.body?.verification?.status).toBe("verified");
+    expect(res.body?.verification).toBe(verificationResult);
   });
 
   it("streams responses with upstream content-type and hashes streamed payloads", async () => {
@@ -225,7 +244,7 @@ describe("POST /api/chat/completions", () => {
       .update(JSON.stringify(requestBody))
       .digest("hex");
 
-    expect(createSession).toHaveBeenCalledWith("ver-123");
+    expect(createSession).toHaveBeenCalledWith("ver-123", "nonce-xyz");
     expect(updateSessionHashes.mock.calls[0]).toEqual([
       "ver-123",
       { requestHash: expectedRequestHash },

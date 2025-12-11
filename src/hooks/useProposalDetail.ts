@@ -205,6 +205,8 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
     setScreeningChecked(false);
     setRevisions([]);
     setCurrentRevision(1);
+    setError("");
+    setLoading(true);
   }, [proposalId]);
 
   useEffect(

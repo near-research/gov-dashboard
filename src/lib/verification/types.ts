@@ -33,7 +33,7 @@ export interface SignatureValidationResult {
 
 export interface VerificationResult {
   verified: boolean;
-  level: VerificationLevel;
+  status: VerificationStatus;
   hashValidation: HashValidationResult | null;
   signatureValidation: SignatureValidationResult | null;
   chatId: string | null;
@@ -46,7 +46,7 @@ export interface VerificationResult {
   responseText?: string;
 }
 
-export type VerificationLevel = "full" | "partial" | "failed";
+export type VerificationStatus = "verified" | "pending" | "failed";
 
 export interface AttestationReport {
   model_attestations?: Array<{

@@ -567,11 +567,15 @@ const anyError = Object.values(steps).some((s) => s.status === "error");
     allSuccess,
   });
 
+  const finalReasons = attestedAddress
+    ? reasons.filter((reason) => reason !== "No TEE addresses available")
+    : reasons;
+
   return {
     overall,
     steps,
     recoveredAddress,
     attestedAddress,
-    reasons: reasons.length ? reasons : undefined,
+    reasons: finalReasons.length ? finalReasons : undefined,
   };
 }

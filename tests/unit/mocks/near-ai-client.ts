@@ -11,6 +11,12 @@ export const createNearAiClientMock = () => {
   const chatCompletions = vi.fn();
   const chatCompletionsStream = vi.fn();
   const getConfig = () => ({ baseUrl: "https://example.com", apiKey: "test" });
+  const verifyChatPayload = vi.fn().mockResolvedValue({
+    verified: true,
+    reasons: [],
+    status: "verified",
+    chatId: null,
+  });
 
   return {
     client: {
@@ -20,8 +26,9 @@ export const createNearAiClientMock = () => {
       createSession,
       updateSessionHashes,
       clearSession,
+      verifyChatPayload,
     },
-    spies: { createSession, updateSessionHashes, clearSession },
+    spies: { createSession, updateSessionHashes, clearSession, verifyChatPayload },
   };
 };
 export type NearAiClientMock = ReturnType<typeof createNearAiClientMock>["client"];

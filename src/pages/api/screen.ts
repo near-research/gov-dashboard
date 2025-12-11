@@ -8,9 +8,6 @@ import {
 } from "@/server/screening";
 import { createRateLimiter } from "@/server/rateLimiter";
 import { rateLimitConfig } from "@/config/rateLimit";
-import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
-import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
-
 const screenLimiter = createRateLimiter(rateLimitConfig.screen);
 
 /**
@@ -81,16 +78,8 @@ export default async function handler(
   }
 
   try {
-    const {
-      evaluation,
-      verification,
-      verificationId,
-      model,
-      proof,
-      requestHash,
-      responseHash,
-      nonce,
-    } = await requestEvaluation(sanitizedTitle, sanitizedProposal);
+    const { evaluation, verificationResult, model, chatId } =
+      await requestEvaluation(sanitizedTitle, sanitizedProposal);
 
     console.log(
       `[Screen] Evaluation complete for ${nearAddress} - Pass: ${
@@ -100,43 +89,12 @@ export default async function handler(
       ).toFixed(0)}%`
     );
 
-    const proofPayload =
-      proof ??
-      (verificationId
-        ? {
-            verificationId,
-            requestHash,
-            responseHash,
-            nonce,
-          }
-        : undefined);
-
-    let remoteProof = null;
-    if (
-      proofPayload?.verificationId &&
-      proofPayload.requestHash &&
-      proofPayload.responseHash
-    ) {
-      remoteProof = await prefetchVerificationProof(origin, {
-        verificationId: proofPayload.verificationId,
-        model,
-        requestHash: proofPayload.requestHash,
-        responseHash: proofPayload.responseHash,
-        nonce: proofPayload.nonce ?? null,
-      });
-    }
-
-    const mergedVerification =
-      mergeVerificationStatusFromProof(verification, remoteProof) ?? verification;
-
     return res.status(200).json({
       evaluation,
       authenticatedAs: nearAddress,
-      verification: mergedVerification,
-      verificationId,
+      verificationResult,
+      verificationId: chatId,
       model,
-      proof: proofPayload ?? null,
-      remoteProof,
     });
   } catch (error) {
     return respondWithScreeningError(res, error, "Failed to evaluate proposal");

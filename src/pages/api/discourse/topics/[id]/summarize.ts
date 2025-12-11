@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createHash, randomBytes } from "crypto";
 import { discussionCache, CacheKeys } from "@/utils/cache-utils";
 import { buildDiscussionSummaryPrompt } from "@/lib/prompts/summarizeDiscussion";
 import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
@@ -11,36 +10,14 @@ import type {
   DiscourseTopic,
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
-import type {
-  DiscussionSummaryResponse,
-  SummaryProof,
-} from "@/types/summaries";
-import { extractVerificationMetadata } from "@/verification/normalize";
-import { normalizeVerificationPayload } from "@/verification/normalize";
-import { getModelExpectations } from "@/server/attestation-cache";
-import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
-import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
+import type { DiscussionSummaryResponse } from "@/types/summaries";
+import type { VerificationResult } from "@/types/verification";
 import { getNearAIClient } from "@/lib/near-ai";
-
-const ensureVerificationSession = (
-  verificationId?: string | null,
-  proof?: SummaryProof | null
-) => {
-  if (!verificationId || !proof) return;
-  try {
-    const client = getNearAIClient();
-    client.createSession(verificationId, proof.nonce ?? undefined);
-    client.updateSessionHashes(verificationId, {
-      requestHash: proof.requestHash ?? null,
-      responseHash: proof.responseHash ?? null,
-    });
-  } catch (err) {
-    console.error(
-      "[discussion summary] Failed to ensure verification session:",
-      err
-    );
-  }
-};
+import { streamChatCompletion } from "@/lib/near-ai/stream";
+import {
+  finalizeSummaryVerification,
+  createSummaryVerificationId,
+} from "@/server/summaryVerification";
 
 const discussionLimiter = createRateLimiter(rateLimitConfig.discussionSummary);
 const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
@@ -107,31 +84,18 @@ export default async function handler(
   }
 
   try {
-    // ===================================================================
-    // CACHE CHECK
-    // ===================================================================
     const cacheKey = CacheKeys.discussion(id);
     const cached = discussionCache.get(cacheKey);
-
     if (cached) {
-      ensureVerificationSession(cached.verificationId, cached.proof || null);
-      const verification = mergeVerificationStatusFromProof(
-        cached.verification,
-        cached.remoteProof
-      );
       return res.status(200).json({
         ...cached,
-        verification,
         cached: true,
-        cacheAge: Math.round((Date.now() - cached.generatedAt) / 1000), // Age in seconds
+        cacheAge: Math.round((Date.now() - cached.generatedAt) / 1000),
       });
     }
 
     const model = "deepseek-ai/DeepSeek-V3.1";
 
-    // ===================================================================
-    // FETCH FROM DISCOURSE (NO AUTH)
-    // ===================================================================
     const headers: HeadersInit = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -147,10 +111,9 @@ export default async function handler(
 
     const topicData: DiscourseTopic = await topicResponse.json();
 
-    // Get all posts - KEEP THE FIRST ONE (original proposal)
     const posts = topicData.post_stream?.posts || [];
     const originalPost: DiscoursePost | undefined = posts[0];
-    const replies: DiscoursePost[] = posts.slice(1); // Get replies separately
+    const replies: DiscoursePost[] = posts.slice(1);
 
     if (!originalPost) {
       return res.status(404).json({ error: "Original post not found" });
@@ -176,11 +139,16 @@ export default async function handler(
         generatedAt: Date.now(),
         cached: false,
         model,
+        verificationResult: {
+          verified: false,
+          reasons: ["No replies to summarize"],
+          status: "failed",
+          warnings: [],
+        },
       };
       return res.status(200).json(emptyResponse);
     }
 
-    // Strip HTML
     const stripHtml = (html: string): string => {
       return html
         .replace(/<[^>]*>/g, " ")
@@ -188,7 +156,6 @@ export default async function handler(
         .trim();
     };
 
-    // Add engagement data (like counts) to each reply
     const repliesWithEngagement: ReplyWithEngagement[] = replies.map(
       (post: DiscoursePost) => ({
         ...post,
@@ -198,7 +165,6 @@ export default async function handler(
       })
     );
 
-    // Calculate engagement statistics for context
     const totalLikes = repliesWithEngagement.reduce(
       (sum: number, r: ReplyWithEngagement) => sum + r.likeCount,
       0
@@ -215,12 +181,7 @@ export default async function handler(
       (r) => r.likeCount > 5
     ).length;
 
-    // ===================================================================
-    // BUILD DISCUSSION WITH ORIGINAL POST CONTEXT
-    // ===================================================================
     const originalContent = stripHtml(originalPost.cooked);
-
-    // Truncate original post if very long (keep first 2000 chars)
     const MAX_ORIGINAL_LENGTH = 2000;
     const truncatedOriginal =
       originalContent.length > MAX_ORIGINAL_LENGTH
@@ -228,7 +189,6 @@ export default async function handler(
           "\n\n[... original post truncated for brevity ...]"
         : originalContent;
 
-    // Build the original post context
     const originalPostContext = `**ORIGINAL PROPOSAL (Post #1) by @${originalPost.username}:**
 
 ${truncatedOriginal}
@@ -239,17 +199,12 @@ ${truncatedOriginal}
 
 `;
 
-    // Build discussion text in CHRONOLOGICAL order with engagement and threading info
     const repliesText = repliesWithEngagement
-      .slice(0, 100) // Take first 100 replies (chronological)
+      .slice(0, 100)
       .map((post: ReplyWithEngagement, index: number) => {
         const cleanContent = stripHtml(post.cooked);
-
-        // Show like counts to help AI understand relative engagement
         const engagementNote =
           post.likeCount > 0 ? ` [${post.likeCount} likes]` : "";
-
-        // CRITICAL: Show which post this is replying to for conversation threading
         const replyToNote = post.reply_to_post_number
           ? ` [Replying to Post #${post.reply_to_post_number}${
               post.reply_to_user ? ` by @${post.reply_to_user.username}` : ""
@@ -262,23 +217,17 @@ ${truncatedOriginal}
       })
       .join("\n\n---\n\n");
 
-    // Combine original post + replies
     const fullDiscussion = originalPostContext + repliesText;
-
-    // Truncate if needed (now accounting for original post length)
-    const MAX_LENGTH = 14000; // Increased slightly to account for original post
+    const MAX_LENGTH = 14000;
     const truncatedDiscussion =
       fullDiscussion.length > MAX_LENGTH
         ? fullDiscussion.substring(0, MAX_LENGTH) +
           "\n\n[... additional replies truncated ...]"
         : fullDiscussion;
 
-    // ===================================================================
-    // GENERATE AI SUMMARY USING PROMPT BUILDER
-    // ===================================================================
     const client = getNearAIClient();
-
-    // Use the prompt builder function
+    const verificationId = createSummaryVerificationId();
+    const session = client.createSession(verificationId);
     const prompt = buildDiscussionSummaryPrompt(
       { title: topicData.title },
       replies,
@@ -294,60 +243,34 @@ ${truncatedOriginal}
       messages: [{ role: "user", content: prompt }],
       temperature: 0.4,
       max_tokens: 1000,
-      stream: false,
+      stream: true,
     };
     const requestBody = JSON.stringify(nearRequest);
-    const requestHash = createHash("sha256").update(requestBody).digest("hex");
-    const generatedVerificationId = `summary-${randomBytes(8).toString("hex")}`;
-    const session = client.createSession(generatedVerificationId);
-    let expectations: Awaited<ReturnType<typeof getModelExpectations>> | null =
-      null;
-    try {
-      expectations = await getModelExpectations(model);
-    } catch (err) {
-      console.error(
-        "[Discussion Summary] Failed to fetch hardware expectations:",
-        err
-      );
-    }
 
-    const data = await client.chatCompletions(nearRequest, {
-      verificationId: generatedVerificationId,
-      verificationNonce: session.nonce,
-    });
-
-    const responseText = JSON.stringify(data);
-    const responseHash = createHash("sha256")
-      .update(responseText)
-      .digest("hex");
-    const summary: string = data.choices[0]?.message?.content ?? "";
-    const rawVerification = extractVerificationMetadata(data);
-    const nearMessageId = data?.id || generatedVerificationId;
-    const { verification, verificationId: normalizedVerificationId } =
-      normalizeVerificationPayload(rawVerification, nearMessageId);
-    const effectiveVerificationId =
-      normalizedVerificationId || generatedVerificationId;
-
-    client.updateSessionHashes(generatedVerificationId, {
-      requestHash,
-      responseHash,
-    });
-
-    if (effectiveVerificationId !== generatedVerificationId) {
-      client.createSession(effectiveVerificationId, session.nonce);
-      client.updateSessionHashes(effectiveVerificationId, {
-        requestHash,
-        responseHash,
-      });
-    }
+    const { summary, chatId, responseText } = await streamChatCompletion(
+      client,
+      nearRequest,
+      {
+        verificationId,
+        verificationNonce: session.nonce,
+      }
+    );
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
     }
 
-    // ===================================================================
-    // BUILD RESPONSE
-    // ===================================================================
+    const verificationData = await finalizeSummaryVerification({
+      client,
+      origin,
+      model,
+      verificationId,
+      sessionNonce: session.nonce,
+      requestBody,
+      responseText,
+      chatId,
+    });
+
     const response: DiscussionSummaryResponse = {
       success: true,
       summary,
@@ -363,48 +286,17 @@ ${truncatedOriginal}
         highlyEngagedReplies,
         maxLikes,
       },
-      generatedAt: Date.now(), // For cache age tracking
+      generatedAt: Date.now(),
       cached: false,
       model,
-      verification,
-      verificationId: effectiveVerificationId,
-      proof: {
-        requestHash,
-        responseHash,
-        nonce: session.nonce,
-        arch: expectations?.arch,
-        deviceCertHash: expectations?.deviceCertHash,
-        rimHash: expectations?.rimHash ?? undefined,
-        ueid: expectations?.ueid ?? undefined,
-        measurements: expectations?.measurements,
-      },
+      verification: verificationData.verificationMetadata,
+      verificationResult: verificationData.verificationResult,
+      verificationId,
+      proof: verificationData.proof,
+      remoteProof: verificationData.remoteProof ?? undefined,
     };
 
-    const remoteProof = await prefetchVerificationProof(origin, {
-      verificationId: effectiveVerificationId,
-      model,
-      requestHash,
-      responseHash,
-      nonce: session.nonce,
-      expectedArch: expectations?.arch ?? null,
-      expectedDeviceCertHash: expectations?.deviceCertHash ?? null,
-      expectedRimHash: expectations?.rimHash ?? null,
-      expectedUeid: expectations?.ueid ?? null,
-      expectedMeasurements: expectations?.measurements ?? null,
-    });
-    if (remoteProof) {
-      response.remoteProof = remoteProof;
-      response.verification =
-        mergeVerificationStatusFromProof(response.verification, remoteProof) ??
-        response.verification;
-    }
-
-    // ===================================================================
-    // STORE IN CACHE (5 minute TTL for active discussions)
-    // ===================================================================
     discussionCache.set(cacheKey, response);
-
-    ensureVerificationSession(response.verificationId, response.proof);
     return res.status(200).json(response);
   } catch (error: unknown) {
     console.error("[Discussion Summary] Error:", error);

@@ -25,6 +25,8 @@ import type {
   SignaturePayload,
   NearAIVerificationOptions,
 } from "@/types/verification";
+import type { VerificationResult as SimpleVerificationResult } from "@/lib/verification";
+import { verifyExistingResponse } from "@/lib/verification";
 
 const DEFAULT_BASE_URL = "https://cloud-api.near.ai";
 const DEFAULT_TIMEOUT = 120000; // 2 minutes
@@ -64,6 +66,55 @@ export class NearAIClient {
       retryBaseDelayMs: options.retryBaseDelayMs ?? 100,
       verificationId: options.verificationId,
       verificationNonce: options.verificationNonce,
+    };
+  }
+
+  /**
+   * Verify a previously fetched chat response using the simplified verifier.
+   */
+  async verifyChatPayload(options: {
+    requestBody: string;
+    responseText: string;
+    chatId: string;
+    model: string;
+    signingAlgo?: string;
+    skipAttestation?: boolean;
+  }): Promise<VerificationResult> {
+    const apiKey = this.resolveApiKey();
+    const result = await verifyExistingResponse({
+      requestBody: options.requestBody,
+      responseText: options.responseText,
+      chatId: options.chatId,
+      model: options.model,
+      apiKey,
+      signingAlgo: options.signingAlgo,
+      skipAttestation: options.skipAttestation,
+    });
+
+    return {
+      verified: result.verified,
+      reasons: result.warnings ?? [],
+      status: result.status,
+      warnings: result.warnings ?? [],
+      attestedAddresses: result.signatureValidation?.attestedAddresses,
+      signature: result.signature ?? null,
+      requestHash: result.requestHash ? result.requestHash : null,
+      responseHash: result.responseHash ? result.responseHash : null,
+      chatId: result.chatId ?? null,
+      signatureVerification: {
+        verified: result.signatureValidation?.valid ?? false,
+        recoveredAddress: result.signatureValidation?.recoveredAddress ?? null,
+        attestedAddresses: result.signatureValidation?.attestedAddresses ?? [],
+      },
+      nras: null,
+      nonceCheck: undefined,
+      intel: null,
+      attestation: null,
+      attestationNodes: null,
+      configMissing: undefined,
+      results: undefined,
+      sessionRequestHash: null,
+      sessionResponseHash: null,
     };
   }
 

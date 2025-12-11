@@ -5,7 +5,11 @@ import { shortenFingerprint } from "@/verification/normalize";
 
 export interface InlineProofPanelProps {
   verification?: VerificationMetadata;
-  renderCodeField: (label: string, value?: string, copyable?: boolean) => React.ReactNode;
+  renderCodeField: (
+    label: string,
+    value?: string,
+    copyable?: boolean
+  ) => React.ReactNode;
   renderDataField: (
     label: string,
     value?: unknown,
@@ -18,19 +22,32 @@ export function InlineProofPanel({
   renderCodeField,
   renderDataField,
 }: InlineProofPanelProps) {
+  const formatSignature = (value?: unknown): string | undefined => {
+    if (!value) return undefined;
+    return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  };
+
   return (
     <>
       <Separator />
       <div className="space-y-3">
         <h4 className="text-xs font-semibold uppercase text-muted-foreground">
-          Inline Verification Data
+          Response Verification Data
         </h4>
         {renderCodeField(
           "Measurement",
-          verification?.measurement && shortenFingerprint(verification.measurement)
+          verification?.measurement &&
+            shortenFingerprint(verification.measurement)
         )}
-        {renderCodeField("TEE Signature", verification?.signature)}
-        {renderDataField("Attestation Report", verification?.attestationReport, true)}
+        {renderCodeField(
+          "TEE Signature Payload",
+          formatSignature(verification?.signature)
+        )}
+        {renderDataField(
+          "Attestation Report",
+          verification?.attestationReport,
+          true
+        )}
         {renderDataField("Proof Payload", verification?.proof, true)}
       </div>
     </>

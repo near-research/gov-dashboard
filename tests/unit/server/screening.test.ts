@@ -15,14 +15,12 @@ import { verify as verifyNearToken } from "near-sign-verify";
 import { siwnRecipient } from "@/config/siwn";
 
 const mockChatCompletions = vi.fn();
-const createSessionSpy = vi.fn();
-const updateSessionHashesSpy = vi.fn();
+const mockVerifyChatPayload = vi.fn();
 
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
-    createSession: createSessionSpy,
-    updateSessionHashes: updateSessionHashesSpy,
+    verifyChatPayload: mockVerifyChatPayload,
   }),
 }));
 
@@ -49,11 +47,19 @@ describe("screening", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockChatCompletions.mockReset();
-    createSessionSpy.mockReset();
-    createSessionSpy.mockReturnValue({
-      nonce: "mock-nonce",
+    mockVerifyChatPayload.mockReset();
+    mockVerifyChatPayload.mockResolvedValue({
+      verified: true,
+      status: "verified",
+      reasons: [],
+      warnings: [],
+      hashValidation: null,
+      signatureValidation: null,
+      chatId: "verification-123",
+      requestHash: "request-hash",
+      responseHash: "response-hash",
+      signature: null,
     });
-    updateSessionHashesSpy.mockReset();
   });
 
   it("sanitizes control characters, strips HTML, and truncates long content", () => {
@@ -143,12 +149,10 @@ describe("screening", () => {
       })
     );
     expect(result.verificationId).toBe("verification-123");
-    expect(result.verification?.nonce).toBeDefined();
-    expect(createSessionSpy).toHaveBeenCalledWith("verification-123");
-    expect(updateSessionHashesSpy).toHaveBeenCalledWith(
-      "verification-123",
+    expect(result.verificationResult.status).toBe("verified");
+    expect(mockVerifyChatPayload).toHaveBeenCalledWith(
       expect.objectContaining({
-        requestHash: expect.any(String),
+        chatId: "verification-123",
       })
     );
   });

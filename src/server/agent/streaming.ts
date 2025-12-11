@@ -361,5 +361,6 @@ export async function consumeStream({
     finishReason,
     verificationId,
     toolStepStarted,
+    rawSseText,
   };
 }

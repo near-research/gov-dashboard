@@ -58,6 +58,9 @@ export interface SignaturePayload {
 export interface VerificationResult {
   verified: boolean;
   reasons: string[];
+  status?: "verified" | "pending" | "failed";
+  warnings?: string[];
+  attestedAddresses?: string[];
   attestation?: unknown;
   signature?: SignaturePayload | null;
   nras?: NrasVerificationResult | null;
@@ -89,6 +92,7 @@ export interface VerificationResult {
   responseHash?: string | null;
   sessionRequestHash?: string | null;
   sessionResponseHash?: string | null;
+  chatId?: string | null;
 }
 
 /** Named stages within the NEAR verification workflow. */

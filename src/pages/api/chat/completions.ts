@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { extractVerificationMetadata, normalizeVerificationPayload } from "@/verification/normalize";
 import { createHash } from "crypto";
 import { getNearAIClient, NearAIError, NearAITimeoutError } from "@/lib/near-ai";
+import { extractChatId } from "@/lib/verification";
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -234,6 +234,7 @@ export default async function handler(
       const decoder = new TextDecoder();
       const hash = verificationId ? createHash("sha256") : null;
       let rawResponseBuffer = "";
+      let accumulatedResponse = "";
       let loggedLength = 0;
       let totalBytes = 0;
       let aborted = false;
@@ -267,17 +268,15 @@ export default async function handler(
           if (aborted) break;
 
           if (value) {
+            const chunkText = decoder.decode(value, { stream: true });
+            accumulatedResponse += chunkText;
             hash?.update(value);
             totalBytes += value.byteLength;
 
             if (loggedLength < STREAM_LOG_BUFFER_CAP) {
-              const chunkText = decoder.decode(value, { stream: true });
               const remaining = STREAM_LOG_BUFFER_CAP - loggedLength;
               rawResponseBuffer += chunkText.slice(0, remaining);
               loggedLength = rawResponseBuffer.length;
-            } else {
-              // Drain decoder to avoid holding internal buffers when not logging.
-              decoder.decode(value, { stream: true });
             }
 
             // Write exact bytes without modification
@@ -289,6 +288,7 @@ export default async function handler(
 
         const finalChunk = decoder.decode();
         if (finalChunk) {
+          accumulatedResponse += finalChunk;
           const remaining = STREAM_LOG_BUFFER_CAP - loggedLength;
           if (remaining > 0) {
             rawResponseBuffer += finalChunk.slice(0, remaining);
@@ -308,6 +308,27 @@ export default async function handler(
               bufferedLength: rawResponseBuffer.length,
               bufferTruncated: totalBytes > rawResponseBuffer.length,
             });
+          }
+          const chatId = extractChatId(accumulatedResponse);
+          if (chatId) {
+            try {
+              const verificationResult = await client.verifyChatPayload({
+                requestBody: requestBodyString,
+                responseText: accumulatedResponse,
+                chatId,
+                model,
+              });
+              if (shouldLogVerification) {
+                console.log("[verification] Stream verification result:", {
+                  verificationResult,
+                });
+              }
+            } catch (streamVerificationError) {
+              console.warn(
+                "[verification] Stream verification failed:",
+                streamVerificationError
+              );
+            }
           }
         } else if (shouldLogVerification && !aborted && verificationId) {
           console.log("[verification] Stream complete (no hash)", {
@@ -341,23 +362,17 @@ export default async function handler(
           .update(responseText)
           .digest("hex");
 
-        const rawVerification = extractVerificationMetadata(responseData);
-        const { verification, verificationId: normalizedVerificationId } =
-          normalizeVerificationPayload(rawVerification, responseData?.id);
+        const verificationResult = await client.verifyChatPayload({
+          requestBody: requestBodyString,
+          responseText,
+          chatId: String(responseData?.id ?? ""),
+          model,
+        });
 
         const payload = responseData as ChatCompletionResponse &
           Record<string, unknown>;
-        if (verification) {
-          payload.verification = verification;
-        }
-        if (normalizedVerificationId) {
-          payload.verificationId = normalizedVerificationId;
-          client.createSession(normalizedVerificationId, verificationNonce ?? undefined);
-          client.updateSessionHashes(normalizedVerificationId, {
-            requestHash,
-            responseHash,
-          });
-        }
+        payload.verification = verificationResult;
+        payload.verificationId = responseData?.id ?? null;
 
         res.status(200).json(payload);
       } catch (error: unknown) {

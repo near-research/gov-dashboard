@@ -105,27 +105,18 @@ describe("hardware-expectations", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("reads expectations from nested model attestation payloads/info", async () => {
-    const modelNode = {
-      nvidia_payload: JSON.stringify({
-        eat_nonce: "model-nonce",
-        arch: "H200",
-        measurements: [{ hash: "model-measurement" }],
-      }),
-      info: JSON.stringify({
-        device_cert_hash: "model-device-hash",
-        rim: "model-rim",
-        ueid: "model-ueid",
-      }),
+  it("reads expectations from straightforward nvidia_payload entries", async () => {
+    const payload = {
+      nonce: "model-nonce",
+      arch: "H200",
+      device_cert_hash: "model-device-hash",
+      rim: "model-rim",
+      ueid: "model-ueid",
+      measurements: ["model-measurement"],
     };
-
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        nvidia_payload: {
-          model_attestations: [modelNode],
-        },
-      }),
+      json: async () => ({ nvidia_payload: payload }),
     });
     // @ts-ignore
     global.fetch = fetchMock;
@@ -208,6 +199,10 @@ describe("hardware-expectations", () => {
     const intelPayload = {
       gateway_attestation: {
         request_nonce: "intel-nonce",
+        signing_address: "0x" + "b".repeat(40),
+        intel_quote: {
+          report_data: "0x" + "c".repeat(128),
+        },
         info: {
           mr_aggregated: "mr-agg",
           compose_hash: "comp-hash",

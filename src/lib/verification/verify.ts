@@ -10,7 +10,7 @@ import type {
   HashValidationResult,
   SignatureValidationResult,
   VerificationResult,
-  VerificationLevel,
+  VerificationStatus,
   AttestationReport,
 } from "./types";
 
@@ -243,12 +243,12 @@ export const sendChatRequest = async (
   return { responseText, chatId };
 };
 
-const determineLevel = (
+const determineStatus = (
   hashValid: boolean,
   sigValid: SignatureValidationResult
-): VerificationLevel => {
+): VerificationStatus => {
   if (!hashValid || !sigValid.valid) return "failed";
-  return sigValid.teeAttested ? "full" : "partial";
+  return "verified";
 };
 
 export const verifyExistingResponse = async (options: {
@@ -305,7 +305,7 @@ export const verifyExistingResponse = async (options: {
       attestedAddresses
     );
 
-    const level = determineLevel(hashValidation.valid, signatureValidation);
+    const status = determineStatus(hashValidation.valid, signatureValidation);
 
     if (
       signatureValidation.valid &&
@@ -319,7 +319,7 @@ export const verifyExistingResponse = async (options: {
 
     return {
       verified: hashValidation.valid && signatureValidation.valid,
-      level,
+      status,
       hashValidation,
       signatureValidation,
       chatId,
@@ -331,7 +331,7 @@ export const verifyExistingResponse = async (options: {
   } catch (error) {
     return {
       verified: false,
-      level: "failed",
+      status: "failed",
       hashValidation: null,
       signatureValidation: null,
       chatId,
@@ -359,7 +359,7 @@ export const verifyChat = async (options: {
     if (!chatId) {
       return {
         verified: false,
-        level: "failed",
+        status: "failed",
         hashValidation: null,
         signatureValidation: null,
         chatId: null,
@@ -383,7 +383,7 @@ export const verifyChat = async (options: {
   } catch (error) {
     return {
       verified: false,
-      level: "failed",
+      status: "failed",
       hashValidation: null,
       signatureValidation: null,
       chatId: null,

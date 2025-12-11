@@ -15,13 +15,19 @@ vi.mock("@/server/agent/verification-flow", () => ({
 
 const createSessionSpy = vi.fn();
 const updateSessionHashesSpy = vi.fn();
-const mockNearAIClient = {
-  chatCompletions: vi.fn(),
-  chatCompletionsStream: vi.fn(),
-  getConfig: () => ({ baseUrl: "https://api.near.ai", apiKey: "key" }),
-  createSession: createSessionSpy,
-  updateSessionHashes: updateSessionHashesSpy,
-};
+  const mockNearAIClient = {
+    chatCompletions: vi.fn(),
+    chatCompletionsStream: vi.fn(),
+    getConfig: () => ({ baseUrl: "https://api.near.ai", apiKey: "key" }),
+    createSession: createSessionSpy,
+    updateSessionHashes: updateSessionHashesSpy,
+    verifyChatPayload: vi.fn().mockResolvedValue({
+      verified: true,
+      reasons: [],
+      status: "verified",
+      chatId: "agent-chat",
+    }),
+  };
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => mockNearAIClient,
   createNearAIClient: () => mockNearAIClient,
@@ -150,12 +156,14 @@ describe("agent SSE + chat streaming integration", () => {
       finishReason: "tool_calls",
       verificationId: "initial-ver-id",
       toolStepStarted: true,
+      rawSseText: "data: foo\n\ndata: bar\n\n",
     };
     const secondResult = {
       content: "Second pass",
       finishReason: "stop",
       verificationId: "remote-ver-id",
       toolStepStarted: false,
+      rawSseText: "data: baz\n\n",
     };
 
     const verificationPayload = {
@@ -378,7 +386,7 @@ describe("agent SSE + chat streaming integration", () => {
     await chatHandler(req as any, res as any);
 
     expect(res.body).toContain("data: one");
-    expect(sessionSpy).toHaveBeenCalledWith("chat-ver");
+    expect(sessionSpy).toHaveBeenCalledWith("chat-ver", "nonce");
     sessionSpy.mockRestore();
   });
 });

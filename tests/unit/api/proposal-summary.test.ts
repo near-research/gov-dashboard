@@ -5,6 +5,7 @@ import handler from "@/pages/api/proposals/[id]/summarize";
 import { rateLimitConfig } from "@/config/rateLimit";
 import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { proposalCache, CacheKeys } from "@/utils/cache-utils";
+import { streamChatCompletion } from "@/lib/near-ai/stream";
 
 const mockChatCompletions = vi.fn();
 const mockCreateSession = vi.fn((id: string) => ({
@@ -17,6 +18,17 @@ const mockGetSession = vi.fn((id: string) => ({
   createdAt: Date.now(),
   expiresAt: Date.now() + 300000,
 }));
+const mockVerifyChatPayload = vi.fn().mockResolvedValue({
+  verified: true,
+  status: "verified",
+  hashValidation: null,
+  signatureValidation: null,
+  chatId: "proposal-chat",
+  requestHash: "",
+  responseHash: "",
+  signature: null,
+  warnings: [],
+});
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
@@ -24,12 +36,14 @@ vi.mock("@/lib/near-ai/client", () => ({
     getSession: mockGetSession,
     updateSessionHashes: vi.fn(),
     clearSession: vi.fn(),
-    verify: vi.fn().mockResolvedValue({
-      verified: true,
-      reasons: [],
-    }),
+    verifyChatPayload: mockVerifyChatPayload,
   }),
 }));
+
+vi.mock("@/lib/near-ai/stream", () => ({
+  streamChatCompletion: vi.fn(),
+}));
+const mockStreamChatCompletion = vi.mocked(streamChatCompletion);
 
 vi.mock("@/server/prefetchVerificationProof", () => ({
   prefetchVerificationProof: vi.fn(),
@@ -160,6 +174,19 @@ describe("proposal summary API", () => {
     mockChatCompletions.mockReset();
     prefetchMock.mockReset();
     stubDiscourseFetch();
+    mockStreamChatCompletion.mockReset();
+    mockStreamChatCompletion.mockResolvedValue({
+      summary: "Executive summary",
+      chatId: "chatcmpl-proposal",
+      responseText: "proposal-response",
+    });
+    mockVerifyChatPayload.mockReset();
+    mockVerifyChatPayload.mockResolvedValue({
+      verified: true,
+      reasons: [],
+      status: "verified",
+      chatId: "proposal-chat",
+    });
   });
 
   afterEach(() => {
@@ -188,7 +215,7 @@ describe("proposal summary API", () => {
     expect(res.getStatusCode()).toBe(200);
     expect(body.cached).toBe(false);
     expect(body.summary).toBe("Executive summary");
-    expect(body.verification?.status).toBe("verified");
+    expect(body.verificationResult?.status).toBe("verified");
     expect(body.remoteProof).toBe(remoteProof);
     expect(res.headers["X-RateLimit-Limit"]).toBe(
       rateLimitConfig.proposalSummary.maxRequests.toString()
@@ -234,6 +261,6 @@ describe("proposal summary API", () => {
     const body = res.getBody() as any;
     expect(res.getStatusCode()).toBe(200);
     expect(body.remoteProof).toBeUndefined();
-    expect(body.verification?.status).toBe("pending");
+    expect(body.verificationResult?.status).toBe("verified");
   });
 });

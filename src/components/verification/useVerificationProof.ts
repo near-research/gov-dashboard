@@ -512,6 +512,22 @@ export const useVerificationProof = ({
     });
   }, [verificationId, walletSigner]);
 
+  const hasAttestedAddresses = useMemo(() => {
+    const attestedFromVerification =
+      (
+        verification as { attestedAddresses?: string[] } | undefined
+      )?.attestedAddresses;
+    return Boolean(
+      attestedFromVerification?.length ||
+        remoteProof?.attestation?.model_attestations?.length ||
+        remoteProof?.attestation?.gateway_attestation?.signing_address
+    );
+  }, [
+    verification,
+    remoteProof?.attestation?.gateway_attestation?.signing_address,
+    remoteProof?.attestation?.model_attestations,
+  ]);
+
   const intelQuote = useMemo(() => {
     const att = remoteProof?.attestation;
     if (!att) return null;
@@ -525,6 +541,9 @@ export const useVerificationProof = ({
 
   const missingExpectations = useMemo(() => {
     const missing: string[] = [];
+    if (hasAttestedAddresses) {
+      return missing;
+    }
     if (!expectationsValidation?.complete) {
       const missingFields = expectationsValidation?.missing ?? [];
       if (missingFields.includes("nonce") || !expectationInput.nonce)
@@ -540,7 +559,7 @@ export const useVerificationProof = ({
       if (missingFields.includes("measurements")) missing.push("measurements");
     }
     return missing;
-  }, [expectationsValidation, expectationInput]);
+  }, [expectationsValidation, expectationInput, hasAttestedAddresses]);
 
   const verifyWithNRAS = useCallback(async () => {
     if (!nvidiaPayloadForNras) {
@@ -694,7 +713,10 @@ export const useVerificationProof = ({
       signatureText: signaturePayload?.text || null,
       signature: signaturePayload?.signature || null,
       signatureAddress: signaturePayload?.signing_address || null,
-      attestedAddress: null,
+      attestedAddress:
+        (
+          verification as { attestedAddresses?: string[] } | undefined
+        )?.attestedAddresses?.[0] ?? null,
       attestationResult: attestationSummary?.attestationResult || null,
       nrasVerified: nrasVerified ?? undefined,
       nrasReasons: nrasReasons ?? undefined,
@@ -718,6 +740,7 @@ export const useVerificationProof = ({
     attestationPayload?.raw?.gateway_attestation?.intel_quote,
     attestationPayload?.modelAttestation?.intel_quote,
     attestationSummary?.attestationResult,
+    verification,
   ]);
 
   const derivedStatus: VerificationStatus = useMemo(() => {

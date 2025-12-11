@@ -3,20 +3,27 @@ import * as attestationCache from "@/server/attestation-cache";
 import * as fetchModel from "@/utils/attestation/fetch-model-attestation";
 import { __attestationCacheTestHooks } from "@/server/attestation-cache";
 import { mockAddress } from "../../fixtures/verification";
+import * as intelTdx from "@/utils/verification/intel-tdx";
 
 const mockFetchModel = vi.spyOn(fetchModel, "fetchModelAttestation");
+const verifyIntelSpy = vi.spyOn(intelTdx, "verifyIntelTdxAttestation");
 
 describe("attestation-cache verification", () => {
-  const originalFetch = global.fetch;
-  const originalIntelUrl = process.env.INTEL_TDX_ATTESTATION_URL;
-  const originalIntelKey = process.env.INTEL_TDX_API_KEY;
-  const nonce = "a".repeat(64);
+const originalFetch = global.fetch;
+const originalIntelUrl = process.env.INTEL_TDX_ATTESTATION_URL;
+const originalIntelKey = process.env.INTEL_TDX_API_KEY;
+const nonce = "a".repeat(64);
+const signingAddressHex = "2016f58821af58cbdfffdE6955ddb76f18f1b358".toLowerCase();
+const reportDataHex =
+  "0x" +
+  signingAddressHex +
+  nonce +
+  "0".repeat(128 - signingAddressHex.length - nonce.length);
 
   const buildAttestation = () => ({
     gateway_attestation: {
       request_nonce: nonce,
       signing_address: "0x2016F58821aF58cbdfffdE6955dDb76F18f1b358",
-      intel_quote: { report_data: `nonce:${nonce}` },
       event_log: JSON.stringify([
         {
           device_cert_hash: "devhash",
@@ -24,11 +31,19 @@ describe("attestation-cache verification", () => {
           ueid: "ueid",
         },
       ]),
+      nvidia_payload: JSON.stringify({
+        nonce,
+        arch: "HOPPER",
+        evidence_list: [{}],
+        device_cert_hash: "devhash",
+        rim: "rimhash",
+        ueid: "ueid",
+        measurements: ["m1"],
+      }),
     },
     model_attestations: [
       {
         signing_address: "0x2016F58821aF58cbdfffdE6955dDb76F18f1b358",
-        intel_quote: { report_data: `nonce:${nonce}` },
         event_log: JSON.stringify([
           {
             measurements: ["m1"],
@@ -55,12 +70,21 @@ describe("attestation-cache verification", () => {
     __attestationCacheTestHooks.clear();
     process.env.INTEL_TDX_ATTESTATION_URL = "https://intel.example";
     process.env.INTEL_TDX_API_KEY = "fake-key";
+    verifyIntelSpy.mockReset();
+    verifyIntelSpy.mockResolvedValue({
+      verified: true,
+      reportDataValid: true,
+      signingAddressBound: true,
+      nonceBound: true,
+      reasons: [],
+    });
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
     process.env.INTEL_TDX_ATTESTATION_URL = originalIntelUrl;
     process.env.INTEL_TDX_API_KEY = originalIntelKey;
+    verifyIntelSpy.mockReset();
   });
 
   it("caches expectations only when NRAS and Intel verification succeed", async () => {

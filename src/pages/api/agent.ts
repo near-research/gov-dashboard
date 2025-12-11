@@ -16,6 +16,7 @@ import { getStreamingResponse, consumeStream } from "@/server/agent/streaming";
 import { startSseSession, createEventWriter } from "@/server/agent/sse";
 import { validateAgentRequest } from "@/server/agent/validation";
 import type { ToolMessage } from "@/server/agent/types";
+import type { VerificationResult } from "@/types/verification";
 
 export default async function handler(
   req: NextApiRequest,
@@ -93,6 +94,39 @@ export default async function handler(
       sessionVerificationId: body.verificationId,
       sessionRequestHash: requestHash,
     });
+
+    let firstVerificationResult: VerificationResult | null = null;
+    if (firstResult.verificationId && firstResult.rawSseText) {
+      try {
+        firstVerificationResult = await client.verifyChatPayload({
+          requestBody: requestBodyString,
+          responseText: firstResult.rawSseText,
+          chatId: firstResult.verificationId,
+          model: AGENT_MODEL,
+        });
+        if (firstVerificationResult) {
+          const payload = {
+            ...firstVerificationResult,
+            stage: "initial_reasoning" as const,
+          };
+          console.log("[Agent] Stream verification result", {
+            verificationId: firstResult.verificationId,
+            status: firstVerificationResult.status,
+          });
+          writeEvent({
+            type: EventType.CUSTOM,
+            name: "verification",
+            value: payload,
+            timestamp: Date.now(),
+          });
+        }
+      } catch (verificationError) {
+        console.warn(
+          "[Agent] Stream verification failed",
+          verificationError
+        );
+      }
+    }
 
     if (
       !firstResult.content &&

@@ -23,11 +23,7 @@ import {
 } from "@/types/agent-ui";
 import type { RemoteProof } from "@/types/verification";
 import { AGENT_MODEL } from "@/agent/contract";
-import { normalizeSignaturePayload } from "@/verification/normalize";
-import { extractHashesFromSignedText } from "@/verification/hash-utils";
 import { useGovernanceAnalytics } from "@/lib/analytics";
-import { useNear } from "@/hooks/useNear";
-import { createVerificationAuthToken } from "@/utils/verification/auth";
 
 type AgentRole = "user" | "assistant" | "system";
 
@@ -267,8 +263,6 @@ export const AgentChatPanel = ({
 
   const track = useGovernanceAnalytics();
   const analyticsPath = trackingPath ?? "/";
-  const { walletSigner } = useNear();
-
   useEffect(() => {
     track("agent_chat_opened", {
       props: { path: analyticsPath },
@@ -390,137 +384,6 @@ export const AgentChatPanel = ({
 
   const failActiveTools = () => {
     dispatchEvents({ type: "mark_tools_failed" });
-  };
-
-  const fetchProofForMessage = async (
-    verificationId: string,
-    eventId: string,
-    proof: MessageProof
-  ) => {
-    const messageIdForStatus = proof.messageId ?? verificationId;
-
-    const reportProofFetchFailure = (reason: unknown) => {
-      const message =
-        typeof reason === "string"
-          ? reason
-          : reason instanceof Error
-          ? reason.message
-          : "Failed to fetch verification proof";
-      console.error("Automatic proof fetch failed:", reason);
-      updateMessageEvent(eventId, {
-        verification: {
-          source: "near-ai-cloud",
-          status: "failed",
-          messageId: messageIdForStatus,
-          error: message.slice(0, 200),
-        },
-      });
-    };
-
-    updateMessageEvent(eventId, {
-      verification: {
-        source: "near-ai-cloud",
-        status: "pending",
-        messageId: messageIdForStatus,
-      },
-    });
-
-    if (!walletSigner) {
-      console.info(
-        "[verification] Wallet not connected; skipping automatic proof fetch.",
-        { verificationId, messageId: messageIdForStatus }
-      );
-      return;
-    }
-
-    try {
-      console.log("[verification] Fetching proof:", {
-        verificationId,
-        messageId: messageIdForStatus,
-        requestHash: proof.requestHash,
-        responseHash: proof.responseHash,
-        nonce: proof.nonce,
-      });
-
-      const authToken = await createVerificationAuthToken({
-        walletSigner,
-        verificationId,
-      });
-
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken}`,
-      };
-
-      const response = await fetch("/api/verification/proof", {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({
-          verificationId,
-          messageId: messageIdForStatus,
-          model,
-          requestHash: proof.requestHash,
-          responseHash: proof.responseHash,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        reportProofFetchFailure(
-          errorText || "Failed to fetch verification proof"
-        );
-        return;
-      }
-
-      const data = (await response.json()) as RemoteProof;
-
-      console.log("[verification] Raw proof data received:", {
-        hasSignature: !!data.signature,
-        signatureType: typeof data.signature,
-        signatureKeys: data.signature ? Object.keys(data.signature) : [],
-        hasAttestation: !!data.attestation,
-        hasNras: !!data.nras,
-      });
-
-      console.log("[verification] Proof fetched successfully:", {
-        verified: data.results?.verified,
-        nonceCheck: data.nonceCheck,
-      });
-
-      const normalizedSignature = normalizeSignaturePayload(data.signature);
-      const fallbackHashes = extractHashesFromSignedText(
-        normalizedSignature?.text
-      );
-      const attestedRequestHash =
-        (typeof data.requestHash === "string" && data.requestHash) ||
-        fallbackHashes?.requestHash;
-      const attestedResponseHash =
-        (typeof data.responseHash === "string" && data.responseHash) ||
-        fallbackHashes?.responseHash;
-
-      updateMessageEvent(eventId, {
-        verification: {
-          source: "near-ai-cloud",
-          status: "verified",
-          messageId: messageIdForStatus,
-        },
-        proof:
-          attestedRequestHash || attestedResponseHash
-            ? {
-                ...(attestedRequestHash
-                  ? { requestHash: attestedRequestHash }
-                  : {}),
-                ...(attestedResponseHash
-                  ? { responseHash: attestedResponseHash }
-                  : {}),
-              }
-            : undefined,
-        remoteProof: data,
-      });
-    } catch (error) {
-      reportProofFetchFailure(error);
-    }
   };
 
   const handleSend = async (message: string) => {
@@ -703,31 +566,8 @@ export const AgentChatPanel = ({
           proof: {
             ...(isSynthesis ? synthesisProofData : initialProofData),
           },
+          verification: value,
         });
-
-        const ready = Boolean(targetProof.verificationId);
-
-        if (isInitial && ready && !initialProofRequested) {
-          initialProofRequested = true;
-          delay(2000).then(() =>
-            fetchProofForMessage(
-              targetProof.verificationId!,
-              assistantEventId,
-              { ...targetProof }
-            )
-          );
-        }
-
-        if (isSynthesis && ready && !synthesisProofRequested) {
-          synthesisProofRequested = true;
-          delay(2000).then(() =>
-            fetchProofForMessage(
-              targetProof.verificationId!,
-              assistantEventId,
-              { ...targetProof }
-            )
-          );
-        }
       };
 
       const pendingAguiEvents: AGUIEvent[] = [];

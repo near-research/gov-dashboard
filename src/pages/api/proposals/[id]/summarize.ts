@@ -1,5 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createHash, randomBytes } from "crypto";
 import { proposalCache, CacheKeys } from "@/utils/cache-utils";
 import { buildProposalSummaryPrompt } from "@/lib/prompts/summarizeProposal";
 import { stripFrontmatter } from "@/utils/metadata";
@@ -7,34 +6,11 @@ import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
 import { rateLimitConfig } from "@/config/rateLimit";
 import { servicesConfig } from "@/config/services";
 import type { ApiErrorResponse } from "@/types/api";
-import type { ProposalSummaryResponse, SummaryProof } from "@/types/summaries";
-import { extractVerificationMetadata } from "@/verification/normalize";
-import { normalizeVerificationPayload } from "@/verification/normalize";
-import { getModelExpectations } from "@/server/attestation-cache";
-import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
-import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
+import type { ProposalSummaryResponse } from "@/types/summaries";
 import { getNearAIClient } from "@/lib/near-ai";
+import { streamChatCompletion } from "@/lib/near-ai/stream";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-
-const ensureVerificationSession = (
-  verificationId?: string | null,
-  proof?: SummaryProof | null
-) => {
-  if (!verificationId || !proof) return;
-  try {
-    const client = getNearAIClient();
-    client.createSession(verificationId, proof.nonce ?? undefined);
-    client.updateSessionHashes(verificationId, {
-      requestHash: proof.requestHash ?? null,
-      responseHash: proof.responseHash ?? null,
-    });
-  } catch (err) {
-    console.error(
-      "[proposal summary] Failed to ensure verification session:",
-      err
-    );
-  }
-};
+import { finalizeSummaryVerification, createSummaryVerificationId } from "@/server/summaryVerification";
 
 const proposalSummarizeLimiter = createRateLimiter(
   rateLimitConfig.proposalSummary
@@ -107,16 +83,10 @@ export default async function handler(
     const cached = proposalCache.get(cacheKey);
 
     if (cached) {
-      ensureVerificationSession(cached.verificationId, cached.proof || null);
-      const verification = mergeVerificationStatusFromProof(
-        cached.verification,
-        cached.remoteProof
-      );
       return res.status(200).json({
         ...cached,
-        verification,
         cached: true,
-        cacheAge: Math.round((Date.now() - cached.generatedAt) / 1000), // Age in seconds
+        cacheAge: Math.round((Date.now() - cached.generatedAt) / 1000),
       });
     }
 
@@ -179,6 +149,8 @@ export default async function handler(
     // GENERATE AI SUMMARY USING PROMPT BUILDER
     // ===================================================================
     const client = getNearAIClient();
+    const verificationId = createSummaryVerificationId();
+    const session = client.createSession(verificationId);
 
     // Use the prompt builder function
     const prompt = buildProposalSummaryPrompt(
@@ -193,56 +165,33 @@ export default async function handler(
       messages: [{ role: "user", content: prompt }],
       temperature: 0.5,
       max_tokens: 800,
-      stream: false,
+      stream: true,
     };
     const requestBody = JSON.stringify(nearRequest);
-    const requestHash = createHash("sha256").update(requestBody).digest("hex");
-    const generatedVerificationId = `summary-${randomBytes(8).toString("hex")}`;
-    const session = client.createSession(generatedVerificationId);
-    let expectations: Awaited<ReturnType<typeof getModelExpectations>> | null =
-      null;
-    try {
-      expectations = await getModelExpectations(model);
-    } catch (err) {
-      console.error(
-        "[Proposal Summary] Failed to fetch hardware expectations:",
-        err
-      );
-    }
 
-    const data = await client.chatCompletions(nearRequest, {
-      verificationId: generatedVerificationId,
-      verificationNonce: session.nonce,
-    });
-
-    const responseText = JSON.stringify(data);
-    const responseHash = createHash("sha256")
-      .update(responseText)
-      .digest("hex");
-    const summary: string = data.choices[0]?.message?.content ?? "";
-    const rawVerification = extractVerificationMetadata(data);
-    const nearMessageId = data?.id || generatedVerificationId;
-    const { verification, verificationId: normalizedVerificationId } =
-      normalizeVerificationPayload(rawVerification, nearMessageId);
-    const effectiveVerificationId =
-      normalizedVerificationId || generatedVerificationId;
-
-    client.updateSessionHashes(generatedVerificationId, {
-      requestHash,
-      responseHash,
-    });
-
-    if (effectiveVerificationId !== generatedVerificationId) {
-      client.createSession(effectiveVerificationId, session.nonce);
-      client.updateSessionHashes(effectiveVerificationId, {
-        requestHash,
-        responseHash,
-      });
-    }
+    const { summary, chatId, responseText } = await streamChatCompletion(
+      client,
+      nearRequest,
+      {
+        verificationId,
+        verificationNonce: session.nonce,
+      }
+    );
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
     }
+
+    const verificationData = await finalizeSummaryVerification({
+      client,
+      origin,
+      model,
+      verificationId,
+      sessionNonce: session.nonce,
+      requestBody,
+      responseText,
+      chatId,
+    });
 
     // ===================================================================
     // BUILD RESPONSE
@@ -261,45 +210,14 @@ export default async function handler(
       generatedAt: Date.now(), // For cache age tracking
       cached: false,
       model,
-      verification,
-      verificationId: effectiveVerificationId,
-      proof: {
-        requestHash,
-        responseHash,
-        nonce: session.nonce,
-        arch: expectations?.arch,
-        deviceCertHash: expectations?.deviceCertHash,
-        rimHash: expectations?.rimHash ?? undefined,
-        ueid: expectations?.ueid ?? undefined,
-        measurements: expectations?.measurements,
-      },
+      verification: verificationData.verificationMetadata,
+      verificationResult: verificationData.verificationResult,
+      verificationId,
+      proof: verificationData.proof,
+      remoteProof: verificationData.remoteProof ?? undefined,
     };
 
-    const remoteProof = await prefetchVerificationProof(origin, {
-      verificationId: effectiveVerificationId,
-      model,
-      requestHash,
-      responseHash,
-      nonce: session.nonce,
-      expectedArch: expectations?.arch ?? null,
-      expectedDeviceCertHash: expectations?.deviceCertHash ?? null,
-      expectedRimHash: expectations?.rimHash ?? null,
-      expectedUeid: expectations?.ueid ?? null,
-      expectedMeasurements: expectations?.measurements ?? null,
-    });
-    if (remoteProof) {
-      response.remoteProof = remoteProof;
-      response.verification =
-        mergeVerificationStatusFromProof(response.verification, remoteProof) ??
-        response.verification;
-    }
-
-    // ===================================================================
-    // STORE IN CACHE (1 hour TTL)
-    // ===================================================================
     proposalCache.set(cacheKey, response);
-
-    ensureVerificationSession(response.verificationId, response.proof);
     return res.status(200).json(response);
   } catch (error: unknown) {
     console.error("[Proposal Summary] Error:", error);
