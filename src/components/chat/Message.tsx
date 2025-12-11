@@ -1,13 +1,11 @@
 // components/chat/Message.tsx
 import React from "react";
-import {
-  VerificationProof,
-  type RemoteProof,
-} from "@/components/verification/VerificationProof";
+import { VerificationProof } from "@/components/verification/VerificationProof";
 import type { VerificationMetadata, MessageRole } from "@/types/agui-events";
 import type { DisplayRole, MessageProof } from "@/types/agent-ui";
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
+import type { RemoteProof } from "@/types/verification";
 
 interface MessageProps {
   role: DisplayRole;

@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getNearAIClient } from "@/lib/near-ai";
+import { detectAttestationType } from "@/utils/attestation/type-detection";
 
 type NrasBody = {
   attestation?: unknown;
@@ -20,24 +21,42 @@ export default async function handler(
     return res.status(400).json({ error: "attestation is required" });
   }
 
+  const attestationType = detectAttestationType(attestation);
+  if (attestationType !== "nvidia") {
+    return res
+      .status(400)
+      .json({ error: "NRAS verification only supports NVIDIA attestations" });
+  }
+
+  if (typeof nonce !== "string" || nonce.length === 0) {
+    return res.status(400).json({ error: "nonce must be a non-empty string" });
+  }
+
   try {
     const client = getNearAIClient();
-    const result = await client.verifyWithNras(attestation, nonce || "");
+    const result = await client.verifyWithNras(attestation, nonce);
 
-    return res.status(200).json(result);
+    const payload: Record<string, unknown> = { verified: result.verified };
+    if (result.verified) {
+      if (result.claims) {
+        payload.claims = result.claims;
+      }
+    } else {
+      payload.reasons = result.reasons ?? ["NRAS verification failed"];
+    }
+
+    return res.status(200).json(payload);
   } catch (error) {
     console.error("[verification/nras] Error:", error);
-    return res.status(200).json({
-      verified: false,
-      reasons: [
-        error instanceof Error
-          ? error.message
-          : "NRAS verification failed",
-      ],
-    });
-  }
-}
+    if (
+      error instanceof Error &&
+      /(network|fetch|timeout|unavailable)/i.test(error.message)
+    ) {
+      return res
+        .status(502)
+        .json({ error: "NRAS service unavailable" });
+    }
 
-export function resetJwksCache() {
-  // no-op kept for backwards compatibility
+    return res.status(500).json({ error: "Internal server error" });
+  }
 }

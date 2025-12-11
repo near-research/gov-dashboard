@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+  extractHardwareExpectations,
   fetchHardwareExpectations,
   clearHardwareExpectationsCache,
 } from "@/utils/attestation/hardware";
@@ -138,5 +139,98 @@ describe("hardware-expectations", () => {
       ueid: "model-ueid",
       measurements: ["model-measurement"],
     });
+  });
+
+  it("extracts expectations from attestation wrappers hiding fields", async () => {
+    const wrappedPayload = {
+      nvidia_payload: {
+        model_attestations: [
+          {
+            attestation: {
+              nvidia_payload: JSON.stringify({
+                nonce: "nested-nonce",
+                arch: "H200",
+                measurements: ["nested-measurement"],
+              }),
+              info: JSON.stringify({
+                device_cert_hash: "nested-device",
+                rim: "nested-rim",
+                ueid: "nested-ueid",
+              }),
+            },
+          },
+        ],
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => wrappedPayload,
+    });
+    // @ts-ignore
+    global.fetch = fetchMock;
+
+    const expectations = await fetchHardwareExpectations("attestationWrapper");
+    expect(expectations).toEqual({
+      nonce: "nested-nonce",
+      arch: "H200",
+      deviceCertHash: "nested-device",
+      rimHash: "nested-rim",
+      ueid: "nested-ueid",
+      measurements: ["nested-measurement"],
+    });
+  });
+
+  it("parses expectations from event log text when structured data is missing", () => {
+    const logEntry = {
+      event_payload:
+        "nonce:event-nonce arch:H800 device_cert_hash:event-device measurements:sha256:abc",
+    };
+    const payload = {
+      gateway_attestation: {
+        event_log: JSON.stringify([logEntry]),
+      },
+      model_attestations: [
+        {
+          event_log: JSON.stringify([logEntry]),
+        },
+      ],
+    };
+
+    const expectations = extractHardwareExpectations(payload);
+    expect(expectations).toMatchObject({
+      nonce: "event-nonce",
+      arch: "H800",
+      measurements: expect.arrayContaining(["sha256:abc"]),
+    });
+  });
+
+  it("extracts Intel expectations from gateway attestation info and event log", () => {
+    const intelPayload = {
+      gateway_attestation: {
+        request_nonce: "intel-nonce",
+        info: {
+          mr_aggregated: "mr-agg",
+          compose_hash: "comp-hash",
+          os_image_hash: "os-hash",
+          instance_id: "instance-id",
+        },
+        event_log: JSON.stringify([
+          { event: "mr-kms", event_payload: "0x6d722d6b" },
+          { event: "compose-hash", event_payload: "0x636f6d70" },
+        ]),
+      },
+    };
+
+    const expectations = extractHardwareExpectations(intelPayload);
+    expect(expectations).toMatchObject({
+      nonce: "intel-nonce",
+      arch: "intel-tdx",
+      deviceCertHash: "comp-hash",
+      rimHash: "os-hash",
+      ueid: "instance-id",
+    });
+    expect(expectations.measurements).toEqual(
+      expect.arrayContaining(["mr-agg", "comp-hash", "os-hash", "6d722d6b", "636f6d70"])
+    );
   });
 });

@@ -1,4 +1,4 @@
-import type { RemoteProof } from "@/components/verification/VerificationProof";
+import type { RemoteProof } from "@/types/verification";
 import type { PartialExpectations } from "@/types/verification";
 
 interface FetchVerificationProofParams {
@@ -70,13 +70,22 @@ export const fetchVerificationProof = async ({
   return {
     attestation: data.attestation ?? null,
     signature: data.signature ?? null,
+    signatureVerification: data.signatureVerification ?? null,
     signatureError: data.signatureError ?? null,
     nras: data.nras ?? null,
     nrasRaw: data.nrasRaw ?? null,
     nonceCheck: data.nonceCheck ?? null,
     intel: data.intel ?? null,
-    results: data.results ?? undefined,
+    attestationNodes: data.attestationNodes ?? null,
     configMissing: data.configMissing ?? undefined,
+    verified: data.verified,
+    reasons: data.reasons ?? [],
+    results: data.results ?? undefined,
+    requestHash: data.requestHash ?? null,
+    responseHash: data.responseHash ?? null,
+    sessionRequestHash: data.sessionRequestHash ?? null,
+    sessionResponseHash: data.sessionResponseHash ?? null,
+    normalized: data.normalized ?? null,
   };
 };
 

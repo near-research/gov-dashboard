@@ -6,10 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Send, Wrench } from "lucide-react";
-import {
-  VerificationProof,
-  type RemoteProof,
-} from "@/components/verification/VerificationProof";
+import { VerificationProof } from "@/components/verification/VerificationProof";
+import type { RemoteProof } from "@/types/verification";
 
 interface Message {
   id: string;

@@ -12,7 +12,6 @@ import {
 } from "../../fixtures/verification";
 import { officialNearAIExample } from "../../fixtures/verificationMocks";
 import { toast } from "sonner";
-import { verifyMessage } from "ethers";
 
 type VerificationAuthTokenFn = typeof import("@/utils/verification/auth")["createVerificationAuthToken"];
 
@@ -31,8 +30,6 @@ vi.mock("@/utils/verification/auth", () => ({
 
 const fetchVerificationProofMock = vi.fn();
 const verifyWithNrasServiceMock = vi.fn();
-const mockRecoveredAddress = mockAddress;
-
 vi.mock("@/services/verification/proof-service", () => ({
   fetchVerificationProof: (...args: unknown[]) => fetchVerificationProofMock(...args),
   verifyWithNrasService: (...args: unknown[]) => verifyWithNrasServiceMock(...args),
@@ -45,12 +42,6 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("ethers", () => ({
-  verifyMessage: vi.fn(() => mockRecoveredAddress),
-}));
-
-const verifyMessageMock = vi.mocked(verifyMessage);
-
 const renderHookWithParams = (props: Parameters<typeof useVerificationProof>[0]) =>
   renderHook(() => useVerificationProof(props));
 
@@ -59,8 +50,6 @@ describe("useVerificationProof hook", () => {
     vi.clearAllMocks();
     fetchVerificationProofMock.mockReset();
     verifyWithNrasServiceMock.mockReset();
-    verifyMessageMock.mockReset();
-    verifyMessageMock.mockReturnValue(mockRecoveredAddress);
     walletSignerMock.signMessage.mockReset();
     createAuthTokenMock.mockReset();
     createAuthTokenMock.mockResolvedValue("proof-token");
@@ -180,44 +169,6 @@ describe("useVerificationProof hook", () => {
       responseHash: officialNearAIExample.responseHash,
     });
     expect(result.current.hashMismatch).toBe(true);
-  });
-
-  it("verifies signatures locally with verifyMessage and flags address mismatch", async () => {
-    const { result, rerender } = renderHookWithParams({
-      open: true,
-      prefetchedProof: {
-        ...verifiedProofMock,
-        signature: {
-          ...verifiedProofMock.signature,
-          text: `${"a".repeat(64)}:${"b".repeat(64)}`,
-        },
-      } as any,
-      requestHash: "a".repeat(64),
-      responseHash: "b".repeat(64),
-    });
-
-    await waitFor(() => expect(result.current.independentVerification).toBeTruthy());
-      expect(result.current.independentVerification?.checks?.address).toBe(true);
-
-    verifyMessageMock.mockReturnValueOnce("0xdead");
-    rerender({
-      open: true,
-      prefetchedProof: {
-        ...verifiedProofMock,
-        signature: {
-          ...verifiedProofMock.signature,
-          text: `${"a".repeat(64)}:${"b".repeat(64)}`,
-        },
-      } as any,
-      requestHash: "a".repeat(64),
-      responseHash: "b".repeat(64),
-    });
-
-    await waitFor(
-      () =>
-        result.current.independentVerification?.checks &&
-        result.current.independentVerification.checks.address === false
-    );
   });
 
   it("exposes attestation node summaries and signature binding info", async () => {

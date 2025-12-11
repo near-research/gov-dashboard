@@ -1,12 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import handler from "@/pages/api/summarize/test";
 import { NearAIError, getNearAIClient } from "@/lib/near-ai";
 import type { TextSummaryResponse } from "@/types/summaries";
 import type { VerificationProofResponse } from "@/types/verification";
-import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
-
 const mockChatCompletions = vi.fn();
 const mockCreateSession = vi.fn((id: string) => ({
   nonce: `mock-nonce-${id}`,
@@ -18,6 +16,9 @@ const mockGetSession = vi.fn((id: string) => ({
   createdAt: Date.now(),
   expiresAt: Date.now() + 300000,
 }));
+const mockVerify = vi
+  .fn()
+  .mockResolvedValue({ verified: true, reasons: [] });
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => ({
     chatCompletions: mockChatCompletions,
@@ -25,17 +26,9 @@ vi.mock("@/lib/near-ai/client", () => ({
     getSession: mockGetSession,
     updateSessionHashes: vi.fn(),
     clearSession: vi.fn(),
-    verify: vi.fn().mockResolvedValue({
-      verified: true,
-      reasons: [],
-    }),
+    verify: mockVerify,
   }),
 }));
-
-vi.mock("@/server/prefetchVerificationProof", () => ({
-  prefetchVerificationProof: vi.fn(),
-}));
-const prefetchMock = vi.mocked(prefetchVerificationProof);
 
 vi.mock("@/server/attestation-cache", () => ({
   getModelExpectations: vi.fn().mockResolvedValue({
@@ -95,7 +88,7 @@ const createResponse = () => {
 describe("/api/summarize/test", () => {
   beforeEach(() => {
     mockChatCompletions.mockReset();
-    prefetchMock.mockReset();
+    mockVerify.mockReset();
   });
 
   it("returns a summary with verification metadata and remote proof", async () => {
@@ -108,10 +101,20 @@ describe("/api/summarize/test", () => {
       ],
       verification: { status: "pending", source: "near-ai-cloud" },
     });
-    const remoteProof: VerificationProofResponse = {
+    const verificationResult: VerificationProofResponse = {
+      attestation: { info: "att" } as any,
+      signature: { text: "sig" },
+      signatureVerification: { verified: true },
+      nras: { verified: true, reasons: [] },
+      nonceCheck: { valid: true, expected: "mock-nonce" },
+      intel: { verified: true },
+      attestationNodes: [],
+      configMissing: undefined,
+      verified: true,
+      reasons: [],
       results: { verified: true, reasons: [] },
     };
-    prefetchMock.mockResolvedValue(remoteProof);
+    mockVerify.mockResolvedValue(verificationResult);
 
     const req = createRequest();
     const res = createResponse();
@@ -123,15 +126,14 @@ describe("/api/summarize/test", () => {
     expect(body.summary).toContain("House of Stake");
     expect(body.verificationId).toBeDefined();
     expect(body.proof?.requestHash).toBeDefined();
-    expect(prefetchMock).toHaveBeenCalledWith(
-      "https://dashboard.example",
-      expect.objectContaining({
-        verificationId: body.verificationId,
-        requestHash: body.proof?.requestHash,
-        responseHash: body.proof?.responseHash,
-      })
-    );
-    expect(body.remoteProof).toBe(remoteProof);
+    expect(mockVerify).toHaveBeenCalledWith({
+      verificationId: body.verificationId,
+      model: expect.anything(),
+      chatId: "chatcmpl-house",
+      requestHash: body.proof?.requestHash,
+      responseHash: body.proof?.responseHash,
+    });
+    expect(body.remoteProof?.verified).toBe(true);
     expect(body.verification?.status).toBe("verified");
 
     if (body.verificationId) {

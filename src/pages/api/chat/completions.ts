@@ -256,7 +256,7 @@ export default async function handler(
 
       // Pre-register verification session
       if (verificationId) {
-        client.createSession(verificationId);
+        client.createSession(verificationId, verificationNonce ?? undefined);
         client.updateSessionHashes(verificationId, { requestHash });
       }
 
@@ -352,7 +352,7 @@ export default async function handler(
         }
         if (normalizedVerificationId) {
           payload.verificationId = normalizedVerificationId;
-          client.createSession(normalizedVerificationId);
+          client.createSession(normalizedVerificationId, verificationNonce ?? undefined);
           client.updateSessionHashes(normalizedVerificationId, {
             requestHash,
             responseHash,

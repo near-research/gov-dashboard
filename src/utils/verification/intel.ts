@@ -1,39 +1,4 @@
-const toLower = (value?: string | null) =>
-  typeof value === "string" ? value.toLowerCase() : "";
-
-export const collectSigningAddressesFromAttestation = (att?: any): string[] => {
-  if (!att || typeof att !== "object") return [];
-
-  const addresses: string[] = [];
-  const add = (addr?: string | null) => {
-    if (typeof addr === "string" && addr.startsWith("0x")) {
-      addresses.push(addr.toLowerCase());
-    }
-  };
-
-  add(att.signing_address);
-  add(att.signingAddress);
-  add(att.key);
-
-  const gateway = att.gateway_attestation;
-  if (Array.isArray(gateway)) {
-    gateway.forEach((node: any) => add(node?.signing_address));
-  } else if (gateway) {
-    add(gateway.signing_address);
-  }
-
-  const modelAtts = Array.isArray(att.model_attestations)
-    ? att.model_attestations
-    : [];
-  modelAtts.forEach((node: any) => add(node?.signing_address));
-
-  const allAtts = Array.isArray(att.all_attestations)
-    ? att.all_attestations
-    : [];
-  allAtts.forEach((node: any) => add(node?.signing_address));
-
-  return [...new Set(addresses)];
-};
+import { createHash } from "crypto";
 
 const stringifyReportData = (value: any): string => {
   if (!value) return "";
@@ -184,4 +149,3 @@ export const extractMrConfig = (intelParsed: any): string | null => {
 
 export const hashComposeManifest = (composeManifest: string): string =>
   createHash("sha256").update(composeManifest).digest("hex");
-import { createHash } from "crypto";

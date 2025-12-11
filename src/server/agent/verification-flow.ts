@@ -1,5 +1,6 @@
 import { AGENT_MODEL } from "@/server/tools";
 import { getNearAIClient } from "@/lib/near-ai";
+import { shortenFingerprint } from "@/verification/normalize";
 import { calculateRequestHash } from "@/verification/hashes";
 import {
   EventType,
@@ -52,6 +53,12 @@ export async function registerSecondVerificationSession(
 
   return { secondVerificationId, secondNonce };
 }
+
+const maskVerificationPayloadForLog = (payload: VerificationPayload) => ({
+  ...payload,
+  requestHash: shortenFingerprint(payload.requestHash),
+  responseHash: shortenFingerprint(payload.responseHash),
+});
 
 const finalizeStageWithHashes = async (args: {
   verificationId?: string;
@@ -187,7 +194,7 @@ export async function finalizeVerifications({
   if (initialPayload) {
     console.log(
       "[verification][agent] initial reasoning verified",
-      initialPayload
+      maskVerificationPayloadForLog(initialPayload)
     );
     writeEvent({
       type: EventType.CUSTOM,
@@ -214,7 +221,7 @@ export async function finalizeVerifications({
   if (secondPayload) {
     console.log(
       "[verification][agent] second completion verified",
-      secondPayload
+      maskVerificationPayloadForLog(secondPayload)
     );
     writeEvent({
       type: EventType.CUSTOM,

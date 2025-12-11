@@ -1,7 +1,7 @@
 // components/verification/VerificationProof.tsx
 import React, { useMemo, useState } from "react";
 import type { VerificationMetadata } from "@/types/agui-events";
-import type { VerificationProofResponse } from "@/types/verification";
+import type { RemoteProof } from "@/types/verification";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,7 +13,6 @@ import {
 import { VerificationStatusPill } from "@/components/verification/VerificationStatusPill";
 import { ProofStatusHeader } from "@/components/verification/ProofStatusHeader";
 import { VerificationTimeline } from "@/components/verification/VerificationTimeline";
-import { IndependentVerificationPanel } from "@/components/verification/IndependentVerificationPanel";
 import { HardwareAttestationPanel } from "@/components/verification/HardwareAttestationPanel";
 import { AlertsPanel } from "@/components/verification/AlertsPanel";
 import { InlineProofPanel } from "@/components/verification/InlineProofPanel";
@@ -35,8 +34,6 @@ const formatUnknown = (value: unknown) => {
     return String(value);
   }
 };
-
-export type RemoteProof = VerificationProofResponse;
 
 interface VerificationProofProps {
   verification?: VerificationMetadata;
@@ -85,7 +82,6 @@ export function VerificationProof({
     retrying,
     nrasError,
     nrasLoading,
-    independentVerification,
     attestationSummary,
     attestationPayload,
     nrasSummary,
@@ -105,6 +101,8 @@ export function VerificationProof({
     retryFetch,
     verifyWithNRAS,
     localSignedText,
+    nrasVerified,
+    nrasReasons,
   } = useVerificationProof({
     open,
     autoFetch,
@@ -261,12 +259,6 @@ export function VerificationProof({
                 <VerificationTimeline verificationState={verificationState} />
               )}
 
-              {independentVerification?.checks && (
-                <IndependentVerificationPanel
-                  independentVerification={independentVerification}
-                />
-              )}
-
               {attestationSummary && (
                 <HardwareAttestationPanel
                   attestationSummary={attestationSummary}
@@ -314,6 +306,8 @@ export function VerificationProof({
                   responseHash ||
                   null
                 }
+                nrasReasons={nrasReasons}
+                nrasVerified={nrasVerified ?? null}
               />
 
               {hasInlineProof && (

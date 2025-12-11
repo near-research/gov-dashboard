@@ -13,23 +13,31 @@ describe("attestation-cache verification", () => {
   const nonce = "a".repeat(64);
 
   const buildAttestation = () => ({
-    nonce,
-    arch: "HOPPER",
-    device_cert_hash: "devhash",
-    measurements: ["m1"],
-    nvidia_payload: {
-      nonce,
-      arch: "HOPPER",
-      evidence_list: [{}],
-      device_cert_hash: "devhash",
-      rim: "rimhash",
-      ueid: "ueid",
-      measurements: ["m1"],
+    gateway_attestation: {
+      request_nonce: nonce,
+      signing_address: "0x2016F58821aF58cbdfffdE6955dDb76F18f1b358",
+      intel_quote: { report_data: `nonce:${nonce}` },
+      event_log: JSON.stringify([
+        {
+          device_cert_hash: "devhash",
+          rim: "rimhash",
+          ueid: "ueid",
+        },
+      ]),
     },
     model_attestations: [
       {
         signing_address: "0x2016F58821aF58cbdfffdE6955dDb76F18f1b358",
-        nvidia_payload: {
+        intel_quote: { report_data: `nonce:${nonce}` },
+        event_log: JSON.stringify([
+          {
+            measurements: ["m1"],
+            device_cert_hash: "devhash",
+            rim: "rimhash",
+            ueid: "ueid",
+          },
+        ]),
+        nvidia_payload: JSON.stringify({
           nonce,
           arch: "HOPPER",
           evidence_list: [{}],
@@ -37,8 +45,7 @@ describe("attestation-cache verification", () => {
           rim: "rimhash",
           ueid: "ueid",
           measurements: ["m1"],
-        },
-        intel_quote: { report_data: `nonce:${nonce} 0x2016F58821aF58cbdfffdE6955dDb76F18f1b358` },
+        }),
       },
     ],
   });

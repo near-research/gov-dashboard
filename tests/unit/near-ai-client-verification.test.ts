@@ -105,6 +105,23 @@ describe("NearAIClient Verification", () => {
       const payload = (client as any).extractNvidiaPayload({});
       expect(payload).toBeNull();
     });
+
+    it("sanitizes payload to only NRAS fields", () => {
+      const attestation = {
+        nvidia_payload: {
+          nonce: "abc",
+          request_nonce: "should-not-show",
+          extra: "drop",
+          evidence_list: [{ certificate: "foo", evidence: "bar" }],
+        },
+      };
+
+      const payload = (client as any).extractNvidiaPayload(attestation);
+      expect(payload).toEqual({
+        nonce: "abc",
+        evidence_list: [{ certificate: "foo", evidence: "bar" }],
+      });
+    });
   });
 
   describe("collectSigningAddresses", () => {
@@ -254,6 +271,190 @@ describe("NearAIClient Verification", () => {
 
       const reasons = (client as any).validateNrasClaims(claims, nonce);
       expect(reasons).toContain("Secure boot (secboot) is not enabled");
+    });
+  });
+
+  describe("NearAIClient error paths (coverage)", () => {
+    it("returns null when signature fetch repeatedly fails", async () => {
+      const fetchWithTimeoutSpy = vi
+        .spyOn(client as any, "fetchWithTimeout")
+        .mockRejectedValue(new Error("network failure"));
+
+      const result = await client.fetchCanonicalHashes({
+        remoteMessageId: "chat-123",
+        model: "test-model",
+      });
+
+      expect(result).toBeNull();
+      expect(fetchWithTimeoutSpy).toHaveBeenCalled();
+    });
+
+    it("reports NRAS HTTP failures", async () => {
+      const response = {
+        ok: false,
+        status: 503,
+        text: vi.fn().mockResolvedValue("service unavailable"),
+      };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+      const attestation = { nvidia_payload: { foo: "bar" } };
+      const result = await client.verifyWithNras(attestation, "a".repeat(64));
+
+      expect(result.verified).toBe(false);
+      expect(result.reasons?.[0]).toContain("NRAS HTTP 503");
+    });
+
+    it("reports missing JWT in NRAS response", async () => {
+      const response = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({ foo: "bar" }),
+      };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+      const attestation = { nvidia_payload: { foo: "bar" } };
+      const result = await client.verifyWithNras(attestation, "a".repeat(64));
+
+      expect(result.verified).toBe(false);
+      expect(result.reasons).toContain("No JWT in NRAS response");
+      expect(result.raw).toEqual({ foo: "bar" });
+    });
+
+    it("reports failed JWT verification", async () => {
+      const response = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({ jwt: "fake.jwt" }),
+      };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+      vi.spyOn(client as any, "verifyNrasJwt").mockResolvedValue(null);
+
+      const attestation = { nvidia_payload: { foo: "bar" } };
+      const result = await client.verifyWithNras(attestation, "a".repeat(64));
+
+      expect(result.verified).toBe(false);
+      expect(result.reasons).toContain("JWT signature verification failed");
+      expect(result.jwt).toBe("fake.jwt");
+    });
+
+    it("captures measres failures in claims validation", () => {
+      const nonce = "a".repeat(64);
+      const claims = {
+        "x-nvidia-overall-att-result": true,
+        eat_nonce: nonce,
+        secboot: true,
+        measres: "failed",
+      };
+
+      const reasons = (client as any).validateNrasClaims(claims, nonce);
+      expect(reasons).toContain("Measurement results (measres): failed");
+    });
+  });
+
+  describe("fetchCanonicalHashes hash extraction errors", () => {
+    it("logs warning and continues when signature text cannot be parsed", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const invalidResponse = {
+        ok: true,
+        json: async () => ({ text: "invalid-text", signature: "0x123" }),
+      } as unknown as Response;
+      const validResponse = {
+        ok: true,
+        json: async () => ({
+          text: `${"c".repeat(64)}:${"d".repeat(64)}`,
+          signature: "0x456",
+        }),
+      } as unknown as Response;
+
+      vi.spyOn(client as any, "fetchWithTimeout")
+        .mockResolvedValueOnce(invalidResponse)
+        .mockResolvedValueOnce(validResponse);
+
+      const result = await client.fetchCanonicalHashes({
+        remoteMessageId: "chat-123",
+        fallbackId: "chat-456",
+        model: "test-model",
+      });
+
+      expect(warnSpy).toHaveBeenCalled();
+      expect(result).not.toBeNull();
+    });
+
+    it("logs error and returns null when JSON parsing fails", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const failingResponse = {
+        ok: true,
+        json: async () => {
+          throw new Error("Invalid JSON");
+        },
+      } as unknown as Response;
+
+      vi.spyOn(client as any, "fetchWithTimeout").mockResolvedValue(failingResponse);
+
+      const result = await client.fetchCanonicalHashes({
+        remoteMessageId: "chat-123",
+        model: "test-model",
+      });
+
+      expect(errorSpy).toHaveBeenCalled();
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("verifyWithNras failure paths", () => {
+    it("returns verified:false when JWT is missing from NRAS response", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ([]),
+      } as Response);
+
+      const result = await client.verifyWithNras(
+        { nvidia_payload: { foo: "bar" } },
+        "a".repeat(64)
+      );
+
+      expect(result.verified).toBe(false);
+      expect(result.reasons?.length).toBeGreaterThan(0);
+    });
+
+    it("returns verified:false when verifyNrasJwt returns null", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({ jwt: "bad.jwt" }),
+      } as Response);
+      vi.spyOn(client as any, "verifyNrasJwt").mockResolvedValue(null);
+
+      const result = await client.verifyWithNras({ nvidia_payload: {} }, "b".repeat(64));
+
+      expect(result.verified).toBe(false);
+      expect(result.reasons).toContain("JWT signature verification failed");
+    });
+
+    it("aggregates claim validation reasons when multiple checks fail", async () => {
+      const badClaims = {
+        eat_nonce: "wrong-nonce",
+        "x-nvidia-overall-att-result": false,
+        secboot: false,
+        measres: "FAILURE",
+      };
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({ jwt: "claims.jwt" }),
+      } as Response);
+      vi.spyOn(client as any, "verifyNrasJwt").mockResolvedValue(badClaims);
+
+      const result = await client.verifyWithNras({ nvidia_payload: {} }, "c".repeat(64));
+
+      expect(result.verified).toBe(false);
+      expect(result.reasons?.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("catches fetch errors and returns verified:false with error reason", async () => {
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network timeout"));
+
+      const result = await client.verifyWithNras({ nvidia_payload: {} }, "d".repeat(64));
+
+      expect(result.verified).toBe(false);
+      expect(result.reasons?.some((reason) => /timeout|network/i.test(reason))).toBe(true);
     });
   });
 });

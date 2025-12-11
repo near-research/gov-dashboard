@@ -66,6 +66,24 @@ export const proofPayload = {
     verified: true,
     raw: { nonce: attestationNonce },
   },
+  signatureVerification: {
+    verified: true,
+    recoveredAddress: signatureResponse.signing_address,
+    attestedAddress: [signatureResponse.signing_address],
+  },
+  normalized: {
+    verified: true,
+    nrasVerified: true,
+    signatureVerified: true,
+    hardwareVerified: true,
+    claims: {
+      secboot: true,
+      measres: "success",
+      nonce: attestationNonce,
+      overallResult: true,
+    },
+    reasons: [],
+  },
   results: {
     verified: true,
     reasons: [],

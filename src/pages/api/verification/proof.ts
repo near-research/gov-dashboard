@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getNearAIClient } from "@/lib/near-ai";
+import { normalizeVerificationResult } from "@/utils/verification/shared";
 
 export default async function handler(
   req: NextApiRequest,
@@ -66,14 +67,25 @@ export default async function handler(
       console.warn("[verification/proof] Verification failed:", result.reasons);
     }
 
+    const normalizedResult = normalizeVerificationResult(result);
+
     return res.status(200).json({
+      attestation: result.attestation ?? null,
+      signature: result.signature ?? null,
+      signatureVerification: result.signatureVerification ?? null,
+      nras: result.nras ?? null,
+      nonceCheck: result.nonceCheck ?? null,
+      intel: result.intel ?? null,
+      attestationNodes: result.attestationNodes ?? null,
+      configMissing: result.configMissing ?? undefined,
       verified: result.verified,
-      reasons: result.reasons,
-      nras: result.nras,
-      signature: result.signature,
-      nonceCheck: result.nonceCheck,
-      requestHash: finalRequestHash,
-      responseHash: finalResponseHash,
+      reasons: result.reasons ?? [],
+      results: result.results ?? null,
+      requestHash: finalRequestHash ?? null,
+      responseHash: finalResponseHash ?? null,
+      sessionRequestHash: session.requestHash ?? null,
+      sessionResponseHash: session.responseHash ?? null,
+      normalized: normalizedResult,
       nonce: session.nonce,
     });
   } catch (error) {

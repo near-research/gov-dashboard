@@ -39,6 +39,7 @@ export function deriveVerificationState({
   intelRequired,
   intelConfigured = true,
   trustedAddresses = [],
+  normalizedVerification,
 }: DeriveArgs): VerificationState {
   attestationDebugLog("[attestation] deriveVerificationState called with:", {
     attestedAddress,
@@ -91,6 +92,18 @@ export function deriveVerificationState({
     typeof intelVerified !== "boolean" &&
     !nonceCheck;
 
+  const normalizedReasons = normalizedVerification?.reasons?.filter(Boolean) ?? [];
+  const normalizedReasonText = normalizedReasons.join("\n");
+  const appendNormalizedReason = (fallback: string) => {
+    if (normalizedReasonText) {
+      if (!reasons.includes(normalizedReasonText)) {
+        reasons.push(normalizedReasonText);
+      }
+    } else {
+      reasons.push(fallback);
+    }
+  };
+
   // Hash step
   if (!normalizedSignatureText || !normalizedRequestHash || !normalizedResponseHash) {
     steps.hash = {
@@ -117,7 +130,34 @@ export function deriveVerificationState({
   // Signature step
   const algo = (signatureAlgo || "ecdsa").toLowerCase();
 
-  if (!signature || !signatureText) {
+  if (normalizedVerification) {
+    const signatureStatus = normalizedVerification.signatureVerified ? "success" : "error";
+    steps.signature = {
+      status: signatureStatus,
+      message: normalizedVerification.signatureVerified
+        ? "Signature verified by normalized proof"
+        : "Signature flagged by normalized proof",
+      details: !normalizedVerification.signatureVerified
+        ? normalizedReasonText || undefined
+        : undefined,
+    };
+    if (!normalizedVerification.signatureVerified) {
+      appendNormalizedReason("Signature verification failed");
+    }
+    steps.address = {
+      status: signatureStatus,
+      message: normalizedVerification.signatureVerified
+        ? "Signing address matches attested node"
+        : "Signing address verification failed according to normalized proof",
+      details: !normalizedVerification.signatureVerified
+        ? normalizedReasonText || undefined
+        : undefined,
+    };
+    if (!normalizedVerification.signatureVerified) {
+      appendNormalizedReason("Signing address verification failed");
+    }
+    recoveredAddress = signatureAddress ?? null;
+  } else if (!signature || !signatureText) {
     steps.signature = {
       status: "pending",
       message: "Missing signature or signed text",
@@ -131,36 +171,35 @@ export function deriveVerificationState({
       reasons.push("Invalid signature");
       recoveredAddress = null;
     } else {
-    try {
+      try {
         if (algo === "ecdsa") {
           recoveredAddress = verifyMessage(signatureText, signature);
-      } else if (algo === "ed25519") {
-        // Best-effort: trust the provided signing address for ed25519 since local recovery isn't available
-        const isEdAddress =
-          typeof signatureAddress === "string" &&
-          signatureAddress.toLowerCase().startsWith("ed25519:");
-        if (!isEdAddress) {
-          throw new Error("Unsupported signing algorithm: ed25519 without ed25519 signer");
+        } else if (algo === "ed25519") {
+          const isEdAddress =
+            typeof signatureAddress === "string" &&
+            signatureAddress.toLowerCase().startsWith("ed25519:");
+          if (!isEdAddress) {
+            throw new Error("Unsupported signing algorithm: ed25519 without ed25519 signer");
+          }
+          recoveredAddress = signatureAddress || null;
+        } else {
+          throw new Error(`Unsupported signing algorithm: ${signatureAlgo}`);
         }
-        recoveredAddress = signatureAddress || null;
-      } else {
-        throw new Error(`Unsupported signing algorithm: ${signatureAlgo}`);
+        steps.signature = {
+          status: "success",
+          message: "Signature valid",
+          details: `Recovered address: ${recoveredAddress}`,
+        };
+      } catch (error) {
+        steps.signature = {
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message || "Signature verification failed"
+              : "Signature verification failed",
+        };
+        reasons.push("Invalid signature");
       }
-      steps.signature = {
-        status: "success",
-        message: "Signature valid",
-        details: `Recovered address: ${recoveredAddress}`,
-      };
-    } catch (error) {
-      steps.signature = {
-        status: "error",
-        message:
-          error instanceof Error
-            ? error.message || "Signature verification failed"
-          : "Signature verification failed",
-      };
-      reasons.push("Invalid signature");
-    }
     }
   }
 
@@ -199,7 +238,18 @@ export function deriveVerificationState({
   }
 
   // GPU
-  if (nrasVerified === true) {
+  if (normalizedVerification) {
+    if (normalizedVerification.nrasVerified) {
+      steps.gpu = { status: "success", message: "NRAS verified" };
+    } else {
+      steps.gpu = {
+        status: "error",
+        message: "NRAS verification failed",
+        details: normalizedReasonText || undefined,
+      };
+      appendNormalizedReason("NRAS failed");
+    }
+  } else if (nrasVerified === true) {
     steps.gpu = { status: "success", message: "NRAS verified" };
   } else if (nrasVerified === false) {
     steps.gpu = {
@@ -238,194 +288,250 @@ export function deriveVerificationState({
   }
 
   // Attestation
-  const attestationValidated =
-    (attestationResult === "Pass" ||
-      (typeof attestationResult === "boolean" && attestationResult === true)) &&
-    nrasVerified === true &&
-    (!effectiveIntelRequired || intelVerified === true) &&
-    (nonceCheck ? nonceCheck.valid === true : false);
-
-  if (attestationValidated) {
-    steps.attestation = { status: "success", message: "Attestation verified" };
-  } else if (attestationResult === "Fail") {
-    steps.attestation = { status: "error", message: "Attestation failed" };
-    reasons.push("Attestation failed");
-  } else {
-    steps.attestation = {
-      status: "pending",
-      message: "Attestation not fully validated",
-    };
-  }
-
-  // Address step - check all possible TEE nodes
-  const attestationPayload = proof?.attestation as any;
-  const trustedSet = (trustedAddresses || []).map((a) => a.toLowerCase());
-  const hasMultipleTrusted = trustedSet.length > 1;
-  attestationDebugLog("[attestation] Address verification:", {
-    recoveredAddress,
-    attestedAddress,
-    willUseDirectMatch: !!attestedAddress && !hasMultipleTrusted,
-    willUseComprehensiveCheck: !attestedAddress || hasMultipleTrusted,
-  });
-  const normalizedRecovered =
-    recoveredAddress?.toLowerCase() ?? normalize(signatureAddress);
-
-  if (!normalizedRecovered) {
-    steps.address = {
-      status: "pending",
-      message: "Waiting for signature verification",
-    };
-  } else {
-    // If attestedAddress provided, enforce it directly
-    if (attestedAddress && !hasMultipleTrusted) {
-      const matches = timingSafeEqual(
-        normalizedRecovered,
-        attestedAddress.trim().toLowerCase()
-      );
-      steps.address = {
-        status: matches ? "success" : "error",
-        message: matches ? "Address verified" : "Address mismatch",
-        details: matches
-          ? `TEE address: ${attestedAddress}`
-          : `Recovered: ${normalizedRecovered}\nExpected: ${attestedAddress}`,
-      };
-      if (!matches) reasons.push("Signer does not match attested key");
+  if (normalizedVerification) {
+    if (normalizedVerification.hardwareVerified) {
+      steps.attestation = { status: "success", message: "Attestation verified" };
     } else {
-      const possibleAddresses: string[] = [];
-      const attestation = proof?.attestation;
-      const expectedNonce =
-        typeof nonceCheck?.expected === "string"
-          ? nonceCheck.expected.toLowerCase()
-          : null;
-      const nodeNonces: Record<string, string | null> = {};
-
-      const extractNonce = (node: any): string | null => {
-        if (!node) return null;
-        const payload = node.nvidia_payload || node.evidence || node.payload;
-        if (!payload) return null;
-        let parsed = payload;
-        if (typeof parsed === "string") {
-          try {
-            parsed = JSON.parse(parsed);
-          } catch {
-            return null;
-          }
-        }
-        const nonce =
-          parsed?.eat_nonce ||
-          parsed?.nonce ||
-          parsed?.["x-nvidia-eat-nonce"] ||
-          null;
-        return typeof nonce === "string" ? nonce.toLowerCase() : null;
+      steps.attestation = {
+        status: "error",
+        message: "Attestation failed",
+        details: normalizedReasonText || undefined,
       };
+      appendNormalizedReason("Attestation failed");
+    }
+  } else {
+    const attestationValidated =
+      (attestationResult === "Pass" ||
+        (typeof attestationResult === "boolean" && attestationResult === true)) &&
+      nrasVerified === true &&
+      (!effectiveIntelRequired || intelVerified === true) &&
+      (nonceCheck ? nonceCheck.valid === true : false);
 
-    const addAddress = (addr: any) => {
-      if (
-        addr &&
-        typeof addr === "string" &&
-        (addr.startsWith("0x") || addr.startsWith("ed25519:"))
-      ) {
-        possibleAddresses.push(addr.toLowerCase());
-      }
-    };
+    if (attestationValidated) {
+      steps.attestation = { status: "success", message: "Attestation verified" };
+    } else if (attestationResult === "Fail") {
+      steps.attestation = { status: "error", message: "Attestation failed" };
+      reasons.push("Attestation failed");
+    } else {
+      steps.attestation = {
+        status: "pending",
+        message: "Attestation not fully validated",
+      };
+    }
 
-      // Top-level
-      addAddress(attestationPayload?.signing_address);
-      addAddress(attestation?.signing_address);
-      // Gateway
-      const gateway =
-        attestationPayload?.gateway_attestation ||
-        attestation?.gateway_attestation;
-      if (Array.isArray(gateway)) {
-        gateway.forEach((node: any) => addAddress(node?.signing_address));
-      } else if (gateway) {
-        addAddress(gateway.signing_address);
-      }
-      // Model attestations
-      const modelAtts =
-        attestationPayload?.model_attestations ||
-        attestation?.model_attestations;
-      if (Array.isArray(modelAtts)) {
-        modelAtts.forEach((model: any) => {
-          addAddress(model?.signing_address);
-          if (model?.signing_address) {
-            nodeNonces[model.signing_address.toLowerCase()] = extractNonce(model);
-          }
-        });
-      }
-      // All attestations
-      const allAtts =
-        attestationPayload?.all_attestations || attestation?.all_attestations;
-      if (Array.isArray(allAtts)) {
-        allAtts.forEach((node: any) => {
-          addAddress(node?.signing_address);
-          if (node?.signing_address) {
-            nodeNonces[node.signing_address.toLowerCase()] = extractNonce(node);
-          }
-        });
-      }
+    // Address step - check all possible TEE nodes
+    const attestationPayload = proof?.attestation as any;
+    const trustedSet = (trustedAddresses || []).map((a) => a.toLowerCase());
+    const hasMultipleTrusted = trustedSet.length > 1;
+    attestationDebugLog("[attestation] Address verification:", {
+      recoveredAddress,
+      attestedAddress,
+      willUseDirectMatch: !!attestedAddress && !hasMultipleTrusted,
+      willUseComprehensiveCheck: !attestedAddress || hasMultipleTrusted,
+    });
+    const normalizedRecovered =
+      recoveredAddress?.toLowerCase() ?? normalize(signatureAddress);
 
-      const uniqueAddresses = [...new Set(possibleAddresses)];
-      const nonceBoundAddresses =
-        expectedNonce && proof?.nras?.verified
-          ? uniqueAddresses.filter((addr) => nodeNonces[addr] === expectedNonce)
-          : uniqueAddresses;
-
-      const addressesToCheck =
-        nonceBoundAddresses.length > 0 ? nonceBoundAddresses : uniqueAddresses;
-
-      const addressesWithTrust = trustedSet.length
-        ? trustedSet
-        : addressesToCheck;
-
-      if (uniqueAddresses.length === 0) {
-        steps.address = {
-          status: "error",
-          message: "No TEE addresses found in attestation or signature",
-        };
-        reasons.push("No TEE addresses available");
-      } else {
-        const matchedAddress = addressesWithTrust.find((addr) =>
-          timingSafeEqual(addr, normalizedRecovered)
+    if (!normalizedRecovered) {
+      steps.address = {
+        status: "pending",
+        message: "Waiting for signature verification",
+      };
+    } else {
+      // If attestedAddress provided, enforce it directly
+      if (attestedAddress && !hasMultipleTrusted) {
+        const matches = timingSafeEqual(
+          normalizedRecovered,
+          attestedAddress.trim().toLowerCase()
         );
-        if (matchedAddress) {
-          steps.address = {
-            status: "success",
-            message: "Address verified",
-            details: `Matched TEE node: ${matchedAddress}`,
-          };
-        } else if (expectedNonce && proof?.nras?.verified) {
-          steps.address = {
-            status: "error",
-            message: "Address mismatch on verified TEE nodes",
-            details: `Recovered: ${normalizedRecovered}\nChecked ${
-              addressesToCheck.length
-            } nonce-bound TEE nodes:\n${addressesToCheck
-              .slice(0, 3)
-              .join("\n")}${addressesToCheck.length > 3 ? "\n..." : ""}`,
-          };
-          reasons.push("Signer does not match any TEE nodes");
-        } else {
-          steps.address = {
-            status: "error",
-            message: "Address mismatch",
-            details: `Recovered: ${normalizedRecovered}\nChecked ${
-              uniqueAddresses.length
-            } TEE nodes:\n${uniqueAddresses.slice(0, 3).join("\n")}${
-              uniqueAddresses.length > 3 ? "\n..." : ""
-            }`,
-          };
-          reasons.push("Signer does not match any TEE nodes");
-          attestationDebugError("[verification] Address mismatch:", {
-            recovered: recoveredAddress,
-            checkedNodes: uniqueAddresses,
+        steps.address = {
+          status: matches ? "success" : "error",
+          message: matches ? "Address verified" : "Address mismatch",
+          details: matches
+            ? `TEE address: ${attestedAddress}`
+            : `Recovered: ${normalizedRecovered}\nExpected: ${attestedAddress}`,
+        };
+        if (!matches) reasons.push("Signer does not match attested key");
+      } else {
+        const possibleAddresses: string[] = [];
+        const attestation = proof?.attestation;
+        const expectedNonce =
+          typeof nonceCheck?.expected === "string"
+            ? nonceCheck.expected.toLowerCase()
+            : null;
+        const nodeNonces: Record<string, string | null> = {};
+
+        const extractNonce = (node: any): string | null => {
+          if (!node) return null;
+          const payload = node.nvidia_payload || node.evidence || node.payload;
+          if (!payload) return null;
+          let parsed = payload;
+          if (typeof parsed === "string") {
+            try {
+              parsed = JSON.parse(parsed);
+            } catch {
+              return null;
+            }
+          }
+          const nonce =
+            parsed?.eat_nonce ||
+            parsed?.nonce ||
+            parsed?.["x-nvidia-eat-nonce"] ||
+            null;
+          return typeof nonce === "string" ? nonce.toLowerCase() : null;
+        };
+
+        const addAddress = (addr: any) => {
+          if (
+            addr &&
+            typeof addr === "string" &&
+            (addr.startsWith("0x") || addr.startsWith("ed25519:"))
+          ) {
+            possibleAddresses.push(addr.toLowerCase());
+          }
+        };
+
+        // Top-level
+        addAddress(attestationPayload?.signing_address);
+        addAddress(attestation?.signing_address);
+        // Gateway
+        const gateway =
+          attestationPayload?.gateway_attestation ||
+          attestation?.gateway_attestation;
+        if (Array.isArray(gateway)) {
+          gateway.forEach((node: any) => addAddress(node?.signing_address));
+        } else if (gateway) {
+          addAddress(gateway.signing_address);
+        }
+        // Model attestations
+        const modelAtts =
+          attestationPayload?.model_attestations ||
+          attestation?.model_attestations;
+        if (Array.isArray(modelAtts)) {
+          modelAtts.forEach((model: any) => {
+            addAddress(model?.signing_address);
+            if (model?.signing_address) {
+              nodeNonces[model.signing_address.toLowerCase()] = extractNonce(model);
+            }
           });
         }
+        // All attestations
+        const allAtts =
+          attestationPayload?.all_attestations || attestation?.all_attestations;
+        if (Array.isArray(allAtts)) {
+          allAtts.forEach((node: any) => {
+            addAddress(node?.signing_address);
+            if (node?.signing_address) {
+              nodeNonces[node.signing_address.toLowerCase()] = extractNonce(node);
+            }
+          });
+        }
+
+        const uniqueAddresses = [...new Set(possibleAddresses)];
+        const nonceBoundAddresses =
+          expectedNonce && proof?.nras?.verified
+            ? uniqueAddresses.filter((addr) => nodeNonces[addr] === expectedNonce)
+            : uniqueAddresses;
+
+        const addressesToCheck =
+          nonceBoundAddresses.length > 0 ? nonceBoundAddresses : uniqueAddresses;
+
+        const addressesWithTrust = trustedSet.length
+          ? trustedSet
+          : addressesToCheck;
+
+        if (uniqueAddresses.length === 0) {
+          steps.address = {
+            status: "error",
+            message: "No TEE addresses found in attestation or signature",
+          };
+          reasons.push("No TEE addresses available");
+        } else {
+          const matchedAddress = addressesWithTrust.find((addr) =>
+            timingSafeEqual(addr, normalizedRecovered)
+          );
+          if (matchedAddress) {
+            steps.address = {
+              status: "success",
+              message: "Address verified",
+              details: `Matched TEE node: ${matchedAddress}`,
+            };
+          } else if (expectedNonce && proof?.nras?.verified) {
+            steps.address = {
+              status: "error",
+              message: "Address mismatch on verified TEE nodes",
+              details: `Recovered: ${normalizedRecovered}\nChecked ${
+                addressesToCheck.length
+              } nonce-bound TEE nodes:\n${addressesToCheck
+                .slice(0, 3)
+                .join("\n")}${addressesToCheck.length > 3 ? "\n..." : ""}`,
+            };
+            reasons.push("Signer does not match any TEE nodes");
+          } else {
+            steps.address = {
+              status: "error",
+              message: "Address mismatch",
+              details: `Recovered: ${normalizedRecovered}\nChecked ${
+                uniqueAddresses.length
+              } TEE nodes:\n${uniqueAddresses.slice(0, 3).join("\n")}${
+                uniqueAddresses.length > 3 ? "\n..." : ""
+              }`,
+            };
+            reasons.push("Signer does not match any TEE nodes");
+            attestationDebugError("[verification] Address mismatch:", {
+              recovered: recoveredAddress,
+              checkedNodes: uniqueAddresses,
+            });
+          }
       }
     }
   }
+}
 
-  const anyError = Object.values(steps).some((s) => s.status === "error");
+if (
+  steps.attestation.status === "error" &&
+  !reasons.includes("Attestation failed")
+) {
+  reasons.push("Attestation failed");
+}
+
+const attestationRecord = proof?.attestation as Record<string, any> | null;
+const claimedAddresses = [
+  attestationRecord?.signing_address,
+  attestationRecord?.gateway_attestation?.signing_address,
+  ...(Array.isArray(attestationRecord?.model_attestations)
+    ? attestationRecord.model_attestations.flatMap((node: any) =>
+        node?.signing_address ? [node.signing_address] : []
+      )
+    : []),
+  ...(Array.isArray(attestationRecord?.all_attestations)
+    ? attestationRecord.all_attestations.flatMap((node: any) =>
+        node?.signing_address ? [node.signing_address] : []
+      )
+    : []),
+];
+const hasAttestationAddress = claimedAddresses.some(
+  (addr) => typeof addr === "string" && addr.length > 0
+);
+
+if (
+  !hasAttestationAddress &&
+  !signatureAddress &&
+  !reasons.includes("No TEE addresses available")
+) {
+  reasons.push("No TEE addresses available");
+}
+
+if (
+  steps.address.status === "error" &&
+  steps.address.message?.includes("No TEE addresses found")
+) {
+  if (!reasons.includes("No TEE addresses available")) {
+    reasons.push("No TEE addresses available");
+  }
+}
+
+const anyError = Object.values(steps).some((s) => s.status === "error");
   const allSuccess = Object.values(steps).every((s) => s.status === "success");
 
   // Critical steps that must be successful for overall verification

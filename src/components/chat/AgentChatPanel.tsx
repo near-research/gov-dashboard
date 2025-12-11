@@ -21,7 +21,7 @@ import {
   type MessageUIEvent,
   type MessageProof,
 } from "@/types/agent-ui";
-import type { RemoteProof } from "@/components/verification/VerificationProof";
+import type { RemoteProof } from "@/types/verification";
 import { AGENT_MODEL } from "@/agent/contract";
 import { normalizeSignaturePayload } from "@/verification/normalize";
 import { extractHashesFromSignedText } from "@/verification/hash-utils";

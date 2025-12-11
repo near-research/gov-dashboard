@@ -1,5 +1,7 @@
-import type { PartialExpectations } from "@/types/verification";
-import type { RemoteProof } from "@/components/verification/VerificationProof";
+import type {
+  PartialExpectations,
+  RemoteProof,
+} from "@/types/verification";
 import type { VerificationMetadata } from "@/types/agui-events";
 
 export type AgentRole = "user" | "assistant" | "system";

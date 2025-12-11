@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ChevronDown, CheckCircle2, XCircle, Info } from "lucide-react";
 import { VerificationProof } from "@/components/verification/VerificationProof";
-import type { RemoteProof } from "@/components/verification/VerificationProof";
+import type { RemoteProof } from "@/types/verification";
 import { Markdown } from "@/components/proposal/Markdown";
 
 interface ScreeningBadgeProps {

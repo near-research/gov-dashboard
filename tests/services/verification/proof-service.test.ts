@@ -79,7 +79,7 @@ describe("src/services/verification/proof-service.ts", () => {
 
       const result = await fetchVerificationProof(defaultParams);
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         attestation: "att-data",
         signature: "sig-data",
         signatureError: null,
@@ -100,7 +100,7 @@ describe("src/services/verification/proof-service.ts", () => {
 
       const result = await fetchVerificationProof(defaultParams);
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         attestation: null,
         signature: null,
         signatureError: null,

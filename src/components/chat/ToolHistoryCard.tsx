@@ -1,11 +1,9 @@
 import React, { useState } from "react";
-import {
-  VerificationProof,
-  type RemoteProof,
-} from "@/components/verification/VerificationProof";
+import { VerificationProof } from "@/components/verification/VerificationProof";
 import type { ToolCallUIEvent, MessageProof } from "@/types/agent-ui";
 import type { VerificationMetadata } from "@/types/agui-events";
 import { Button } from "@/components/ui/button";
+import type { RemoteProof } from "@/types/verification";
 
 export type ToolHistoryStatus = "active" | "awaiting_response" | "completed";
 

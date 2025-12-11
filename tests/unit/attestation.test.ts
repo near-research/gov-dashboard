@@ -10,6 +10,7 @@ import {
   multiGpuProofMock,
 } from "../fixtures/verificationMocks";
 import { verifyMessage, type SignatureLike } from "ethers";
+import type { NormalizedVerificationResult } from "@/utils/verification/shared";
 
 vi.mock("ethers", () => ({
   verifyMessage: vi.fn(),
@@ -466,5 +467,82 @@ describe("deriveVerificationState", () => {
     expect(state.steps.nonce.status).toBeDefined();
     expect(state.steps.gpu.status).toBeDefined();
     expect(state.steps.cpu.status).toBeDefined();
+  });
+
+  it("prefers normalized verification results when provided", () => {
+    const normalized: NormalizedVerificationResult = {
+      verified: true,
+      nrasVerified: true,
+      signatureVerified: true,
+      hardwareVerified: true,
+      claims: {
+        secboot: true,
+        measres: "success",
+        nonce: mockNonce,
+        overallResult: true,
+      },
+      reasons: [],
+    };
+
+    const state = deriveVerificationState({
+      proof: verifiedProofMock,
+      requestHash: "req",
+      responseHash: "res",
+      signatureText: verifiedProofMock.signature?.text || null,
+      signature: verifiedProofMock.signature?.signature || null,
+      signatureAddress: verifiedProofMock.signature?.signing_address || null,
+      attestedAddress:
+        verifiedProofMock.attestation?.gateway_attestation?.signing_address || null,
+      attestationResult: "Pass",
+      nrasVerified: false,
+      intelVerified: true,
+      nonceCheck: verifiedProofMock.nonceCheck || null,
+      intelRequired: true,
+      normalizedVerification: normalized,
+    });
+
+    expect(state.steps.signature.status).toBe("success");
+    expect(state.steps.attestation.status).toBe("success");
+    expect(state.steps.gpu.status).toBe("success");
+    expect(state.overall).toBe("verified");
+  });
+
+  it("fails when normalized verification reports errors", () => {
+    const normalized: NormalizedVerificationResult = {
+      verified: false,
+      nrasVerified: false,
+      signatureVerified: false,
+      hardwareVerified: false,
+      claims: {
+        secboot: false,
+        measres: "",
+        nonce: "",
+        overallResult: false,
+      },
+      reasons: ["Normalized verification failed"],
+    };
+
+    const state = deriveVerificationState({
+      proof: verifiedProofMock,
+      requestHash: "req",
+      responseHash: "res",
+      signatureText: verifiedProofMock.signature?.text || null,
+      signature: verifiedProofMock.signature?.signature || null,
+      signatureAddress: verifiedProofMock.signature?.signing_address || null,
+      attestedAddress:
+        verifiedProofMock.attestation?.gateway_attestation?.signing_address || null,
+      attestationResult: "Pass",
+      nrasVerified: true,
+      intelVerified: true,
+      nonceCheck: verifiedProofMock.nonceCheck || null,
+      intelRequired: true,
+      normalizedVerification: normalized,
+    });
+
+    expect(state.steps.signature.status).toBe("error");
+    expect(state.steps.attestation.status).toBe("error");
+    expect(state.steps.gpu.status).toBe("error");
+    expect(state.reasons).toContain("Normalized verification failed");
+    expect(state.overall).toBe("failed");
   });
 });

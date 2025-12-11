@@ -4,9 +4,11 @@ import {
   extractExpectationsFromAttestation,
 } from "@/utils/attestation/fetch-model-attestation";
 import {
-  collectSigningAddressesFromAttestation,
-  validateIntelBinding,
-} from "@/utils/verification/intel";
+  detectAttestationType,
+  detectNodeType,
+} from "@/utils/attestation/type-detection";
+import { verifyIntelTdxAttestation } from "@/utils/verification/intel-tdx";
+import { validateIntelBinding } from "@/utils/verification/intel";
 import type {
   AttestationExpectations,
   AttestationNodeSummary,
@@ -137,6 +139,40 @@ const buildNodeSummaries = (attestation: any): AttestationNodeSummary[] => {
       composeHash: hashComposeManifest(compose),
     };
   });
+};
+
+const collectSigningAddressesFromAttestation = (attestation: any): string[] => {
+  if (!attestation || typeof attestation !== "object") return [];
+
+  const addresses: string[] = [];
+  const add = (addr?: string | null) => {
+    if (typeof addr === "string" && addr.startsWith("0x")) {
+      addresses.push(addr.toLowerCase());
+    }
+  };
+
+  add(attestation.signing_address);
+  add(attestation.signingAddress);
+  add(attestation.key);
+
+  const gateway = attestation.gateway_attestation;
+  if (Array.isArray(gateway)) {
+    gateway.forEach((node: any) => add(node?.signing_address));
+  } else if (gateway) {
+    add(gateway.signing_address);
+  }
+
+  const modelAtts = Array.isArray(attestation.model_attestations)
+    ? attestation.model_attestations
+    : [];
+  modelAtts.forEach((node: any) => add(node?.signing_address));
+
+  const allAtts = Array.isArray(attestation.all_attestations)
+    ? attestation.all_attestations
+    : [];
+  allAtts.forEach((node: any) => add(node?.signing_address));
+
+  return [...new Set(addresses)];
 };
 
 const pickNvidiaPayload = (attestation: any): any | null => {
@@ -357,7 +393,19 @@ const verifyAttestation = async (
   attestation: any,
   expectations: AttestationExpectations
 ) => {
-  await verifyNrasPayload(attestation, expectations);
+  const attestationType = detectAttestationType(attestation);
+  if (attestationType === "nvidia") {
+    await verifyNrasPayload(attestation, expectations);
+  } else if (attestationType === "intel") {
+    const intelResult = await verifyIntelTdxAttestation(attestation, expectations.nonce);
+    if (!intelResult.verified) {
+      throw new Error(
+        intelResult.reasons?.join("; ") ||
+          intelResult.error ||
+          "Intel TDX verification failed"
+      );
+    }
+  }
 
   const intelQuote = collectIntelQuote(attestation);
   if (intelQuote) {
@@ -404,6 +452,21 @@ export async function getModelExpectations(
       nonce: fetchedNonce ? `${fetchedNonce.slice(0, 8)}…` : null,
     });
 
+    console.log("[attestation-cache] Attestation payload keys", {
+      keys: Object.keys(attestation).slice(0, 5),
+      nonceProvided: fetchedNonce,
+      modelAttestationCount: Array.isArray(attestation.model_attestations)
+        ? attestation.model_attestations.length
+        : 0,
+      gatewayAttestationKeys: attestation.gateway_attestation
+        ? Object.keys(attestation.gateway_attestation).slice(0, 4)
+        : [],
+    });
+    console.log("[attestation-cache] Extract expectations input", {
+      attestation,
+      nonce: fetchedNonce,
+    });
+
     const expectations = await (async () => {
       try {
         return await extractExpectationsFromAttestation(attestation);
@@ -411,7 +474,15 @@ export async function getModelExpectations(
         console.warn("[attestation-cache] Expectations incomplete, skipping:", {
           error: err instanceof Error ? err.message : err,
         });
-        console.debug("[attestation-cache] Attestation payload missing expectations:", attestation);
+        console.debug("[attestation-cache] Attestation payload missing expectations keys:", {
+          keys: Object.keys(attestation).slice(0, 5),
+          gatewayKeys: attestation.gateway_attestation
+            ? Object.keys(attestation.gateway_attestation).slice(0, 5)
+            : [],
+          eventLogLength: Array.isArray(attestation.event_log)
+            ? attestation.event_log.length
+            : 0,
+        });
         return null;
       }
     })();
@@ -444,24 +515,46 @@ export async function getModelExpectations(
     const nodes = buildNodeSummaries(attestation);
     const client = getNearAIClient();
     const expectationNonce = expectations?.nonce ?? null;
+    const attestationType = detectAttestationType(attestation);
+    console.log("[attestation-cache] Attestation type for NRAS decision:", {
+      attestationType,
+    });
     const nodesWithResults = await Promise.all(
-      nodes.map(async (node) => ({
-        ...node,
-        nras: expectationNonce
-          ? await client.verifyWithNras(
-              {
-                model_attestations: [
+      nodes.map(async (node) => {
+        // Node summaries use camelCase keys, so reuse the shared helper.
+        const nodeType = detectNodeType(node);
+        const hasNvidiaPayload = nodeType === "nvidia";
+        const hasIntelQuote = nodeType === "intel";
+        console.log("[attestation-cache] Node verification:", {
+          signingAddress:
+            node.signingAddress && node.signingAddress.length > 10
+              ? `${node.signingAddress.slice(0, 10)}...`
+              : node.signingAddress,
+          nodeType,
+          hasNvidiaPayload,
+          hasIntelQuote,
+        });
+        return {
+          ...node,
+          nras:
+            hasNvidiaPayload && expectationNonce
+              ? await client.verifyWithNras(
                   {
-                    signing_address: node.signingAddress || undefined,
-                    nvidia_payload: node.nvidiaPayload,
+                    model_attestations: [
+                      {
+                        signing_address: node.signingAddress || undefined,
+                        nvidia_payload: node.nvidiaPayload,
+                      },
+                    ],
                   },
-                ],
-              },
-              expectationNonce
-            )
-          : null,
-        intel: await verifyNodeWithIntel(node, expectations, attestation),
-      }))
+                  expectationNonce
+                )
+              : null,
+          intel: hasIntelQuote
+            ? await verifyNodeWithIntel(node, expectations, attestation)
+            : null,
+        };
+      })
     );
     const entry: CachedAttestation = {
       attestation,

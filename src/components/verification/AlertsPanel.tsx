@@ -19,6 +19,8 @@ export interface AlertsPanelProps {
   attestedResponseHash?: string | null;
   recordedRequestHash?: string | null;
   recordedResponseHash?: string | null;
+  nrasReasons?: string[] | null;
+  nrasVerified?: boolean | null;
 }
 
 export function AlertsPanel({
@@ -34,6 +36,8 @@ export function AlertsPanel({
   attestedResponseHash,
   recordedRequestHash,
   recordedResponseHash,
+  nrasReasons,
+  nrasVerified,
 }: AlertsPanelProps) {
   return (
     <>
@@ -132,6 +136,20 @@ export function AlertsPanel({
           </div>
         </Alert>
       )}
+
+      {nrasReasons &&
+        nrasReasons.length > 0 &&
+        nrasVerified !== true && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>NRAS verification failed</AlertTitle>
+            <AlertDescription className="space-y-1 text-[11px]">
+              {nrasReasons.map((reason) => (
+                <p key={reason}>{reason}</p>
+              ))}
+            </AlertDescription>
+          </Alert>
+        )}
     </>
   );
 }

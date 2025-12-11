@@ -1,5 +1,16 @@
 import { servicesConfig } from "@/config/services";
-import type { AttestationExpectations } from "@/types/verification";
+import type {
+  AttestationExpectations,
+  PartialExpectations,
+} from "@/types/verification";
+import { extractExpectationsFromMessage } from "./expectations";
+import {
+  detectAttestationType,
+  detectNodeType,
+  type AttestationType,
+} from "./type-detection";
+
+export { detectAttestationType, detectNodeType, type AttestationType };
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -55,6 +66,12 @@ const gatherSections = (payload: any) => {
       sections.push(entry);
       pushSection(entry?.nvidia_payload);
       pushSection(entry?.info);
+      pushSection(entry?.event_log);
+      pushSection(entry?.eventLog);
+      pushSection(entry?.attestation);
+      pushSection(entry?.gateway_attestation);
+      pushSection(entry?.model_attestations);
+      pushSection(entry?.all_attestations);
     }
   };
 
@@ -77,17 +94,102 @@ const pickFromSections = (sections: any[], keys: string[]) => {
   return undefined;
 };
 
+const NONCE_KEYS = [
+  "nonce",
+  "eat_nonce",
+  "x-nvidia-eat-nonce",
+  "expectedNonce",
+  "request_nonce",
+  "requestNonce",
+];
+
+const ensureStringValue = (value: any) => {
+  if (typeof value === "string") return value.trim();
+  if (value === null || value === undefined) return undefined;
+  return String(value).trim();
+};
+
+const decodeEventLogPayload = (payload: any) => {
+  const raw = ensureStringValue(payload);
+  if (!raw) return undefined;
+  const trimmed = raw.replace(/^0x/i, "").trim();
+  if (!trimmed) return undefined;
+  return trimmed.toLowerCase();
+};
+
+const parseIntelEventLog = (value: any) => {
+  const parsed = parseJsonSafe(value) ?? value;
+  if (Array.isArray(parsed)) {
+    return parsed.filter((entry) => entry && typeof entry === "object");
+  }
+  return [];
+};
+
+export const extractIntelExpectations = (
+  attestation: any
+): Partial<AttestationExpectations> => {
+  const gateway =
+    attestation?.gateway_attestation ??
+    attestation?.attestation?.gateway_attestation ??
+    attestation?.payload?.gateway_attestation ??
+    attestation?.attestation ??
+    attestation;
+  if (!gateway || typeof gateway !== "object") return {};
+  const info = parseJsonSafe(gateway.info) ?? gateway.info;
+  const nonce = gateway?.request_nonce ?? gateway?.requestNonce;
+  const deviceCertHash = getFirst(info, ["compose_hash", "composeHash"]);
+  const rimHash = getFirst(info, ["os_image_hash", "osImageHash"]);
+  const ueid = getFirst(info, ["instance_id", "instanceId"]);
+
+  const normalizedMeasurements: string[] = [];
+  const measurementSet = new Set<string>();
+  const pushMeasurement = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (measurementSet.has(trimmed)) return;
+    measurementSet.add(trimmed);
+    normalizedMeasurements.push(trimmed);
+  };
+
+  const infoMeasurementKeys = [
+    "mr_aggregated",
+    "mrAggregated",
+    "compose_hash",
+    "composeHash",
+    "os_image_hash",
+    "osImageHash",
+  ];
+  infoMeasurementKeys.forEach((key) => {
+    const value = getFirst(info, [key]);
+    if (typeof value === "string") {
+      pushMeasurement(value);
+    }
+  });
+
+  const eventLogEntries = parseIntelEventLog(gateway.event_log ?? gateway.eventLog);
+  for (const entry of eventLogEntries) {
+    const decoded = decodeEventLogPayload(entry.event_payload);
+    if (decoded) {
+      pushMeasurement(decoded);
+    }
+  }
+
+  return {
+    arch: "intel-tdx",
+    nonce: ensureStringValue(nonce) ?? undefined,
+    deviceCertHash: ensureStringValue(deviceCertHash) ?? undefined,
+    rimHash: ensureStringValue(rimHash) ?? undefined,
+    ueid: ensureStringValue(ueid) ?? undefined,
+    measurements: normalizedMeasurements,
+  };
+};
+
 const parseExpectationsPayload = (payload: any): Partial<AttestationExpectations> => {
   const sections = gatherSections(payload);
 
   const expectations: Partial<AttestationExpectations> = {
-    nonce: pickFromSections(sections, [
-      "nonce",
-      "eat_nonce",
-      "x-nvidia-eat-nonce",
-      "expectedNonce",
-      "request_nonce",
-    ]),
+    nonce: pickFromSections(sections, NONCE_KEYS),
     arch: pickFromSections(sections, ["arch", "gpu_arch", "expectedArch", "expected_arch"]),
     deviceCertHash: pickFromSections(sections, [
       "deviceCertHash",
@@ -140,6 +242,26 @@ const parseExpectationsPayload = (payload: any): Partial<AttestationExpectations
   return expectations;
 };
 
+const resolveNvidiaPayloadNonce = (attestation: any): string | undefined => {
+  const candidates = [
+    attestation?.nvidia_payload,
+    attestation?.gateway_attestation?.nvidia_payload,
+    attestation?.model_attestations?.[0]?.nvidia_payload,
+    attestation?.all_attestations?.[0]?.nvidia_payload,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseJsonSafe(candidate) ?? candidate;
+    if (!parsed || typeof parsed !== "object") continue;
+    const nonceValue = getFirst(parsed, NONCE_KEYS);
+    if (nonceValue) {
+      return ensureStringValue(nonceValue) ?? undefined;
+    }
+  }
+
+  return undefined;
+};
+
 const buildUrl = (model: string) =>
   `${(servicesConfig as any)?.nearAI?.baseUrl || "https://cloud-api.near.ai"}/model/attestation/${encodeURIComponent(
     model
@@ -176,7 +298,7 @@ export const fetchHardwareExpectations = async (
 
   const json = await res.json();
   const payload = json?.nvidia_payload ?? json?.payload ?? json;
-  const expectations = parseExpectationsPayload(payload);
+  const expectations = extractHardwareExpectations(payload);
 
   if (
     !expectations.nonce ||
@@ -222,8 +344,54 @@ export const setCachedHardwareExpectations = (
 export const extractHardwareExpectations = (
   proof: any
 ): Partial<AttestationExpectations> => {
-  if (!proof || typeof proof !== "object") return {};
-  return parseExpectationsPayload(proof);
+  if (!proof) return {};
+  const normalizedProof = parseJsonSafe(proof) ?? proof;
+  if (!normalizedProof || typeof normalizedProof !== "object") return {};
+  const messageData: PartialExpectations = extractExpectationsFromMessage({
+    proof: normalizedProof,
+    verification: normalizedProof,
+  });
+  const fallback = parseExpectationsPayload(normalizedProof);
+  const attestationType = detectAttestationType(normalizedProof);
+  if (attestationType !== "unknown") {
+    console.info(`[hardware] Detected attestation type: ${attestationType}`);
+  }
+  const intelExpectations =
+    attestationType === "intel" ? extractIntelExpectations(normalizedProof) : undefined;
+  if (attestationType === "intel") {
+    const summary = {
+      hasNonce: !!intelExpectations?.nonce,
+      arch: intelExpectations?.arch,
+      hasDeviceCertHash: !!intelExpectations?.deviceCertHash,
+      measurementsCount: intelExpectations?.measurements?.length ?? 0,
+    };
+    console.info(`[hardware] Intel expectations extracted:`, summary);
+  }
+
+  const mergeSources = (
+    ...sources: Array<Partial<AttestationExpectations> | undefined>
+  ): Partial<AttestationExpectations> => {
+    const result: Partial<AttestationExpectations> = {};
+    for (const source of sources) {
+      if (!source) continue;
+      for (const [key, value] of Object.entries(source)) {
+        if (value === undefined || key === "measurements") continue;
+        (result as any)[key] = value;
+      }
+    }
+    return result;
+  };
+
+  const merged = mergeSources(fallback, messageData, intelExpectations);
+  merged.measurements =
+    messageData.measurements ??
+    intelExpectations?.measurements ??
+    fallback.measurements;
+  const payloadNonce = resolveNvidiaPayloadNonce(normalizedProof);
+  if (payloadNonce) {
+    merged.nonce = payloadNonce;
+  }
+  return merged;
 };
 
 export const mergeHardwareExpectations = (

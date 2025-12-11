@@ -10,6 +10,8 @@ import {
   requestEvaluation,
   respondWithScreeningError,
 } from "@/server/screening";
+import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
+import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 
 /**
  * POST /api/saveAnalysis/[topicId]
@@ -29,6 +31,10 @@ export default async function handler(
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const origin =
+    req.headers.origin ||
+    (req.headers.host ? `http://${req.headers.host}` : undefined);
 
   // Extract topicId from URL parameter
   const topicIdParam = req.query.topicId;
@@ -137,8 +143,16 @@ export default async function handler(
   }
 
   try {
-    const { evaluation, verification, verificationId, model } =
-      await requestEvaluation(sanitizedTitle, sanitizedContent);
+    const {
+      evaluation,
+      verification,
+      verificationId,
+      model,
+      proof,
+      requestHash,
+      responseHash,
+      nonce,
+    } = await requestEvaluation(sanitizedTitle, sanitizedContent);
 
     // Extract computed scores from evaluation
     const qualityScore = evaluation.qualityScore;
@@ -181,18 +195,49 @@ export default async function handler(
       throw dbError;
     }
 
+    const proofPayload =
+      proof ??
+      (verificationId
+        ? {
+            verificationId,
+            requestHash,
+            responseHash,
+            nonce,
+          }
+        : undefined);
+
+    let remoteProof = null;
+    if (
+      proofPayload?.verificationId &&
+      proofPayload.requestHash &&
+      proofPayload.responseHash
+    ) {
+      remoteProof = await prefetchVerificationProof(origin, {
+        verificationId: proofPayload.verificationId,
+        model,
+        requestHash: proofPayload.requestHash,
+        responseHash: proofPayload.responseHash,
+        nonce: proofPayload.nonce ?? null,
+      });
+    }
+
+    const mergedVerification =
+      mergeVerificationStatusFromProof(verification, remoteProof) ?? verification;
+
     return res.status(200).json({
       success: true,
       saved: true,
       passed: evaluation.overallPass,
       evaluation,
-      verification,
+      verification: mergedVerification,
       verificationId,
       qualityScore,
       attentionScore,
       version: versionToScreen,
       evaluatedBy: signerAccountId,
       model,
+      proof: proofPayload ?? null,
+      remoteProof,
       message: evaluation.overallPass
         ? `Evaluation passed and saved for revision ${versionToScreen}`
         : `Evaluation failed but saved for revision ${versionToScreen}`,

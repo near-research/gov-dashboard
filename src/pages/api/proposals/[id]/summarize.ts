@@ -23,7 +23,7 @@ const ensureVerificationSession = (
   if (!verificationId || !proof) return;
   try {
     const client = getNearAIClient();
-    client.createSession(verificationId);
+    client.createSession(verificationId, proof.nonce ?? undefined);
     client.updateSessionHashes(verificationId, {
       requestHash: proof.requestHash ?? null,
       responseHash: proof.responseHash ?? null,
@@ -233,7 +233,7 @@ export default async function handler(
     });
 
     if (effectiveVerificationId !== generatedVerificationId) {
-      client.createSession(effectiveVerificationId);
+      client.createSession(effectiveVerificationId, session.nonce);
       client.updateSessionHashes(effectiveVerificationId, {
         requestHash,
         responseHash,

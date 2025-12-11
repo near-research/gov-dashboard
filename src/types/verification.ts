@@ -1,3 +1,5 @@
+import type { NormalizedVerificationResult } from "@/utils/verification/shared";
+
 // ============================================================================
 // Session Types
 // ============================================================================
@@ -61,8 +63,32 @@ export interface VerificationResult {
   nras?: NrasVerificationResult | null;
   signatureVerification?: SignatureVerificationResult;
   nonceCheck?: NonceCheck;
+  intel?: IntelVerificationResult | null;
+  attestationNodes?: AttestationNodeSummary[] | null;
+  configMissing?: {
+    nearApiKey?: boolean;
+    intel?: boolean;
+    intelApiKey?: boolean;
+    hardwareExpectations?: boolean;
+  };
+  results?: {
+    verified: boolean;
+    reasons: string[];
+    info?: string[];
+    gpu?: NrasVerificationResult | null;
+    cpu?: IntelVerificationResult | null;
+    nonce?: NonceCheck | null;
+    signature?: {
+      verified: boolean;
+      recoveredAddress?: string | null;
+      attestedAddress?: string | null;
+      reason?: string;
+    };
+  };
   requestHash?: string | null;
   responseHash?: string | null;
+  sessionRequestHash?: string | null;
+  sessionResponseHash?: string | null;
 }
 
 /** Named stages within the NEAR verification workflow. */
@@ -84,10 +110,10 @@ export interface VerificationPayload {
 /** Expectations derived from attestation metadata (nonce, hardware profile, etc.). */
 export interface AttestationExpectations {
   nonce: string;
-  arch: string;
+  arch: string; // 'HOPPER' | 'BLACKWELL' | 'intel-tdx'
   deviceCertHash: string;
-  rimHash?: string;
-  ueid?: string;
+  rimHash?: string | null;
+  ueid?: string | null;
   measurements: string[];
 }
 
@@ -118,6 +144,16 @@ export interface IntelVerificationResult {
   error?: string;
   details?: string;
   reasons?: string[];
+}
+
+export interface IntelTdxVerificationResult {
+  verified: boolean;
+  reportDataValid: boolean;
+  signingAddressBound: boolean;
+  nonceBound: boolean;
+  composeHashValid?: boolean;
+  error?: string;
+  reasons: string[];
 }
 
 // ============================================================================
@@ -175,6 +211,7 @@ export interface DeriveArgs {
   nonceCheck?: NonceCheck | null;
   intelRequired?: boolean;
   intelConfigured?: boolean;
+  normalizedVerification?: NormalizedVerificationResult | null;
   trustedAddresses?: string[];
 }
 
@@ -189,10 +226,63 @@ export interface SignatureFetchError {
   url?: string;
 }
 
+/** Summary for attestation nodes discovered in a proof. */
+export interface AttestationNodeSummary {
+  signingAddress: string | null;
+  nvidiaPayload: unknown;
+  intelQuote: unknown;
+  composeManifest: string | null;
+  composeHash: string | null;
+  nras?: NrasVerificationResult | null;
+  intel?: IntelVerificationResult | null;
+}
+
+/** Response returned during model attestation discovery flows. */
+export interface ModelAttestationResponse {
+  model?: string;
+  model_id?: string;
+  issued_at?: number | string;
+  timestamp?: number | string;
+  nvidia_payload?: unknown;
+  intel_quote?: unknown;
+  gateway_attestation?: ModelAttestationResponse | null;
+  model_attestations?: Array<ModelAttestationResponse | null> | null;
+  attestation?: ModelAttestationResponse | null;
+  all_attestations?: Array<ModelAttestationResponse | null> | null;
+  evidence_list?: unknown;
+  info?: Record<string, unknown> | null;
+  event_log?: unknown;
+  eventLog?: unknown;
+  request_nonce?: string | null;
+  requestNonce?: string | null;
+  signing_address?: string | null;
+  signingAddress?: string | null;
+  [key: string]: unknown;
+}
+
+/** Attestation payload returned by NEAR verification proofs. */
+export interface VerificationAttestationPayload extends ModelAttestationResponse {
+  gateway_attestation?: VerificationAttestationPayload | null;
+  model_attestations?: Array<VerificationAttestationPayload | null>;
+  all_attestations?: Array<VerificationAttestationPayload | null>;
+  signing_address?: string | null;
+  signingAddress?: string | null;
+  key?: string | null;
+  signing_algo?: string | null;
+  signing_algorithm?: string | null;
+  algorithm?: string | null;
+  report_data?: string | null;
+  reportData?: string | null;
+  request_nonce?: string | null;
+  requestNonce?: string | null;
+  [key: string]: unknown;
+}
+
 /** Payload returned by the verification proof endpoint. */
 export interface VerificationProofResponse {
-  attestation?: any;
+  attestation?: VerificationAttestationPayload;
   signature?: any;
+  signatureVerification?: SignatureVerificationResult | null;
   signatureError?: SignatureFetchError | null;
   nras?: NrasVerificationResult | null;
   nrasRaw?: any;
@@ -222,36 +312,15 @@ export interface VerificationProofResponse {
       reason?: string;
     };
   };
+  normalized?: NormalizedVerificationResult | null;
   requestHash?: string | null;
   responseHash?: string | null;
   sessionRequestHash?: string | null;
   sessionResponseHash?: string | null;
+  nonce?: string | null;
 }
 
-/** Summary for attestation nodes discovered in a proof. */
-export interface AttestationNodeSummary {
-  signingAddress: string | null;
-  nvidiaPayload: unknown;
-  intelQuote: unknown;
-  composeManifest: string | null;
-  composeHash: string | null;
-  nras?: NrasVerificationResult | null;
-  intel?: IntelVerificationResult | null;
-}
-
-/** Response returned during model attestation discovery flows. */
-export interface ModelAttestationResponse {
-  model?: string;
-  model_id?: string;
-  issued_at?: number | string;
-  timestamp?: number | string;
-  nvidia_payload?: unknown;
-  intel_quote?: unknown;
-  gateway_attestation?: Record<string, unknown>;
-  model_attestations?: Array<Record<string, unknown>>;
-  attestation?: Record<string, unknown>;
-  evidence_list?: unknown;
-}
+export type RemoteProof = VerificationProofResponse;
 
 // ============================================================================
 // Metadata Types

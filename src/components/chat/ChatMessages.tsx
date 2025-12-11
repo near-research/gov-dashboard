@@ -13,16 +13,14 @@ import {
   type MessageProof,
 } from "@/types/agent-ui";
 import type { VerificationMetadata } from "@/types/agui-events";
-import {
-  VerificationProof,
-  type RemoteProof,
-} from "@/components/verification/VerificationProof";
+import { VerificationProof } from "@/components/verification/VerificationProof";
 import {
   ToolHistoryCard,
   type ToolHistoryStatus,
 } from "./ToolHistoryCard";
 import ProposalCard from "@/components/proposal/ProposalCard";
 import type { ProposalDisplayData } from "@/types/proposals";
+import type { RemoteProof } from "@/types/verification";
 
 interface ChatMessagesProps {
   events: AgentUIEvent[];

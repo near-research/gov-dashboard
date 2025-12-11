@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useMemo, useReducer } from "react";
 import { toast } from "sonner";
 import { validateExpectations } from "@/utils/attestation/expectations";
-import { verifyMessage } from "ethers";
 import { deriveVerificationState } from "@/utils/attestation/state";
 import {
-  buildAttestationPayload,
-  buildAttestationSummary,
-  buildAttestedHashes,
   buildSignaturePayload,
   resolveEffectiveHash,
   resolveNvidiaPayloadForNras,
   buildNrasSummary,
+  parseJsonPayload,
 } from "@/utils/verification/proof-helpers";
 import {
   fetchVerificationProof,
@@ -23,15 +20,213 @@ import type {
 import type {
   NrasVerificationResult,
   PartialExpectations,
+  RemoteProof,
   VerificationProofResponse,
 } from "@/types/verification";
-import { normalizeHashValue } from "@/utils/verification/shared";
+import {
+  normalizeHashValue,
+  decodeJwtPayload,
+  normalizeVerificationResult,
+  NormalizedVerificationResult,
+} from "@/utils/verification/shared";
 import { createVerificationAuthToken } from "@/utils/verification/auth";
 import { useNear } from "@/hooks/useNear";
-import { siwnRecipient } from "@/config/siwn";
-import { sign } from "near-sign-verify";
+import { extractHashesFromSignedText } from "@/verification/hash-utils";
 
-export type RemoteProof = VerificationProofResponse;
+const buildAttestedHashes = (signatureText?: string | null) =>
+  extractHashesFromSignedText(signatureText);
+
+const coerceToString = (value: unknown) =>
+  typeof value === "string" ? value : null;
+
+const buildAttestationPayload = (att?: RemoteProof["attestation"]) => {
+  if (!att) return null;
+  const gateway = att.gateway_attestation ?? att;
+  const modelAttestations = Array.isArray(att.model_attestations)
+    ? att.model_attestations.filter(Boolean)
+    : [];
+  return {
+    modelAttestation: modelAttestations[0] || null,
+    modelAttestations,
+    signingAddress:
+      gateway.signing_address || gateway.signingAddress || gateway.key,
+    signingAlgo:
+      gateway.signing_algo ||
+      gateway.signing_algorithm ||
+      gateway.algorithm ||
+      undefined,
+    reportData: gateway.report_data || gateway.reportData,
+    requestNonce: gateway.request_nonce || gateway.requestNonce,
+    raw: gateway,
+  };
+};
+
+const buildAttestationSummary = ({
+  remoteProof,
+  nrasData,
+  normalized,
+}: {
+  remoteProof: RemoteProof | null;
+  nrasData: NrasVerificationResult | null;
+  normalized: NormalizedVerificationResult | null;
+}) => {
+  const nras = remoteProof?.nras || nrasData;
+
+  const decodeLocalJwt = (token?: string | null) => decodeJwtPayload(token);
+
+  const nrasClaims = (() => {
+    if (nras?.claims) return nras.claims;
+    if (nras?.gpus && typeof nras.gpus === "object") {
+      const firstGpuToken = Object.values(nras.gpus)[0] as string | undefined;
+      if (firstGpuToken) {
+        return decodeLocalJwt(firstGpuToken);
+      }
+    }
+    return null;
+  })();
+
+  if (!remoteProof && !nrasClaims) return null;
+  if (!remoteProof?.attestation && !nrasClaims) return null;
+
+  try {
+    const att = remoteProof?.attestation ?? {};
+    const modelAttestations = Array.isArray(att.model_attestations)
+      ? att.model_attestations.filter(Boolean)
+      : [];
+    const primaryModelAttestation = modelAttestations[0] || null;
+    const nvidiaPayload =
+      primaryModelAttestation?.nvidia_payload ||
+      att.nvidia_payload ||
+      att.gateway_attestation?.nvidia_payload;
+    const intelPayload =
+      att.intel_quote ||
+      att.gateway_attestation?.intel_quote ||
+      primaryModelAttestation?.intel_quote;
+
+    const nvidia = parseJsonPayload(nvidiaPayload);
+    const intel = parseJsonPayload(intelPayload);
+    const claims = nrasClaims || {};
+
+    const perClaimSecboot = claims?.secboot === true || claims?.secboot === "enabled";
+    const perClaimNonce =
+      claims?.eat_nonce ||
+      claims?.["x-nvidia-eat-nonce"] ||
+      nvidia?.eat_nonce ||
+      intel?.eat_nonce ||
+      "";
+    const secbootStatus =
+      normalized?.claims?.secboot ?? Boolean(perClaimSecboot);
+    const nonceValue = normalized?.claims?.nonce || perClaimNonce;
+    const attResult =
+      normalized?.claims?.overallResult ??
+      (claims
+        ? claims?.["x-nvidia-overall-att-result"] ??
+          claims?.overall_result ??
+          claims?.overall_pass
+        : undefined);
+
+    const hardwareFromVerifiedClaims = Boolean(
+      normalized?.nrasVerified ?? remoteProof?.nras?.verified ?? nrasData?.verified
+    );
+
+    const nonceBound = remoteProof?.nonceCheck?.valid === true;
+
+    const intelConfigured =
+      !remoteProof?.configMissing?.intel &&
+      !remoteProof?.configMissing?.intelApiKey;
+    const intelQuotePresent = Boolean(
+      intelPayload ||
+        att.gateway_attestation?.intel_quote ||
+        att.model_attestations?.[0]?.intel_quote
+    );
+
+    const gpuValidated = hardwareFromVerifiedClaims && nonceBound;
+
+    const fallbackHardwareValidated =
+      gpuValidated &&
+      (intelQuotePresent && intelConfigured
+        ? remoteProof?.intel?.verified === true
+        : true);
+    const hardwareValidated = normalized?.hardwareVerified ?? fallbackHardwareValidated;
+
+    const safeValue = (value: any) => {
+      if ((hardwareValidated || gpuValidated) && value) return value;
+      return "Not available";
+    };
+
+    const backendAttestationResult =
+      (remoteProof?.results as any)?.verified === true
+        ? "Pass"
+        : (remoteProof?.results as any)?.verified === false
+        ? "Fail"
+        : null;
+    const normalizedReasons =
+      normalized?.reasons ??
+      remoteProof?.nras?.reasons ??
+      nrasData?.reasons ??
+      [];
+
+    return {
+      gpu: safeValue(
+        claims?.hwmodel ||
+          claims?.["x-nvidia-gpu-driver-version"] ||
+          nvidia?.["x-nvidia-gpu-driver-version"] ||
+          nvidia?.hwmodel ||
+          intel?.hwmodel
+      ),
+      driver: safeValue(
+        claims?.["x-nvidia-gpu-driver-version"] ||
+          nvidia?.["x-nvidia-gpu-driver-version"]
+      ),
+      vbios: safeValue(
+        claims?.["x-nvidia-gpu-vbios-version"] ||
+          nvidia?.["x-nvidia-gpu-vbios-version"]
+      ),
+      nonce: hardwareFromVerifiedClaims ? nonceValue || "" : "",
+      oem: safeValue(claims?.oemid || intel?.oemid || nvidia?.oemid),
+      secboot: hardwareFromVerifiedClaims
+        ? secbootStatus
+          ? "Enabled"
+          : "Disabled"
+        : "Unverified",
+      dbgstat: safeValue(
+        claims?.dbgstat ||
+          claims?.["x-nvidia-dbgstat"] ||
+          nvidia?.dbgstat ||
+          nvidia?.["x-nvidia-dbgstat"]
+      ),
+      attestationResult:
+        backendAttestationResult ||
+        (attResult === false ? "Fail" : hardwareValidated ? "Pass" : "Unverified"),
+      hasHardwareDetails:
+        (gpuValidated || hardwareValidated) &&
+        Boolean(
+          claims?.hwmodel ||
+            claims?.["x-nvidia-gpu-driver-version"] ||
+            claims?.["x-nvidia-gpu-vbios-version"] ||
+            nvidia?.hwmodel ||
+            nvidia?.["x-nvidia-gpu-driver-version"] ||
+            nvidia?.["x-nvidia-gpu-vbios-version"]
+        ),
+      verifiedHardware: hardwareValidated,
+      hardwareReason:
+        !hardwareValidated && hardwareFromVerifiedClaims
+          ? normalizedReasons.join("\n") ||
+            (remoteProof?.intel && remoteProof.intel.verified === false
+              ? "Intel verification failed"
+              : "Hardware attestation incomplete")
+          : !hardwareFromVerifiedClaims
+          ? "NRAS verification missing"
+          : undefined,
+      gpuVerified: gpuValidated,
+      intelConfigured,
+      fullVerification: hardwareValidated,
+    };
+  } catch (error) {
+    console.error("Failed to parse attestation summary:", error);
+    return null;
+  }
+};
 
 export interface UseVerificationProofParams {
   open: boolean;
@@ -59,17 +254,6 @@ interface VerificationProofState {
   nrasLoading: boolean;
   nrasError: string | null;
   retrying: boolean;
-  independentVerification: {
-    status: "idle" | "verifying" | "success" | "failed";
-    checks?: {
-      signature: boolean;
-      hashes: boolean;
-      nonce: boolean;
-      address: boolean;
-      nras: boolean;
-    };
-    details?: string;
-  } | null;
 }
 
 type VerificationProofAction =
@@ -82,11 +266,7 @@ type VerificationProofAction =
   | { type: "NRAS_START" }
   | { type: "NRAS_SUCCESS"; data: NrasVerificationResult | null }
   | { type: "NRAS_ERROR"; error: string }
-  | { type: "SET_RETRYING"; value: boolean }
-  | {
-      type: "SET_INDEPENDENT";
-      verification: VerificationProofState["independentVerification"];
-    };
+  | { type: "SET_RETRYING"; value: boolean };
 
 const createInitialState = (
   prefetchedProof: RemoteProof | null
@@ -98,7 +278,6 @@ const createInitialState = (
   nrasLoading: false,
   nrasError: null,
   retrying: false,
-  independentVerification: null,
 });
 
 const reducer = (
@@ -140,8 +319,6 @@ const reducer = (
       return { ...state, nrasLoading: false, nrasError: action.error };
     case "SET_RETRYING":
       return { ...state, retrying: action.value, fetchError: null };
-    case "SET_INDEPENDENT":
-      return { ...state, independentVerification: action.verification };
     default:
       return state;
   }
@@ -173,7 +350,6 @@ export const useVerificationProof = ({
     nrasLoading,
     nrasError,
     retrying,
-    independentVerification,
   } = state;
 
   const signaturePayload = useMemo(
@@ -255,19 +431,47 @@ export const useVerificationProof = ({
     [remoteProof?.attestation]
   );
 
-  const attestationSummary = useMemo(
-    () => buildAttestationSummary({ remoteProof, nrasData }),
-    [remoteProof, nrasData]
-  );
-
   const nrasSummary = useMemo(
     () => buildNrasSummary(remoteProof, nrasData),
     [remoteProof, nrasData]
   );
 
   const nvidiaPayloadForNras = useMemo(
-    () => resolveNvidiaPayloadForNras(attestationPayload),
-    [attestationPayload]
+    () => resolveNvidiaPayloadForNras(remoteProof?.attestation),
+    [remoteProof?.attestation]
+  );
+
+  const proofForNormalization = useMemo(() => {
+    if (remoteProof) {
+      return {
+        ...remoteProof,
+        nras: remoteProof.nras ?? nrasData ?? null,
+      } as VerificationProofResponse;
+    }
+
+    if (nrasData) {
+      return { nras: nrasData } as VerificationProofResponse;
+    }
+
+    return null;
+  }, [remoteProof, nrasData]);
+
+  const normalizedVerification = useMemo(() => {
+    if (!proofForNormalization) return null;
+    return (
+      proofForNormalization.normalized ??
+      normalizeVerificationResult(proofForNormalization)
+    );
+  }, [proofForNormalization]);
+
+  const attestationSummary = useMemo(
+    () =>
+      buildAttestationSummary({
+        remoteProof,
+        nrasData,
+        normalized: normalizedVerification,
+      }),
+    [remoteProof, nrasData, normalizedVerification]
   );
 
   const expectationInput: PartialExpectations = useMemo(
@@ -313,10 +517,9 @@ export const useVerificationProof = ({
     if (!att) return null;
 
     return (
-      att.gateway_attestation?.intel_quote ||
-      att.intel_quote ||
-      att.model_attestations?.[0]?.intel_quote ||
-      null
+      coerceToString(att.gateway_attestation?.intel_quote) ??
+      coerceToString(att.intel_quote) ??
+      coerceToString(att.model_attestations?.[0]?.intel_quote)
     );
   }, [remoteProof]);
 
@@ -379,103 +582,6 @@ export const useVerificationProof = ({
       toast.error(errorMessage);
     }
   }, [nvidiaPayloadForNras, verificationId]);
-
-  const verifyIndependently = useCallback(async () => {
-    if (!signaturePayload || !effectiveRequestHash || !effectiveResponseHash) {
-      return;
-    }
-    dispatch({
-      type: "SET_INDEPENDENT",
-      verification: {
-        status: "verifying",
-        checks: {
-          signature: false,
-          hashes: false,
-          nonce: false,
-          address: false,
-          nras: false,
-        },
-      },
-    });
-
-    const checks = {
-      signature: false,
-      hashes: false,
-      nonce: false,
-      address: false,
-      nras: false,
-    };
-
-    const setResult = (partial: Partial<typeof checks>) =>
-      dispatch({
-        type: "SET_INDEPENDENT",
-        verification: {
-          status: "verifying",
-          checks: { ...checks, ...partial },
-        },
-      });
-
-    try {
-      if (signaturePayload.signature && localSignedText) {
-        const recovered = verifyMessage(
-          localSignedText,
-          signaturePayload.signature
-        );
-        checks.signature = true;
-        checks.address =
-          recovered?.toLowerCase() ===
-          signaturePayload.signing_address?.toLowerCase();
-        setResult({ signature: checks.signature, address: checks.address });
-      } else {
-        checks.signature = false;
-        setResult({ signature: checks.signature });
-      }
-    } catch {
-      checks.signature = false;
-      checks.address = false;
-      setResult({ signature: false, address: false });
-    }
-
-    checks.hashes =
-      !!effectiveRequestHash &&
-      !!effectiveResponseHash &&
-      effectiveRequestHash.length === 64 &&
-      effectiveResponseHash.length === 64;
-    setResult({ hashes: checks.hashes });
-
-    checks.nonce = !!remoteProof?.nonceCheck?.valid;
-    setResult({ nonce: checks.nonce });
-
-    checks.nras = !!remoteProof?.nras?.verified || !!nrasData?.verified;
-    setResult({ nras: checks.nras });
-
-    const success = Object.values(checks).every(Boolean);
-
-    dispatch({
-      type: "SET_INDEPENDENT",
-      verification: {
-        status: success ? "success" : "failed",
-        checks,
-        details: success
-          ? "All local checks passed"
-          : "Some checks failed. See details above.",
-      },
-    });
-  }, [
-    signaturePayload,
-    effectiveRequestHash,
-    effectiveResponseHash,
-    remoteProof?.nonceCheck?.valid,
-    nrasData?.verified,
-    remoteProof?.nras?.verified,
-    localSignedText,
-  ]);
-
-  useEffect(() => {
-    if (remoteProof && signaturePayload && !independentVerification) {
-      verifyIndependently();
-    }
-  }, [remoteProof, signaturePayload, independentVerification, verifyIndependently]);
 
   useEffect(() => {
     dispatch({ type: "SET_PREFETCH", proof: prefetchedProof ?? null });
@@ -559,10 +665,19 @@ export const useVerificationProof = ({
       verification?.measurement
   );
 
+  const nrasVerified =
+    normalizedVerification?.nrasVerified ??
+    remoteProof?.nras?.verified ??
+    nrasData?.verified;
+  const nrasReasons =
+    normalizedVerification?.reasons ??
+    remoteProof?.nras?.reasons ??
+    nrasData?.reasons;
+
   const verificationState = useMemo(() => {
     const intelQuotePresent = Boolean(
       attestationPayload?.raw?.intel_quote ||
-        attestationPayload?.raw?.gateway_attestation?.intel_quote ||
+      attestationPayload?.raw?.gateway_attestation?.intel_quote ||
         attestationPayload?.modelAttestation?.intel_quote
     );
 
@@ -571,9 +686,6 @@ export const useVerificationProof = ({
       !remoteProof?.configMissing?.intelApiKey;
 
     const intelRequired = intelQuotePresent && intelConfigured;
-
-    const nrasVerified = remoteProof?.nras?.verified || nrasData?.verified;
-    const nrasReasons = remoteProof?.nras?.reasons || nrasData?.reasons;
 
     return deriveVerificationState({
       proof: remoteProof,
@@ -590,10 +702,13 @@ export const useVerificationProof = ({
       nonceCheck: remoteProof?.nonceCheck ?? null,
       intelRequired,
       intelConfigured,
+      normalizedVerification,
     });
   }, [
+    normalizedVerification,
     remoteProof,
-    nrasData,
+    nrasVerified,
+    nrasReasons,
     effectiveRequestHash,
     effectiveResponseHash,
     signaturePayload?.text,
@@ -607,7 +722,7 @@ export const useVerificationProof = ({
 
   const derivedStatus: VerificationStatus = useMemo(() => {
     if (!remoteProof && !verification) return "pending";
-    if (loading || independentVerification?.status === "verifying")
+    if (loading)
       return "pending";
 
     if (verification?.status && verification.status !== "pending") {
@@ -620,7 +735,6 @@ export const useVerificationProof = ({
     return verification?.status ?? "pending";
   }, [
     loading,
-    independentVerification?.status,
     verificationState.overall,
     remoteProof,
     verification,
@@ -834,8 +948,6 @@ export const useVerificationProof = ({
     nrasLoading,
     nrasError,
     retrying,
-    independentVerification,
-    verifyIndependently,
     verifyWithNRAS,
     attestationSummary,
     attestationPayload,
@@ -859,5 +971,7 @@ export const useVerificationProof = ({
     exportProof,
     attestationNodes,
     signatureBinding,
+    nrasVerified,
+    nrasReasons,
   };
 };

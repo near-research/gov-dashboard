@@ -5,6 +5,7 @@ import {
 } from "@/verification/hashes-browser";
 import type { VerificationProofResponse } from "@/types/verification";
 import { deriveVerificationState } from "@/utils/attestation";
+import { normalizeVerificationResult } from "@/utils/verification/shared";
 
 type Params = {
   verificationId?: string | null;
@@ -86,6 +87,11 @@ export function useVerification({
     };
   }, [responseBody]);
 
+  const normalizedProof = useMemo(() => {
+    if (!proof) return null;
+    return proof.normalized ?? normalizeVerificationResult(proof);
+  }, [proof]);
+
   const verificationState = useMemo(() => {
     const attestation = proof?.attestation as any;
     const intelQuotePresent = (() => {
@@ -120,10 +126,11 @@ export function useVerification({
       nrasVerified: proof?.nras?.verified,
       nrasReasons: proof?.nras?.reasons,
       intelVerified: proof?.intel?.verified,
+      normalizedVerification: normalizedProof,
       nonceCheck: proof?.nonceCheck ?? null,
       intelRequired: intelQuotePresent,
     });
-  }, [proof, requestHash, responseHash]);
+  }, [proof, requestHash, responseHash, normalizedProof]);
 
   const exportProof = () => {
     if (!proof) return;
@@ -206,9 +213,20 @@ export function useVerification({
             throw new Error(message);
           }
 
-          const data = JSON.parse(text) as VerificationProofResponse;
+          const parsedProof = text ? (JSON.parse(text) as VerificationProofResponse) : null;
+          console.log("verification proof payload", {
+            verificationId,
+            requestHash,
+            responseHash,
+            proof: parsedProof,
+          });
+          const data = parsedProof;
           if (cancelled) return;
-          setProof(data);
+          if (data) {
+            setProof(data);
+          } else {
+            setProof(null);
+          }
           setError(null);
           break;
         } catch (err) {

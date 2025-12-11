@@ -1,3 +1,4 @@
+export * from "./type-detection";
 export * from "./state";
 export * from "./expectations";
 export * from "./hardware";

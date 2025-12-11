@@ -779,21 +779,37 @@ export class NearAIClient {
       return { verified: false, reasons: ["No nvidia_payload in attestation"] };
     }
 
+    const requestBody = JSON.stringify(nvidiaPayload);
+
     try {
+      const sanitizedPayload = nvidiaPayload as Record<string, unknown>;
+      const evidenceListCount = Array.isArray(sanitizedPayload.evidence_list)
+        ? sanitizedPayload.evidence_list.length
+        : undefined;
+      console.debug("[NearAIClient] NRAS request metadata:", {
+        nonce: sanitizedPayload.nonce,
+        evidenceListCount,
+      });
       const response = await fetch(NRAS_URL, {
         method: "POST",
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(nvidiaPayload),
+        body: JSON.stringify(sanitizedPayload),
       });
 
       if (!response.ok) {
+        console.warn(
+          "[NearAIClient] NRAS payload snippet:",
+          requestBody.slice(0, 500)
+        );
         const errorText = await response.text().catch(() => "");
         return {
           verified: false,
-          reasons: [`NRAS HTTP ${response.status}: ${errorText.slice(0, 100)}`],
+          reasons: [
+            `NRAS HTTP ${response.status}: ${errorText || "No response body"}`,
+          ],
         };
       }
 
@@ -905,15 +921,142 @@ export class NearAIClient {
     const modelAttestations = a.model_attestations as unknown[];
     if (Array.isArray(modelAttestations) && modelAttestations.length > 0) {
       const first = modelAttestations[0] as Record<string, unknown>;
-      if (first?.nvidia_payload) return first.nvidia_payload;
+      const payload = this.sanitizeNvidiaPayload(first?.nvidia_payload);
+      if (payload) return payload;
     }
 
     const gateway = a.gateway_attestation as Record<string, unknown>;
-    if (gateway?.nvidia_payload) return gateway.nvidia_payload;
+    const gatewayPayload = this.sanitizeNvidiaPayload(gateway?.nvidia_payload);
+    if (gatewayPayload) return gatewayPayload;
 
-    if (a.nvidia_payload) return a.nvidia_payload;
+    const rootPayload = this.sanitizeNvidiaPayload(a.nvidia_payload);
+    if (rootPayload) return rootPayload;
 
     return null;
+  }
+
+  /**
+   * Parse a JSON payload that may be stored as a string.
+   */
+  private parseNvidiaPayload(value: unknown): unknown | null {
+    if (value == null) return null;
+
+    if (typeof value === "string") {
+      try {
+        return JSON.parse(value);
+      } catch (error) {
+        console.warn(
+          "[NearAIClient] Unable to parse nvidia_payload string:",
+          error
+        );
+        return null;
+      }
+    }
+
+    return value;
+  }
+
+  /**
+   * Sanitize a candidate payload so it only contains fields that NRAS expects.
+   */
+  private sanitizeNvidiaPayload(
+    value: unknown
+  ): Record<string, unknown> | null {
+    const parsed = this.parseNvidiaPayload(value);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    const record = parsed as Record<string, unknown>;
+    const nonce = this.pickNonce(record);
+    const arch = this.pickArch(record);
+    const deviceCertHash = this.pickDeviceCertHash(record);
+    const rim = this.pickRim(record);
+    const ueid = this.pickUeid(record);
+    const evidenceList = this.collectEvidenceList(record);
+
+    const sanitized: Record<string, unknown> = {};
+    if (nonce) sanitized.nonce = nonce;
+    if (evidenceList.length) {
+      sanitized.evidence_list = evidenceList;
+    } else if (Array.isArray((parsed as Record<string, unknown>).evidence_list)) {
+      sanitized.evidence_list = [];
+    } else if (Array.isArray((parsed as Record<string, unknown>).evidence)) {
+      sanitized.evidence_list = [];
+    }
+    if (arch) sanitized.arch = arch;
+    if (deviceCertHash) sanitized.device_cert_hash = deviceCertHash;
+    if (rim) sanitized.rim = rim;
+    if (ueid) sanitized.ueid = ueid;
+    if (record.secboot !== undefined) sanitized.secboot = record.secboot;
+    const measres = this.pickMeasres(record);
+    if (measres) sanitized.measres = measres;
+
+    if (nonce || sanitized.evidence_list) {
+      return sanitized;
+    }
+
+    return record;
+  }
+
+  /**
+   * Pick the first nonce-like property from the payload.
+   */
+  private pickNonce(payload: Record<string, unknown>): string | null {
+    const keys = [
+      "nonce",
+      "eat_nonce",
+      "x-nvidia-eat-nonce",
+      "expectedNonce",
+      "request_nonce",
+      "requestNonce",
+    ];
+    for (const key of keys) {
+      const value = payload[key];
+      if (typeof value === "string" && value.length > 0) {
+        return value;
+      }
+    }
+    return null;
+  }
+  private pickArch(payload: Record<string, unknown>): string | null {
+    const keys = ["arch", "gpu_arch", "expectedArch", "expected_arch", "gpuArch"];
+    return this.pickString(payload, keys);
+  }
+  private pickDeviceCertHash(payload: Record<string, unknown>): string | null {
+    const keys = ["device_cert_hash", "deviceCertHash", "cert_hash"];
+    return this.pickString(payload, keys);
+  }
+  private pickRim(payload: Record<string, unknown>): string | null {
+    const keys = ["rim", "rim_hash", "rimHash", "driver_rim_hash", "vbios_rim_hash"];
+    return this.pickString(payload, keys);
+  }
+  private pickUeid(payload: Record<string, unknown>): string | null {
+    const keys = ["ueid", "device_id", "device_id_hex", "expectedUeid", "expected_ueid"];
+    return this.pickString(payload, keys);
+  }
+  private pickString(payload: Record<string, unknown>, keys: string[]): string | null {
+    for (const key of keys) {
+      const value = payload[key];
+      if (typeof value === "string" && value.length > 0) {
+        return value;
+      }
+    }
+    return null;
+  }
+  private pickMeasres(payload: Record<string, unknown>): string | null {
+    return this.pickString(payload, ["measres", "measurement_results", "measurement", "measRes"]);
+  }
+
+  /**
+   * Normalize the evidence list before sending to NRAS.
+   */
+  private collectEvidenceList(payload: Record<string, unknown>): unknown[] {
+    const candidate = payload.evidence_list ?? payload.evidence;
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+    return [];
   }
 
   /**

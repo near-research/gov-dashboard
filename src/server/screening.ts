@@ -4,6 +4,7 @@ import type { VerificationMetadata } from "@/types/agui-events";
 import { extractVerificationMetadata } from "@/verification/normalize";
 import { normalizeVerificationPayload } from "@/verification/normalize";
 import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
+import { computeHash } from "@/verification/hashes";
 import { createHash } from "crypto";
 import {
   verify,
@@ -38,6 +39,13 @@ export class ScreeningError extends Error {
     this.statusCode = statusCode;
     this.details = details;
   }
+}
+
+export interface EvaluationProof {
+  verificationId?: string;
+  requestHash: string;
+  responseHash: string;
+  nonce?: string;
 }
 
 export const MAX_TITLE_LENGTH = 500;
@@ -231,6 +239,10 @@ export interface EvaluationRequestResult {
   verification?: VerificationMetadata;
   verificationId?: string;
   model: string;
+  proof?: EvaluationProof;
+  requestHash: string;
+  responseHash: string;
+  nonce?: string;
 }
 
 export async function requestEvaluation(
@@ -255,6 +267,8 @@ export async function requestEvaluation(
   try {
     const data = await client.chatCompletions(requestPayload);
 
+    const responseHash = computeHash(JSON.stringify(data));
+
     const contentText = data.choices?.[0]?.message?.content;
 
     if (!contentText) {
@@ -276,7 +290,10 @@ export async function requestEvaluation(
     let sessionNonce: string | undefined;
     if (sessionVerificationId) {
       const session = client.createSession(sessionVerificationId);
-      client.updateSessionHashes(sessionVerificationId, { requestHash });
+      client.updateSessionHashes(sessionVerificationId, {
+        requestHash,
+        responseHash,
+      });
       sessionNonce = session.nonce;
     }
 
@@ -291,11 +308,25 @@ export async function requestEvaluation(
         }
       : undefined;
 
+    const proof: EvaluationProof | undefined =
+      sessionVerificationId && requestHash && responseHash
+        ? {
+            verificationId: sessionVerificationId,
+            requestHash,
+            responseHash,
+            nonce: sessionNonce,
+          }
+        : undefined;
+
     return {
       evaluation,
       verification: verificationWithNonce ?? undefined,
       verificationId: sessionVerificationId ?? undefined,
       model,
+      proof,
+      requestHash,
+      responseHash,
+      nonce: sessionNonce,
     };
   } catch (error) {
     // Re-throw ScreeningError as-is

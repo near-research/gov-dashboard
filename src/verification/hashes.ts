@@ -38,3 +38,5 @@ export const calculateStreamingHash = (sseText: string): string => {
 export { extractHashesFromSignedText, validateHashPair };
 
 export const computeRequestHash = calculateRequestHash;
+
+export const computeHash = (input: string): string => sha256(input);

@@ -5,11 +5,14 @@ import { NearAIError } from "@/lib/near-ai";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
 import { getModelExpectations } from "@/server/attestation-cache";
 import type { SummaryProof, TextSummaryResponse } from "@/types/summaries";
-import type { VerificationProofResponse } from "@/types/verification";
+import type {
+  VerificationAttestationPayload,
+  VerificationProofResponse,
+} from "@/types/verification";
 import { extractVerificationMetadata } from "@/verification/normalize";
 import { normalizeVerificationPayload } from "@/verification/normalize";
-import { prefetchVerificationProof } from "@/server/prefetchVerificationProof";
 import { mergeVerificationStatusFromProof } from "@/server/verificationUtils";
+import { normalizeVerificationResult } from "@/utils/verification/shared";
 
 const MODEL = NEAR_AI_MODELS.DEEPSEEK_V3_1;
 
@@ -20,10 +23,6 @@ export default async function handler(
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
-  const origin =
-    req.headers.origin ||
-    (req.headers.host ? `http://${req.headers.host}` : undefined);
 
   try {
     const client = getNearAIClient();
@@ -86,7 +85,7 @@ export default async function handler(
     });
 
     if (effectiveVerificationId !== generatedVerificationId) {
-      client.createSession(effectiveVerificationId);
+      client.createSession(effectiveVerificationId, session.nonce);
       client.updateSessionHashes(effectiveVerificationId, {
         requestHash,
         responseHash,
@@ -97,10 +96,11 @@ export default async function handler(
       throw new Error("AI response was empty");
     }
 
+    let proofNonce = session.nonce;
     const proof: SummaryProof = {
       requestHash,
       responseHash,
-      nonce: session.nonce,
+      nonce: proofNonce,
       arch: expectations?.arch,
       deviceCertHash: expectations?.deviceCertHash,
       rimHash: expectations?.rimHash ?? undefined,
@@ -118,18 +118,46 @@ export default async function handler(
       proof,
     };
 
-    const remoteProof = await prefetchVerificationProof(origin, {
-      verificationId: effectiveVerificationId,
-      model: MODEL,
-      requestHash,
-      responseHash,
-      nonce: session.nonce,
-      expectedArch: expectations?.arch ?? null,
-      expectedDeviceCertHash: expectations?.deviceCertHash ?? null,
-      expectedRimHash: expectations?.rimHash ?? null,
-      expectedUeid: expectations?.ueid ?? null,
-      expectedMeasurements: expectations?.measurements ?? null,
-    });
+    let remoteProof: VerificationProofResponse | null = null;
+    try {
+      const verificationResult = await client.verify({
+        verificationId: effectiveVerificationId,
+        model: MODEL,
+        chatId: data?.id,
+        requestHash,
+        responseHash,
+      });
+
+      const verificationSession = client.getSession(effectiveVerificationId);
+      proofNonce = verificationSession?.nonce ?? proofNonce;
+      proof.nonce = proofNonce;
+
+      const attestation = verificationResult.attestation as
+        | VerificationAttestationPayload
+        | undefined;
+
+      remoteProof = {
+        attestation,
+        signature: verificationResult.signature ?? null,
+        signatureVerification: verificationResult.signatureVerification ?? null,
+        nras: verificationResult.nras ?? null,
+        nonceCheck: verificationResult.nonceCheck ?? null,
+        intel: verificationResult.intel ?? null,
+        attestationNodes: verificationResult.attestationNodes ?? null,
+        configMissing: verificationResult.configMissing ?? undefined,
+        verified: verificationResult.verified,
+        reasons: verificationResult.reasons ?? [],
+        results: verificationResult.results ?? undefined,
+        requestHash,
+        responseHash,
+        sessionRequestHash: session.requestHash ?? null,
+        sessionResponseHash: session.responseHash ?? null,
+        normalized: normalizeVerificationResult(verificationResult),
+        nonce: proofNonce,
+      };
+    } catch (err) {
+      console.warn("[verification] Prefetch proof failed:", err);
+    }
 
     if (remoteProof) {
       response.remoteProof = remoteProof;
