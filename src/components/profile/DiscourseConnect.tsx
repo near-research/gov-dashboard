@@ -6,11 +6,9 @@ import {
   CheckCircle2,
   ClipboardPaste,
 } from "lucide-react";
-import type { Near } from "near-kit";
 import { sign } from "near-sign-verify";
-import { useAuth } from "@/components/providers/auth-provider";
+import { useNear } from "@/hooks/useNear";
 import { client } from "@/lib/orpc";
-import { authClient } from "@/lib/auth/auth-client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -38,8 +36,6 @@ interface DiscourseConnectProps {
   onError: (error: string) => void;
 }
 
-type NearSignMessageParams = Parameters<Near["signMessage"]>[0];
-
 const steps = [
   { title: "Authorize", description: "Approve access in Discourse." },
   { title: "Paste Key", description: "Copy the User API key." },
@@ -50,7 +46,8 @@ export const DiscourseConnect = ({
   onLinked,
   onError,
 }: DiscourseConnectProps) => {
-  const { nearAccountId } = useAuth();
+  const { signedAccountId, walletSigner } = useNear();
+  const isWalletReady = Boolean(walletSigner && signedAccountId);
 
   const [step, setStep] = useState<
     "idle" | "authorizing" | "signing" | "completing"
@@ -97,8 +94,8 @@ export const DiscourseConnect = ({
   };
 
   const startLinking = async () => {
-    if (!nearAccountId) {
-      handleError("Please connect your wallet first.");
+    if (!isWalletReady) {
+      handleError("Please connect and load your wallet first.");
       return;
     }
 
@@ -138,7 +135,7 @@ export const DiscourseConnect = ({
       return;
     }
 
-    if (!nearAccountId) {
+    if (!isWalletReady) {
       handleError("No NEAR account found. Please reconnect your wallet.");
       setStep("idle");
       return;
@@ -154,19 +151,13 @@ export const DiscourseConnect = ({
     clearErrors();
 
     try {
-      const nearKitClient = authClient.near.getNearClient();
-      const accountId = authClient.near.getAccountId();
-      if (!nearKitClient || !accountId) {
+      if (!walletSigner) {
         throw new Error(
           "Unable to determine NEAR signer. Please reconnect your wallet."
         );
       }
-      const walletAdapter = {
-        signMessage: (params: NearSignMessageParams) =>
-          nearKitClient.signMessage(params, { signerId: accountId }),
-      };
       const authToken = await sign("Link my NEAR account to Discourse", {
-        signer: walletAdapter,
+        signer: walletSigner,
         recipient: "social.near",
       });
 
@@ -271,14 +262,14 @@ export const DiscourseConnect = ({
             collaborate with the governance community.
           </p>
         </div>
-        {!nearAccountId && (
+        {!isWalletReady && (
           <Alert className="border-slate-200 bg-slate-50">
             <AlertDescription data-testid="discourse-wallet-warning">
               Connect your NEAR wallet to Discourse
             </AlertDescription>
           </Alert>
         )}
-        {nearAccountId && (
+        {isWalletReady && (
           <Button onClick={startLinking} className="w-full">
             <ExternalLink className="mr-2 h-4 w-4" />
             Connect to Discourse
@@ -295,7 +286,7 @@ export const DiscourseConnect = ({
         <CardTitle>Complete Discourse Linking</CardTitle>
         <CardDescription>
           Follow the steps below to verify your Discourse account for{" "}
-          <strong>{nearAccountId}</strong>.
+          <strong>{signedAccountId}</strong>.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

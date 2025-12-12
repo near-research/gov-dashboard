@@ -3,20 +3,88 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { EventType } from "@/types/agui-events";
+import {
+  CompletionToolCall,
+  EventType,
+  type AGUIEvent,
+} from "@/types/agui-events";
 import { AGENT_MODEL, buildAgentRequest } from "@/server/tools";
 import { getNearAIClient } from "@/lib/near-ai";
-import { calculateRequestHash } from "@/verification/hashes";
 import { executeToolCallsWithEvents } from "@/server/agent/tools";
 import {
-  finalizeVerifications,
-  performSecondCompletion,
+  buildCompletionRequest,
+  registerVerificationSession,
 } from "@/server/agent/verification-flow";
-import { getStreamingResponse, consumeStream } from "@/server/agent/streaming";
+import { runCompletion } from "@/server/agent/completion";
 import { startSseSession, createEventWriter } from "@/server/agent/sse";
 import { validateAgentRequest } from "@/server/agent/validation";
-import type { ToolMessage } from "@/server/agent/types";
+import type { StreamResult, ToolMessage } from "@/server/agent/types";
 import type { VerificationResult } from "@/types/verification";
+
+const MAX_TOOL_ITERATIONS = 10;
+
+type VerificationStage =
+  | "initial_reasoning"
+  | "final_response"
+  | `tool_round_${number}`;
+
+function getVerificationStage(
+  iteration: number,
+  hasToolCalls: boolean
+): VerificationStage {
+  if (iteration === 0 && hasToolCalls) {
+    return "initial_reasoning";
+  }
+  if (iteration === 0 && !hasToolCalls) {
+    return "final_response";
+  }
+  return `tool_round_${iteration}`;
+}
+
+async function verifyCompletionResult({
+  client,
+  result,
+  requestBodyString,
+  stage,
+  writeEvent,
+}: {
+  client: ReturnType<typeof getNearAIClient>;
+  result: StreamResult;
+  requestBodyString: string;
+  stage: VerificationStage;
+  writeEvent: (event: AGUIEvent) => void;
+}): Promise<VerificationResult | null> {
+  if (!result.verificationId || !result.rawSseText) {
+    return null;
+  }
+
+  try {
+    const verificationResult = await client.verifyChatPayload({
+      requestBody: requestBodyString,
+      responseText: result.rawSseText,
+      chatId: result.verificationId,
+      model: AGENT_MODEL,
+    });
+
+    if (verificationResult) {
+      console.log(`[Agent] ${stage} verification result`, {
+        verificationId: result.verificationId,
+        status: verificationResult.status,
+      });
+      writeEvent({
+        type: EventType.CUSTOM,
+        name: "verification",
+        value: { ...verificationResult, stage },
+        timestamp: Date.now(),
+      });
+    }
+
+    return verificationResult;
+  } catch (error) {
+    console.warn(`[Agent] ${stage} verification failed`, error);
+    return null;
+  }
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -48,19 +116,22 @@ export default async function handler(
   const { body, thread, run, runtimeBaseUrl } = validated;
 
   try {
+    const client = getNearAIClient();
     const { requestBody, toolChoice } = buildAgentRequest({
       messages: body.messages,
       state: body.state,
       model: AGENT_MODEL,
     });
-    const requestBodyString = JSON.stringify(requestBody);
-    const requestHash = calculateRequestHash(requestBodyString);
+    const baseTools = requestBody.tools;
+    const baseToolChoice = requestBody.tool_choice;
+    type AgentConversationMessage = {
+      role: string;
+      content: string;
+      tool_calls?: CompletionToolCall[];
+      tool_call_id?: string;
+    };
 
-    const client = getNearAIClient();
-    if (body.verificationId) {
-      client.createSession(body.verificationId, body.verificationNonce);
-      client.updateSessionHashes(body.verificationId, { requestHash });
-    }
+    let currentMessages: AgentConversationMessage[] = requestBody.messages;
 
     console.log("[Agent] Tool choice:", toolChoice);
     if (body.verificationId) {
@@ -69,14 +140,34 @@ export default async function handler(
       });
     }
 
-    const nearAIResponse = await getStreamingResponse(client, {
-      requestBodyString,
-      verificationId: body.verificationId,
-      verificationNonce: body.verificationNonce,
-    });
-
     const sse = startSseSession({ req, res, validated });
-    writeEvent = sse.writeEvent;
+    const baseWriteEvent = sse.writeEvent;
+    let terminalEventEmitted = false;
+
+    const safeWriteEvent = (event: AGUIEvent) => {
+      const isTerminal =
+        event.type === EventType.RUN_ERROR ||
+        event.type === EventType.RUN_FINISHED;
+
+      if (terminalEventEmitted) {
+        if (isTerminal) {
+          console.warn(
+            `[Agent] Suppressing duplicate terminal event: ${event.type}`
+          );
+        } else {
+          console.warn(`[Agent] Suppressing event after terminal: ${event.type}`);
+        }
+        return;
+      }
+
+      if (isTerminal) {
+        terminalEventEmitted = true;
+      }
+
+      baseWriteEvent(event);
+    };
+
+    writeEvent = safeWriteEvent;
     closeStream = sse.closeStream;
     stream = sse.stream;
 
@@ -84,115 +175,140 @@ export default async function handler(
       type: EventType.RUN_STARTED,
       threadId: thread,
       runId: run,
+      parentRunId: validated.body.parentRunId,
       timestamp: Date.now(),
     });
 
-    const firstResult = await consumeStream({
-      response: nearAIResponse,
-      writeEvent,
-      captureToolCalls: true,
-      sessionVerificationId: body.verificationId,
-      sessionRequestHash: requestHash,
-    });
+    let iteration = 0;
 
-    let firstVerificationResult: VerificationResult | null = null;
-    if (firstResult.verificationId && firstResult.rawSseText) {
-      try {
-        firstVerificationResult = await client.verifyChatPayload({
-          requestBody: requestBodyString,
-          responseText: firstResult.rawSseText,
-          chatId: firstResult.verificationId,
-          model: AGENT_MODEL,
-        });
-        if (firstVerificationResult) {
-          const payload = {
-            ...firstVerificationResult,
-            stage: "initial_reasoning" as const,
-          };
-          console.log("[Agent] Stream verification result", {
-            verificationId: firstResult.verificationId,
-            status: firstVerificationResult.status,
-          });
-          writeEvent({
-            type: EventType.CUSTOM,
-            name: "verification",
-            value: payload,
-            timestamp: Date.now(),
-          });
-        }
-      } catch (verificationError) {
-        console.warn(
-          "[Agent] Stream verification failed",
-          verificationError
-        );
+    while (iteration < MAX_TOOL_ITERATIONS) {
+      const { requestBodyString, requestHash } = buildCompletionRequest({
+        model: AGENT_MODEL,
+        messages: currentMessages,
+        tools: baseTools,
+        toolChoice: baseToolChoice,
+      });
+
+      const { verificationId, nonce } =
+        iteration === 0
+          ? (() => {
+              if (body.verificationId) {
+                client.createSession(body.verificationId, body.verificationNonce);
+                client.updateSessionHashes(body.verificationId, {
+                  requestHash,
+                });
+              }
+              return {
+                verificationId: body.verificationId,
+                nonce: body.verificationNonce,
+              };
+            })()
+          : await registerVerificationSession({
+              runtimeBaseUrl,
+              baseVerificationId: body.verificationId,
+              requestHash,
+              iteration,
+            });
+
+      console.log(`[Agent] Iteration ${iteration}`, {
+        messageCount: currentMessages.length,
+        verificationId,
+      });
+
+      const result = await runCompletion({
+        client,
+        requestBodyString,
+        requestHash,
+        verificationId,
+        verificationNonce: nonce,
+        writeEvent,
+        captureToolCalls: true,
+      });
+
+      if (result.finishReason === "error") {
+        closeStream();
+        return;
       }
-    }
 
-    if (
-      !firstResult.content &&
-      (!firstResult.toolCalls || firstResult.toolCalls.length === 0) &&
-      firstResult.finishReason !== "tool_calls"
-    ) {
-      writeEvent({
-        type: EventType.RUN_ERROR,
-        message: "No usable data in streaming response",
-        code: "EMPTY_STREAM",
-        timestamp: Date.now(),
-      });
-      writeEvent({
-        type: EventType.RUN_FINISHED,
-        threadId: thread,
-        runId: run,
-        timestamp: Date.now(),
-      });
-      closeStream();
-      return;
-    }
+      const hasToolCalls =
+        Array.isArray(result.toolCalls) && result.toolCalls.length > 0;
 
-    let secondVerificationId: string | undefined;
-    let secondNonce: string | undefined;
-    let secondRemoteVerificationId: string | undefined;
-
-    if (Array.isArray(firstResult.toolCalls) && firstResult.toolCalls.length) {
-      const toolMessages: ToolMessage[] = await executeToolCallsWithEvents({
-        toolCalls: firstResult.toolCalls,
-        runtimeBaseUrl,
+      await verifyCompletionResult({
+        client,
+        result,
+        requestBodyString,
+        stage: getVerificationStage(iteration, hasToolCalls),
         writeEvent,
       });
 
-      if (firstResult.toolStepStarted) {
+      if (
+        iteration === 0 &&
+        !result.content &&
+        !hasToolCalls &&
+        result.finishReason !== "tool_calls"
+      ) {
         writeEvent({
-          type: EventType.STEP_FINISHED,
-          stepName: "execute_tools",
+          type: EventType.RUN_ERROR,
+          message: "No usable data in streaming response",
+          code: "EMPTY_STREAM",
           timestamp: Date.now(),
         });
+        closeStream();
+        return;
       }
 
-      const { secondId, nonce, remoteVerificationId } =
-        await performSecondCompletion({
-          client,
-          runtimeBaseUrl,
-          requestMessages: requestBody.messages,
-          toolCalls: firstResult.toolCalls,
-          toolMessages,
-          writeEvent,
-          baseVerificationId: body.verificationId,
-        });
+      if (!hasToolCalls) {
+        break;
+      }
 
-      secondVerificationId = secondId;
-      secondNonce = nonce;
-      secondRemoteVerificationId = remoteVerificationId;
+      const verificationContext =
+        result.verificationId || result.lastVerification?.messageId
+          ? {
+              verificationId: result.verificationId,
+              messageId:
+                result.lastVerification?.messageId ?? result.verificationId,
+            }
+          : undefined;
+
+      const toolMessages: ToolMessage[] = await executeToolCallsWithEvents({
+        toolCalls: result.toolCalls!,
+        runtimeBaseUrl,
+        writeEvent,
+        verificationContext,
+      });
+
+      writeEvent({
+        type: EventType.STEP_FINISHED,
+        stepName: `tool_execution_${iteration}`,
+        timestamp: Date.now(),
+      });
+
+      currentMessages = [
+        ...currentMessages,
+        {
+          role: "assistant",
+          content: result.content ?? "",
+          tool_calls: result.toolCalls,
+        },
+        ...toolMessages.map((tm) => ({
+          role: "tool",
+          tool_call_id: tm.tool_call_id,
+          content: tm.content,
+        })),
+      ];
+
+      iteration++;
     }
 
-    await finalizeVerifications({
-      initialVerificationId: body.verificationId,
-      initialRemoteId: firstResult.verificationId,
-      initialNonce: body.verificationNonce,
-      secondVerificationId,
-      secondRemoteVerificationId,
-      secondNonce,
-      writeEvent,
-    });
+    if (iteration >= MAX_TOOL_ITERATIONS) {
+      console.warn("[Agent] Hit max tool iterations", { iteration });
+      writeEvent({
+        type: EventType.CUSTOM,
+        name: "warning",
+        value: { message: "Maximum tool iterations reached", iteration },
+        timestamp: Date.now(),
+      });
+    }
 
     writeEvent({
       type: EventType.RUN_FINISHED,
@@ -214,29 +330,18 @@ export default async function handler(
       return res.status(statusCode).json({ error: errorMessage });
     }
 
-    const safeEventWriter =
-      typeof writeEvent === "function"
-        ? writeEvent
-        : createEventWriter(res, stream);
-
     if (error instanceof Error && error.name === "AbortError") {
-      safeEventWriter({
+      writeEvent({
         type: EventType.RUN_ERROR,
         message: "Upstream request timed out",
         code: "TIMEOUT",
-        timestamp: Date.now(),
-      });
-      safeEventWriter({
-        type: EventType.RUN_FINISHED,
-        threadId: thread,
-        runId: run,
         timestamp: Date.now(),
       });
       return closeStream();
     }
 
     console.error("[Agent] Error:", error);
-    safeEventWriter({
+    writeEvent({
       type: EventType.RUN_ERROR,
       message: errorMessage,
       code: "AGENT_ERROR",

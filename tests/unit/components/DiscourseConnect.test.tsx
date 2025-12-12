@@ -10,35 +10,24 @@ const completeLink = vi.fn();
 const onLinked = vi.fn();
 const onError = vi.fn();
 
-const wallet = { signMessage: vi.fn() } as any;
+let mockSignedAccountId: string | null = "alice.testnet";
+let mockWalletSigner: any = { signMessage: vi.fn() };
 
-let mockNearAccountId: string | null = "alice.testnet";
-let mockNearClient: any = wallet;
-
-vi.mock("@/components/providers/auth-provider", () => ({
-  useAuth: () => ({
-    nearClient: mockNearClient,
-    nearAccountId: mockNearAccountId,
+vi.mock("@/hooks/useNear", () => ({
+  useNear: () => ({
+    signedAccountId: mockSignedAccountId,
+    walletSigner: mockWalletSigner,
   }),
-}));
-
-vi.mock("@/lib/auth/auth-client", () => ({
-  authClient: {
-    near: {
-      getNearClient: () => mockNearClient,
-      getAccountId: () => mockNearAccountId,
-    },
-  },
 }));
 
 vi.mock("@/lib/orpc", () => ({
   client: {
-      discourse: {
-        initiateLink: (...args: any[]) => initiateLink(...args),
-        completeLink: (...args: any[]) => completeLink(...args),
-      },
+    discourse: {
+      initiateLink: (...args: any[]) => initiateLink(...args),
+      completeLink: (...args: any[]) => completeLink(...args),
     },
-  }));
+  },
+}));
 
 vi.mock("near-sign-verify", () => ({
   sign: vi.fn(async () => "auth-token"),
@@ -48,8 +37,8 @@ describe("DiscourseConnect", () => {
   let openSpy: any;
 
   beforeEach(() => {
-    mockNearAccountId = "alice.testnet";
-    mockNearClient = wallet;
+    mockSignedAccountId = "alice.testnet";
+    mockWalletSigner = { signMessage: vi.fn() };
 
     initiateLink.mockReset();
     completeLink.mockReset();
@@ -63,7 +52,8 @@ describe("DiscourseConnect", () => {
   });
 
   it("prompts the user to connect a wallet when none is present", () => {
-    mockNearAccountId = null;
+    mockSignedAccountId = null;
+    mockWalletSigner = null;
 
     render(<DiscourseConnect onLinked={onLinked} onError={onError} />);
 

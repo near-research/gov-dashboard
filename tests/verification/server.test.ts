@@ -28,11 +28,17 @@ describe("src/verification/normalize.ts", () => {
       expect(normalizeModule.toVerificationStatus("Invalid")).toBe("failed");
     });
 
-    it("should return 'pending' for unknown values", () => {
+    it("should return 'pending' for blank or pending-like values", () => {
       expect(normalizeModule.toVerificationStatus("pending")).toBe("pending");
-      expect(normalizeModule.toVerificationStatus("unknown")).toBe("pending");
+      expect(normalizeModule.toVerificationStatus("processing")).toBe("pending");
       expect(normalizeModule.toVerificationStatus("")).toBe("pending");
       expect(normalizeModule.toVerificationStatus(undefined)).toBe("pending");
+    });
+
+    it("should return 'unknown' for unrecognized values", () => {
+      expect(normalizeModule.toVerificationStatus("unknown")).toBe("unknown");
+      expect(normalizeModule.toVerificationStatus("extra")).toBe("unknown");
+      expect(normalizeModule.toVerificationStatus("123")).toBe("unknown");
     });
   });
 

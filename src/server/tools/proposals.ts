@@ -5,6 +5,8 @@
 import type { AgentState, ToolChoice } from "@/types/agui-events";
 import type { Evaluation } from "@/types/evaluation";
 import { requestEvaluation } from "@/server/screening";
+import { toVerificationStatus } from "@/verification/normalize";
+import type { VerificationMetadata } from "@/types/verification";
 
 // ============================================================================
 // Tool Definitions
@@ -221,10 +223,6 @@ export interface WriteProposalResult {
   status: "pending_confirmation";
 }
 
-export interface ScreenProposalResult {
-  evaluation: Evaluation;
-}
-
 export async function handleWriteProposal(args: {
   title: string;
   content: string;
@@ -241,11 +239,26 @@ export async function handleWriteProposal(args: {
 export async function handleScreenProposal(args: {
   title: string;
   content: string;
-}): Promise<{ result: ScreenProposalResult }> {
+}): Promise<{ result: Evaluation; verification?: VerificationMetadata }> {
   const screeningResult = await requestEvaluation(args.title, args.content);
+
+  let verification: VerificationMetadata | undefined;
+  if (screeningResult.verificationResult || screeningResult.chatId) {
+    verification = {
+      source: "near-ai-cloud",
+      status: toVerificationStatus(screeningResult.verificationResult?.status),
+      messageId:
+        screeningResult.chatId ||
+        screeningResult.verificationResult?.chatId ||
+        undefined,
+      requestHash: screeningResult.verificationResult?.requestHash ?? undefined,
+      responseHash:
+        screeningResult.verificationResult?.responseHash ?? undefined,
+    };
+  }
+
   return {
-    result: {
-      evaluation: screeningResult.evaluation,
-    },
+    result: screeningResult.evaluation,
+    verification,
   };
 }

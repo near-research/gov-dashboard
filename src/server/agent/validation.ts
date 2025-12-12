@@ -28,6 +28,7 @@ const agentRequestSchema = z.object({
     .min(1, "messages array is required"),
   threadId: z.string().optional(),
   runId: z.string().optional(),
+  parentRunId: z.string().optional(),
   state: z.unknown().optional(),
   verificationId: z.string().optional(),
   verificationNonce: z.string().optional(),

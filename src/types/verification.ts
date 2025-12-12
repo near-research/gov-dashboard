@@ -330,13 +330,15 @@ export type RemoteProof = VerificationProofResponse;
 // Metadata Types
 // ============================================================================
 /** High-level verification status reported through AGUI events. */
-export type VerificationStatus = "pending" | "verified" | "failed";
+export type VerificationStatus = "pending" | "verified" | "failed" | "unknown";
 
 /** Metadata attached to AGUI events for NEAR proofs. */
 export interface VerificationMetadata {
   source: "near-ai-cloud";
   status: VerificationStatus;
   messageId?: string;
+  requestHash?: string;
+  responseHash?: string;
   nonce?: string;
   attestationReport?: string;
   attestationUrl?: string;

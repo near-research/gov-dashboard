@@ -4,6 +4,7 @@ import type { StreamResult } from "./types";
 import { generateId } from "./ids";
 import { createHash } from "crypto";
 import { getNearAIClient } from "@/lib/near-ai";
+import type { VerificationMetadata } from "@/types/verification";
 
 export async function getStreamingResponse(
   client: { chatCompletionsStream: (body: any, opts?: any) => Promise<Response> },
@@ -65,9 +66,11 @@ export async function consumeStream({
   let assistantMessageStarted = false;
   let assistantContent = "";
   let verificationId: string | undefined;
+  let lastVerification: VerificationMetadata | undefined;
   let finishReason: string | null = null;
   let streamParseErrorReported = false;
   let toolDeltaErrorReported = false;
+  let shouldAbortStream = false;
 
   const dedupeChunk = (existing: string, delta: string) => {
     if (!delta) return "";
@@ -102,6 +105,8 @@ export async function consumeStream({
     if (streamParseErrorReported) return;
     streamParseErrorReported = true;
     console.warn("[Agent] Streaming parse error", { details });
+    // Terminal events are now deduplicated upstream, so duplicate RUN_ERROR
+    // notifications will be suppressed automatically.
     writeEvent({
       type: EventType.RUN_ERROR,
       message: "Upstream stream produced malformed data",
@@ -113,7 +118,10 @@ export async function consumeStream({
   const reportToolDeltaError = (details: string) => {
     if (toolDeltaErrorReported) return;
     toolDeltaErrorReported = true;
+    shouldAbortStream = true;
     console.warn("[Agent] Tool delta processing error", { details });
+    // The safe writer enforces a single RUN_ERROR, so repeated calls here are
+    // harmless once the terminal event has already been emitted.
     writeEvent({
       type: EventType.RUN_ERROR,
       message: "Tool updates could not be parsed cleanly",
@@ -141,6 +149,7 @@ export async function consumeStream({
         messageId: assistantMessageId,
         role: "assistant",
         timestamp: Date.now(),
+        verification: lastVerification,
       });
     }
   };
@@ -170,7 +179,7 @@ export async function consumeStream({
     }
   };
 
-  const handleContentDelta = (content: any) => {
+  const handleContentDelta = (content: any, verification?: VerificationMetadata) => {
     let text = "";
     if (typeof content === "string") {
       text = content;
@@ -196,6 +205,7 @@ export async function consumeStream({
       messageId: assistantMessageId,
       delta: text,
       timestamp: Date.now(),
+      verification: verification || lastVerification,
     });
   };
 
@@ -248,7 +258,7 @@ export async function consumeStream({
     }
   };
 
-  while (!done) {
+  while (!done && !shouldAbortStream) {
     const { value, done: readerDone } = await reader.read();
     if (value) {
       const chunk = decoder.decode(value, { stream: true });
@@ -276,12 +286,15 @@ export async function consumeStream({
             const delta = choice?.delta;
             const verification = extractVerificationMetadata(parsed, delta);
 
-            if (verification?.messageId) {
-              verificationId = verification.messageId;
+            if (verification) {
+              lastVerification = verification;
+              if (verification.messageId) {
+                verificationId = verification.messageId;
+              }
             }
 
             if (delta?.content) {
-              handleContentDelta(delta.content);
+              handleContentDelta(delta.content, verification);
             }
 
             if (Array.isArray(delta?.tool_calls)) {
@@ -308,6 +321,18 @@ export async function consumeStream({
     }
   }
 
+  if (shouldAbortStream) {
+    return {
+      content: assistantContent,
+      toolCalls: captureToolCalls ? [] : undefined,
+      finishReason: "error",
+      verificationId,
+      lastVerification,
+      toolStepStarted,
+      rawSseText,
+    };
+  }
+
   const trailing = decoder.decode();
   if (trailing) {
     rawSseText += trailing;
@@ -318,6 +343,7 @@ export async function consumeStream({
       type: EventType.TEXT_MESSAGE_END,
       messageId: assistantMessageId,
       timestamp: Date.now(),
+      verification: lastVerification,
     });
   }
 
@@ -360,6 +386,7 @@ export async function consumeStream({
     toolCalls: captureToolCalls ? aggregatedToolCalls : undefined,
     finishReason,
     verificationId,
+    lastVerification,
     toolStepStarted,
     rawSseText,
   };

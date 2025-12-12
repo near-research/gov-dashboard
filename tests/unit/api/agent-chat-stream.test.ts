@@ -8,26 +8,29 @@ vi.mock("@/server/agent/streaming", () => ({
 vi.mock("@/server/agent/tools", () => ({
   executeToolCallsWithEvents: vi.fn(),
 }));
-vi.mock("@/server/agent/verification-flow", () => ({
-  performSecondCompletion: vi.fn(),
-  finalizeVerifications: vi.fn(),
-}));
+
+const fetchMock = vi.fn(() =>
+  Promise.resolve({
+    ok: true,
+    json: vi.fn().mockResolvedValue({ nonce: "round-nonce-1" }),
+  })
+);
 
 const createSessionSpy = vi.fn();
 const updateSessionHashesSpy = vi.fn();
-  const mockNearAIClient = {
-    chatCompletions: vi.fn(),
-    chatCompletionsStream: vi.fn(),
-    getConfig: () => ({ baseUrl: "https://api.near.ai", apiKey: "key" }),
-    createSession: createSessionSpy,
-    updateSessionHashes: updateSessionHashesSpy,
-    verifyChatPayload: vi.fn().mockResolvedValue({
-      verified: true,
-      reasons: [],
-      status: "verified",
-      chatId: "agent-chat",
-    }),
-  };
+const mockNearAIClient = {
+  chatCompletions: vi.fn(),
+  chatCompletionsStream: vi.fn(),
+  getConfig: () => ({ baseUrl: "https://api.near.ai", apiKey: "key" }),
+  createSession: createSessionSpy,
+  updateSessionHashes: updateSessionHashesSpy,
+  verifyChatPayload: vi.fn().mockResolvedValue({
+    verified: true,
+    reasons: [],
+    status: "verified",
+    chatId: "agent-chat",
+  }),
+};
 vi.mock("@/lib/near-ai/client", () => ({
   getNearAIClient: () => mockNearAIClient,
   createNearAIClient: () => mockNearAIClient,
@@ -41,7 +44,7 @@ import chatHandler from "@/pages/api/chat/completions";
 import { EventType } from "@/types/agui-events";
 import * as streamingModule from "@/server/agent/streaming";
 import * as toolsModule from "@/server/agent/tools";
-import * as verificationFlowModule from "@/server/agent/verification-flow";
+import type { StreamResult } from "@/server/agent/types";
 import { getNearAIClient } from "@/lib/near-ai";
 
 type StreamingModuleType = typeof streamingModule;
@@ -56,14 +59,6 @@ const mockedToolsModule = toolsModule as unknown as {
   >;
 };
 
-const mockedVerificationFlowModule = verificationFlowModule as unknown as {
-  performSecondCompletion: MockedFunction<
-    typeof verificationFlowModule.performSecondCompletion
-  >;
-  finalizeVerifications: MockedFunction<
-    typeof verificationFlowModule.finalizeVerifications
-  >;
-};
 
 const createSseRequest = () => {
   const req = new PassThrough() as unknown as NextApiRequest;
@@ -137,10 +132,48 @@ describe("agent SSE + chat streaming integration", () => {
     );
     nearAiClient = getNearAIClient();
     updateHashesSpy = vi.spyOn(nearAiClient, "updateSessionHashes");
+    const verifyChatPayloadMock = nearAiClient.verifyChatPayload as MockedFunction<
+      typeof nearAiClient.verifyChatPayload
+    >;
+    verifyChatPayloadMock.mockResolvedValue({
+      verified: true,
+      reasons: [],
+      status: "verified",
+      chatId: "agent-chat",
+    });
+    fetchMock.mockClear();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("completes immediately when no tools requested", async () => {
+    mockedStreamingModule.consumeStream.mockResolvedValueOnce({
+      content: "One shot reply",
+      finishReason: "stop",
+      verificationId: "single-ver-id",
+      toolStepStarted: false,
+      rawSseText: "data: done\n\n",
+    } as StreamResult);
+
+    const req = createSseRequest();
+    const res = createSseResponse();
+
+    const streamPromise = handler(req, res);
+    await new Promise<void>((resolve) => res.on("finish", resolve));
+    await streamPromise;
+
+    const events = parseSseEvents(res);
+    const verificationEvents = events.filter(
+      (evt) => evt.type === EventType.CUSTOM && evt.name === "verification"
+    );
+
+    expect(verificationEvents).toHaveLength(1);
+    expect(verificationEvents[0]?.value.stage).toBe("final_response");
+    expect(mockNearAIClient.verifyChatPayload).toHaveBeenCalledTimes(1);
   });
 
   afterEach(() => {
     updateHashesSpy.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it("streams AGENT events, runs tool calls, and records verification hashes", async () => {
@@ -166,12 +199,6 @@ describe("agent SSE + chat streaming integration", () => {
       rawSseText: "data: baz\n\n",
     };
 
-    const verificationPayload = {
-      verificationId: "final-proof-id",
-      requestHash: "req-hash",
-      responseHash: "res-hash",
-    };
-
     mockedStreamingModule.consumeStream
       .mockImplementationOnce(async ({ writeEvent }) => {
         writeEvent({
@@ -188,24 +215,6 @@ describe("agent SSE + chat streaming integration", () => {
       { role: "tool", content: "tool out", tool_call_id: "tool-1" },
     ]);
 
-    mockedVerificationFlowModule.performSecondCompletion.mockResolvedValue({
-      secondId: "second-verification",
-      nonce: "nonce",
-      remoteVerificationId: "remote-ver-id",
-    });
-
-    mockedVerificationFlowModule.finalizeVerifications.mockImplementation(
-      async ({
-        writeEvent,
-      }: Parameters<typeof verificationFlowModule.finalizeVerifications>[0]) => {
-      writeEvent({
-        type: EventType.CUSTOM,
-        name: "verification",
-        value: verificationPayload,
-        timestamp: Date.now(),
-      });
-    });
-
     const req = createSseRequest();
     const res = createSseResponse();
 
@@ -221,17 +230,17 @@ describe("agent SSE + chat streaming integration", () => {
     expect(events.some((evt) => evt.type === EventType.RUN_FINISHED)).toBe(true);
     expect(events.some((evt) => evt.type === EventType.TEXT_MESSAGE_CONTENT)).toBe(true);
 
-    const verificationEvent = events.find(
+    const verificationEvents = events.filter(
       (evt) => evt.type === EventType.CUSTOM && evt.name === "verification"
     );
-    expect(verificationEvent).toBeDefined();
-    expect(verificationEvent?.value).toEqual(verificationPayload);
-    expect(updateHashesSpy).toHaveBeenCalledWith(verificationPayload.verificationId, {
-      requestHash: verificationPayload.requestHash,
-      responseHash: verificationPayload.responseHash,
-    });
+    expect(verificationEvents).toHaveLength(2);
+    expect(verificationEvents.map((evt) => evt.value.stage)).toEqual([
+      "initial_reasoning",
+      "tool_round_1",
+    ]);
+    expect(mockNearAIClient.verifyChatPayload).toHaveBeenCalledTimes(2);
     expect(mockedToolsModule.executeToolCallsWithEvents).toHaveBeenCalled();
-    expect(mockedVerificationFlowModule.performSecondCompletion).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("registers the verification session and forwards it to the streaming client", async () => {
@@ -292,8 +301,6 @@ describe("agent SSE + chat streaming integration", () => {
     expect(runError).toBeDefined();
     expect(runError?.code).toBe("AGENT_ERROR");
     expect(mockedToolsModule.executeToolCallsWithEvents).not.toHaveBeenCalled();
-    expect(mockedVerificationFlowModule.performSecondCompletion).not.toHaveBeenCalled();
-    expect(mockedVerificationFlowModule.finalizeVerifications).not.toHaveBeenCalled();
   });
 
   it("proxies streaming chat completions, passes through the SSE body, and persists hashes", async () => {

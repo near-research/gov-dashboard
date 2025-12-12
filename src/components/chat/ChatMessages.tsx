@@ -37,7 +37,13 @@ interface ChatMessagesProps {
 
 const TypingIndicator = () => {
   return (
-    <div className="flex justify-start" data-testid="typing-indicator">
+    <div
+      className="flex justify-start"
+      data-testid="typing-indicator"
+      role="status"
+      aria-live="polite"
+      aria-label="Assistant is typing"
+    >
       <div className="bg-muted rounded-2xl px-4 py-3 rounded-bl-sm">
         <div className="flex gap-1">
           <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
@@ -88,6 +94,7 @@ interface TurnInfo {
   proof?: MessageProof;
   remoteProof?: RemoteProof | null;
   proposalList?: ProposalDisplayData | null;
+  toolMap?: Map<string, ToolCallUIEvent>;
 }
 
 const parseProposalListPayload = (
@@ -175,9 +182,13 @@ export const ChatMessages = ({
           proof: undefined,
           remoteProof: undefined,
           proposalList: null,
+          toolMap: new Map<string, ToolCallUIEvent>(),
         };
       if (event.kind === "tool_call") {
-        existing.tools = [...existing.tools, event];
+        const map = existing.toolMap ?? new Map<string, ToolCallUIEvent>();
+        map.set(event.toolCallId, event);
+        existing.toolMap = map;
+        existing.tools = Array.from(map.values());
         if (!existing.proposalList) {
           existing.proposalList = extractProposalListFromTool(event);
         }
@@ -271,6 +282,10 @@ export const ChatMessages = ({
       event.content.length > 0 &&
       turnInfo !== undefined &&
       turnInfo.tools.length > 0;
+    const isAssistantPlaceholder =
+      event.kind === "message" &&
+      event.role === "assistant" &&
+      event.content.trim().length === 0;
 
     const messageHasProposalJson =
       event.kind === "message"
@@ -382,20 +397,22 @@ export const ChatMessages = ({
 
         return (
           <Fragment key={event.id}>
-            <Message
-              role={displayRoleMeta?.role ?? "assistant"}
-              label={displayRoleMeta?.label}
-              rawRole={event.role}
-              content={event.content}
-              displayContent={sanitizedContent}
-              timestamp={event.timestamp}
-              messageId={event.messageId}
-              verification={event.verification}
-              proof={event.proof}
-              remoteProof={event.remoteProof}
-              model={model}
-              markdown={markdown}
-            />
+            {!isAssistantPlaceholder && (
+              <Message
+                role={displayRoleMeta?.role ?? "assistant"}
+                label={displayRoleMeta?.label}
+                rawRole={event.role}
+                content={event.content}
+                displayContent={sanitizedContent}
+                timestamp={event.timestamp}
+                messageId={event.messageId}
+                verification={event.verification}
+                proof={event.proof}
+                remoteProof={event.remoteProof}
+                model={model}
+                markdown={markdown}
+              />
+            )}
             {proposalListElement}
             {toolHistoryElement}
           </Fragment>
@@ -424,6 +441,10 @@ export const ChatMessages = ({
           bottom: `${footerHeight}px`,
           paddingBottom: `${footerHeight}px`,
         }}
+        role="log"
+        aria-label="Chat messages"
+        aria-live="polite"
+        aria-atomic="false"
       >
         {events.length === 0 && isInitialized ? (
           <div className="flex flex-col items-center justify-center h-full text-center">

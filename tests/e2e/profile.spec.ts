@@ -9,6 +9,7 @@ import {
   setupAuthenticatedUserNoNav,
   setupUnauthenticatedUserNoNav,
 } from "./helpers/setup";
+import { injectMockWalletSigner } from "./utils/mock-wallet";
 
 const { describe: describeSpec } = createPlaywrightGuard("profile.spec.ts");
 
@@ -213,8 +214,9 @@ describeSpec("Profile journeys", () => {
     registerPlaywrightMocks(page);
     await stubNearRpc(page);
     await stubDiscourseLinkage(page, { payload: null, fail: true });
-    await injectWalletAccount(page);
     await setupAuthenticatedUserNoNav(page, nearAccountId);
+    await injectMockWalletSigner(page, nearAccountId);
+    await injectWalletAccount(page);
     await page.goto("/profile", { waitUntil: "networkidle" });
 
     // Check for account ID anywhere on page
@@ -259,8 +261,9 @@ describeSpec("Profile journeys", () => {
     });
     await stubDiscourseBadge(page, { success: true, badges: [] });
 
-    await injectWalletAccount(page);
     await setupAuthenticatedUserNoNav(page, nearAccountId);
+    await injectMockWalletSigner(page, nearAccountId);
+    await injectWalletAccount(page);
     await page.goto("/profile", { waitUntil: "networkidle" });
 
     // Empty badges state - flexible text matching
@@ -308,8 +311,9 @@ describeSpec("Profile journeys", () => {
       });
     });
 
-    await injectWalletAccount(page);
     await setupAuthenticatedUserNoNav(page, nearAccountId);
+    await injectMockWalletSigner(page, nearAccountId);
+    await injectWalletAccount(page);
     await page.goto("/profile", { waitUntil: "networkidle" });
 
     // Verify account ID is visible
@@ -377,8 +381,9 @@ describeSpec("Profile journeys", () => {
       window.open = () => popup as Window;
     });
 
-    await injectWalletAccount(page);
     await setupAuthenticatedUserNoNav(page, nearAccountId);
+    await injectMockWalletSigner(page, nearAccountId);
+    await injectWalletAccount(page);
     await page.goto("/profile", { waitUntil: "networkidle" });
 
     // Verify account visible

@@ -15,9 +15,13 @@ describe("toVerificationStatus", () => {
     expect(toVerificationStatus("failed")).toBe("failed");
     expect(toVerificationStatus("invalid")).toBe("failed");
   });
-  it("defaults to pending", () => {
+  it("defaults to pending for empty inputs", () => {
     expect(toVerificationStatus()).toBe("pending");
     expect(toVerificationStatus("")).toBe("pending");
+  });
+  it("returns unknown for unrecognized values", () => {
+    expect(toVerificationStatus("unknown")).toBe("unknown");
+    expect(toVerificationStatus("foo")).toBe("unknown");
   });
 });
 

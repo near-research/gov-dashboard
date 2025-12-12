@@ -7,18 +7,21 @@ const statusTone: Record<VerificationStatus, string> = {
   pending: "bg-amber-100 text-amber-900 border-amber-200",
   verified: "bg-emerald-100 text-emerald-800 border-emerald-200",
   failed: "bg-red-100 text-red-800 border-red-200",
+  unknown: "bg-slate-100 text-slate-900 border-slate-200",
 };
 
 const statusLabel: Record<VerificationStatus, string> = {
   pending: "Pending",
   verified: "Verified",
   failed: "Failed",
+  unknown: "Unknown",
 };
 
 const statusIcon: Record<VerificationStatus, typeof CheckCircle2> = {
   pending: Clock,
   verified: CheckCircle2,
   failed: AlertCircle,
+  unknown: AlertCircle,
 };
 
 export interface VerificationStatusPillProps {

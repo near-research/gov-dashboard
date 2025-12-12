@@ -1,5 +1,12 @@
 // components/chat/ChatInput.tsx
-import React, { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useId,
+  KeyboardEvent,
+  ChangeEvent,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Send, Trash2 } from "lucide-react";
@@ -35,11 +42,19 @@ export const ChatInput = ({
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputId = useId();
+  const hintId = `${inputId}-hint`;
+
+  const adjustTextareaHeight = () => {
+    if (!inputRef.current) return;
+    const textarea = inputRef.current;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  };
 
   const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+    adjustTextareaHeight();
   };
 
   const handleSend = () => {
@@ -48,9 +63,7 @@ export const ChatInput = ({
 
     onSend(message);
     setInputValue("");
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-    }
+    adjustTextareaHeight();
   };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -63,6 +76,9 @@ export const ChatInput = ({
   const handleQuickAction = (message: string) => {
     if (!message || isLoading || disabled) return;
     onSend(message);
+    setInputValue("");
+    adjustTextareaHeight();
+    inputRef.current?.focus();
   };
 
   useEffect(() => {
@@ -120,17 +136,27 @@ export const ChatInput = ({
 
         {/* Input */}
         <div className="flex gap-5 pb-2">
-          <textarea
-            data-testid="chat-input"
-            ref={inputRef}
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyPress={handleKeyPress}
-            placeholder={placeholder}
-            disabled={isLoading || disabled}
-            className="flex-1 max-h-[120px] resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
-            rows={1}
-          />
+          <div className="flex-1 flex flex-col">
+            <label htmlFor={inputId} className="sr-only">
+              Message to NEAR Gov Assistant
+            </label>
+            <textarea
+              id={inputId}
+              data-testid="chat-input"
+              ref={inputRef}
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyPress={handleKeyPress}
+              placeholder={placeholder}
+              disabled={isLoading || disabled}
+              aria-describedby={hintId}
+              className="flex-1 max-h-[120px] resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
+              rows={1}
+            />
+            <span id={hintId} className="sr-only">
+              Press Enter to send, Shift+Enter for a new line
+            </span>
+          </div>
           <Button
             onClick={handleSend}
             disabled={isLoading || !inputValue.trim() || disabled}

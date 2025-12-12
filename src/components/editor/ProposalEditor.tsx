@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { type MessageRole, type VerificationMetadata } from "@/types/agui-events";
 import { EditorPane } from "@/components/editor/EditorPane";
 import { useNear } from "@/hooks/useNear";
@@ -9,6 +9,7 @@ import {
   ProposalEditorProvider,
   useProposalEditorContext,
   proposalEditorActions,
+  type PendingDelta,
   type ProposalState,
 } from "@/components/editor/ProposalEditorContext";
 import { AssistantSidebar } from "@/components/editor/AssistantSidebar";
@@ -16,6 +17,7 @@ import { useViewModeToggle, type ViewMode } from "@/components/editor/useViewMod
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProposalChatController } from "@/components/editor/useProposalChatController";
 import { useProposalFlowState } from "@/components/editor/useProposalFlowState";
+import { DeltaConflictBanner, DeltaConflictReviewDialog } from "@/components/editor/DeltaConflictBanner";
 
 export interface Message {
   id: string;
@@ -92,6 +94,14 @@ function useProposalEditorController() {
     (id?: string) => dispatch(proposalEditorActions.setEvaluationChatId(id)),
     [dispatch]
   );
+  const applyAllPendingDeltas = useCallback(
+    () => dispatch(proposalEditorActions.applyAllPendingDeltas()),
+    [dispatch]
+  );
+  const discardAllPendingDeltas = useCallback(
+    () => dispatch(proposalEditorActions.discardAllPendingDeltas()),
+    [dispatch]
+  );
 
   const { chatProps, isRunning } = useProposalChatController({
     proposalState: state.proposal,
@@ -128,6 +138,10 @@ function useProposalEditorController() {
     viewMode,
     setViewMode,
     isRunning,
+    pendingDeltas: state.pendingDeltas,
+    hasConflictingDeltas: state.hasConflictingDeltas,
+    onApplyPendingDeltas: applyAllPendingDeltas,
+    onDiscardPendingDeltas: discardAllPendingDeltas,
     ...flowEditorProps,
   };
 
@@ -148,6 +162,10 @@ type EditorColumnProps = {
   setLocalTitle: (title: string) => void;
   setLocalContent: (content: string) => void;
   isRunning: boolean;
+  pendingDeltas: PendingDelta[];
+  hasConflictingDeltas: boolean;
+  onApplyPendingDeltas: () => void;
+  onDiscardPendingDeltas: () => void;
   showDiffHighlights: boolean;
   contentDiffHtml: string;
   hasPendingChanges: boolean;
@@ -163,12 +181,20 @@ function EditorColumn({
   setLocalTitle,
   setLocalContent,
   isRunning,
+  pendingDeltas,
+  hasConflictingDeltas,
+  onApplyPendingDeltas,
+  onDiscardPendingDeltas,
   showDiffHighlights,
   contentDiffHtml,
   hasPendingChanges,
   onAcceptChanges,
   onRejectChanges,
 }: EditorColumnProps) {
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const openReview = () => setIsReviewOpen(true);
+  const closeReview = () => setIsReviewOpen(false);
+
   return (
     <div className="flex flex-col gap-5">
       <div className="mb-1 flex items-center justify-between gap-4">
@@ -190,6 +216,33 @@ function EditorColumn({
           </TabsList>
         </Tabs>
       </div>
+      {hasConflictingDeltas && (
+        <DeltaConflictBanner
+          pendingDeltas={pendingDeltas}
+          onApplyAll={() => {
+            onApplyPendingDeltas();
+            closeReview();
+          }}
+          onDiscardAll={() => {
+            onDiscardPendingDeltas();
+            closeReview();
+          }}
+          onReviewDeltas={openReview}
+        />
+      )}
+      <DeltaConflictReviewDialog
+        open={isReviewOpen}
+        pendingDeltas={pendingDeltas}
+        onClose={closeReview}
+        onApplyAll={() => {
+          onApplyPendingDeltas();
+          closeReview();
+        }}
+        onDiscardAll={() => {
+          onDiscardPendingDeltas();
+          closeReview();
+        }}
+      />
       <div className="card">
         <EditorPane
           title={localTitle}

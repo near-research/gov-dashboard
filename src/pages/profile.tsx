@@ -63,6 +63,16 @@ const formatDate = (iso?: string | null) => {
   }
 };
 
+const normalizeNearBalance = (
+  balance: string | { amount?: string } | null | undefined
+): string | null => {
+  if (!balance) {
+    return null;
+  }
+
+  return typeof balance === "string" ? balance : balance.amount ?? null;
+};
+
 export default function Profile() {
   const {
     user,
@@ -124,8 +134,9 @@ export default function Profile() {
     const fetchBalance = async () => {
       try {
         const accountBalance = await nearClient.getBalance(nearAccountId);
+        const normalizedBalance = normalizeNearBalance(accountBalance);
         if (!cancelled) {
-          setNearBalance(accountBalance);
+          setNearBalance(normalizedBalance);
         }
       } catch (error) {
         if (!cancelled) {

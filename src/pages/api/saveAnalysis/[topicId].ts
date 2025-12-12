@@ -17,7 +17,6 @@ import {
  * Screens a proposal and saves the result to the database.
  *
  * Considerations:
- * - Requires NEP-413 auth token via near-sign-verify
  * - Prevents duplicate screenings per (topicId, revisionNumber) via composite primary key
  * - Always saves results for transparency (pass or fail)
  */
@@ -141,12 +140,8 @@ export default async function handler(
   }
 
   try {
-    const {
-      evaluation,
-      verificationResult,
-      verificationId,
-      model,
-    } = await requestEvaluation(sanitizedTitle, sanitizedContent);
+    const { evaluation, verificationResult, verificationId, model } =
+      await requestEvaluation(sanitizedTitle, sanitizedContent);
 
     // Extract computed scores from evaluation
     const qualityScore = evaluation.qualityScore;

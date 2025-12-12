@@ -33,23 +33,21 @@ import {
   Calendar,
   FileEdit,
 } from "lucide-react";
+import { useNear } from "@/hooks/useNear";
 
 interface VersionHistoryProps {
   proposalId: string;
   title: string;
   content: string;
-  nearAccount: string;
-  wallet: any;
 }
 
 export default function VersionHistory({
   proposalId,
   title,
   content,
-  nearAccount,
-  wallet,
 }: VersionHistoryProps) {
   const track = useGovernanceAnalytics();
+  const { signedAccountId, walletSigner } = useNear();
 
   const [revisions, setRevisions] = useState<ProposalRevision[]>([]);
   const [loading, setLoading] = useState(false);
@@ -161,13 +159,13 @@ export default function VersionHistory({
     });
 
     try {
-      if (!wallet) {
+      if (!walletSigner) {
         throw new Error(
           "Wallet not connected. Please connect your NEAR wallet."
         );
       }
 
-      if (!nearAccount) {
+      if (!signedAccountId) {
         throw new Error("NEAR account not found. Please connect your wallet.");
       }
 
@@ -178,7 +176,7 @@ export default function VersionHistory({
 
       const authToken = await sign(
         `Evaluate proposal ${proposalId} revision ${revisionNumber}`,
-        { signer: wallet, recipient: "social.near" }
+        { signer: walletSigner, recipient: "social.near" }
       );
 
       const saveResponse = await fetch(`/api/saveAnalysis/${proposalId}`, {
@@ -190,7 +188,7 @@ export default function VersionHistory({
         body: JSON.stringify({
           title: revisionTitle,
           content: stripHtml(revisionContent),
-          evaluatorAccount: nearAccount,
+          evaluatorAccount: signedAccountId,
           revisionNumber,
         }),
       });
@@ -252,7 +250,7 @@ export default function VersionHistory({
         ...prev,
         [revisionNumber]: {
           evaluation: saveData.evaluation,
-          nearAccount: nearAccount,
+          nearAccount: signedAccountId,
           timestamp: new Date().toISOString(),
           verification,
           verificationId:
@@ -328,7 +326,7 @@ export default function VersionHistory({
             e.stopPropagation();
             handleScreenRevision(revisionNumber);
           }}
-          disabled={isScreening || !wallet || !nearAccount}
+          disabled={isScreening || !walletSigner || !signedAccountId}
           size="sm"
           variant="outline"
           className="w-full gap-2"
@@ -338,7 +336,7 @@ export default function VersionHistory({
               <Loader2 className="h-3 w-3 animate-spin" />
               Screening...
             </>
-          ) : wallet && nearAccount ? (
+          ) : walletSigner && signedAccountId ? (
             "Screen This Revision"
           ) : (
             "Connect Wallet to Screen"

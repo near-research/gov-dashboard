@@ -18,35 +18,52 @@ import { handleGetDoc, handleSearchDocs } from "@/server/tools/docs";
 import { generateId } from "./ids";
 import { safeParseToolArgs as parseToolArgs } from "./tool-args";
 import type { ToolCallArgs, ToolMessage } from "./types";
+import type { VerificationMetadata } from "@/types/verification";
 
-const TOOL_HANDLERS: Record<
-  string,
-  (params: {
-    args: ToolCallArgs;
-    runtimeBaseUrl: string;
-    writeEvent: (event: AGUIEvent) => void;
-  }) => Promise<Record<string, unknown>>
-> = {
-  screen_proposal: async ({ args, writeEvent }) => {
+type ToolVerificationContext = {
+  verificationId?: string;
+  messageId?: string;
+};
+
+type ToolHandlerParams = {
+  args: ToolCallArgs;
+  runtimeBaseUrl: string;
+  writeEvent: (event: AGUIEvent) => void;
+  verificationContext?: ToolVerificationContext;
+};
+
+type ToolHandler = (params: ToolHandlerParams) => Promise<unknown>;
+
+const TOOL_HANDLERS: Record<string, ToolHandler> = {
+  screen_proposal: async ({ args, writeEvent, verificationContext }) => {
     if (!args.title || !args.content) {
       throw new Error("title and content are required");
     }
-    const { result } = await handleScreenProposal({
+    const { result, verification } = await handleScreenProposal({
       title: args.title,
       content: args.content,
     });
+    const fallbackVerification: VerificationMetadata | undefined = verificationContext
+      ? {
+          source: "near-ai-cloud",
+          status: "pending",
+          messageId: verificationContext.messageId,
+        }
+      : undefined;
+
     writeEvent({
       type: EventType.STATE_DELTA,
       delta: [
         {
           op: "replace",
           path: "/evaluation",
-          value: result.evaluation,
+          value: result,
         },
       ],
+      verification: verification ?? fallbackVerification,
       timestamp: Date.now(),
     });
-    return { ...result };
+    return result;
   },
   write_proposal: async ({ args, writeEvent }) => {
     if (!args.title || !args.content) {
@@ -129,7 +146,7 @@ const TOOL_HANDLERS: Record<
 const emitToolResult = (
   writeEvent: (event: AGUIEvent) => void,
   toolCallId: string,
-  result: Record<string, unknown>
+  result: unknown
 ): ToolMessage => {
   writeEvent({
     type: EventType.TOOL_CALL_RESULT,
@@ -151,10 +168,12 @@ export async function executeToolCall({
   toolCall,
   runtimeBaseUrl,
   writeEvent,
+  verificationContext,
 }: {
   toolCall: NonNullable<CompletionMessage["tool_calls"]>[number];
   runtimeBaseUrl: string;
   writeEvent: (event: AGUIEvent) => void;
+  verificationContext?: ToolVerificationContext;
 }): Promise<ToolMessage | null> {
   const toolCallId = toolCall.id;
   const toolName = toolCall.function.name;
@@ -174,7 +193,12 @@ export async function executeToolCall({
   }
 
   try {
-    const result = await handler({ args: args.value, runtimeBaseUrl, writeEvent });
+    const result = await handler({
+      args: args.value,
+      runtimeBaseUrl,
+      writeEvent,
+      verificationContext,
+    });
     return emitToolResult(writeEvent, toolCallId, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Tool call failed";
@@ -193,10 +217,12 @@ export async function executeToolCallsWithEvents({
   toolCalls,
   runtimeBaseUrl,
   writeEvent,
+  verificationContext,
 }: {
   toolCalls: NonNullable<CompletionMessage["tool_calls"]>;
   runtimeBaseUrl: string;
   writeEvent: (event: AGUIEvent) => void;
+  verificationContext?: ToolVerificationContext;
 }) {
   const toolMessages: ToolMessage[] = [];
   for (const toolCall of toolCalls) {
@@ -205,6 +231,7 @@ export async function executeToolCallsWithEvents({
         toolCall,
         runtimeBaseUrl,
         writeEvent,
+        verificationContext,
       });
       if (toolMessage) {
         toolMessages.push(toolMessage);

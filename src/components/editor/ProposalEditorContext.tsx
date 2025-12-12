@@ -1,4 +1,5 @@
 import { createContext, useContext, useReducer, type ReactNode } from "react";
+import { applyPatch, type Operation } from "fast-json-patch";
 import type { VerificationMetadata } from "@/types/agui-events";
 import type { Evaluation } from "@/types/evaluation";
 
@@ -6,6 +7,18 @@ export type ProposalState = {
   title: string;
   content: string;
   evaluation: Evaluation | null;
+};
+
+export type PendingDelta = {
+  id: string;
+  delta: Operation[];
+  timestamp: number;
+  affectedPaths: string[];
+  preview: {
+    title?: string;
+    content?: string;
+    evaluation?: Evaluation | null;
+  };
 };
 
 export type ProposalEditorState = {
@@ -22,6 +35,8 @@ export type ProposalEditorState = {
   showEvalDetails: boolean;
   evaluationVerification?: VerificationMetadata;
   evaluationChatId?: string;
+  pendingDeltas: PendingDelta[];
+  hasConflictingDeltas: boolean;
 };
 
 export type ProposalEditorAction =
@@ -36,7 +51,12 @@ export type ProposalEditorAction =
   | { type: "SET_SHOW_DIFF"; payload: boolean }
   | { type: "SET_SHOW_EVAL_DETAILS"; payload: boolean }
   | { type: "SET_EVALUATION_VERIFICATION"; payload?: VerificationMetadata }
-  | { type: "SET_EVALUATION_CHAT_ID"; payload?: string };
+  | { type: "SET_EVALUATION_CHAT_ID"; payload?: string }
+  | { type: "ADD_PENDING_DELTA"; payload: PendingDelta }
+  | { type: "APPLY_PENDING_DELTA"; payload: string }
+  | { type: "DISCARD_PENDING_DELTA"; payload: string }
+  | { type: "APPLY_ALL_PENDING_DELTAS" }
+  | { type: "DISCARD_ALL_PENDING_DELTAS" };
 
 const initialProposal: ProposalState = { title: "", content: "", evaluation: null };
 type Action = ProposalEditorAction;
@@ -55,6 +75,8 @@ const initialState: ProposalEditorState = {
   showEvalDetails: false,
   evaluationVerification: undefined,
   evaluationChatId: undefined,
+  pendingDeltas: [],
+  hasConflictingDeltas: false,
 };
 
 function reducer(state: ProposalEditorState, action: ProposalEditorAction): ProposalEditorState {
@@ -100,6 +122,65 @@ function reducer(state: ProposalEditorState, action: ProposalEditorAction): Prop
       return { ...state, evaluationVerification: action.payload };
     case "SET_EVALUATION_CHAT_ID":
       return { ...state, evaluationChatId: action.payload };
+    case "ADD_PENDING_DELTA":
+      return {
+        ...state,
+        pendingDeltas: [...state.pendingDeltas, action.payload],
+        hasConflictingDeltas: true,
+      };
+    case "APPLY_PENDING_DELTA": {
+      const targetDelta = state.pendingDeltas.find((delta) => delta.id === action.payload);
+      if (!targetDelta) return state;
+      let updatedProposal = state.proposal;
+      try {
+        const result = applyPatch(updatedProposal, targetDelta.delta, true, false);
+        updatedProposal = result.newDocument as ProposalState;
+      } catch (error) {
+        console.error("[Editor] Failed to apply pending delta", error);
+      }
+      const remaining = state.pendingDeltas.filter((delta) => delta.id !== action.payload);
+      return {
+        ...state,
+        proposal: updatedProposal,
+        localTitle: updatedProposal.title,
+        localContent: updatedProposal.content,
+        pendingDeltas: remaining,
+        hasConflictingDeltas: remaining.length > 0,
+      };
+    }
+    case "DISCARD_PENDING_DELTA": {
+      const remaining = state.pendingDeltas.filter((delta) => delta.id !== action.payload);
+      return {
+        ...state,
+        pendingDeltas: remaining,
+        hasConflictingDeltas: remaining.length > 0,
+      };
+    }
+    case "APPLY_ALL_PENDING_DELTAS": {
+      let updatedProposal = state.proposal;
+      try {
+        state.pendingDeltas.forEach((delta) => {
+          const result = applyPatch(updatedProposal, delta.delta, true, false);
+          updatedProposal = result.newDocument as ProposalState;
+        });
+      } catch (error) {
+        console.error("[Editor] Failed to apply pending deltas", error);
+      }
+      return {
+        ...state,
+        proposal: updatedProposal,
+        localTitle: updatedProposal.title,
+        localContent: updatedProposal.content,
+        pendingDeltas: [],
+        hasConflictingDeltas: false,
+      };
+    }
+    case "DISCARD_ALL_PENDING_DELTAS":
+      return {
+        ...state,
+        pendingDeltas: [],
+        hasConflictingDeltas: false,
+      };
     default:
       return state;
   }
@@ -161,4 +242,18 @@ export const proposalEditorActions = {
     type: "SET_EVALUATION_CHAT_ID",
     payload: id,
   }),
+  addPendingDelta: (delta: PendingDelta): Action => ({
+    type: "ADD_PENDING_DELTA",
+    payload: delta,
+  }),
+  applyPendingDelta: (id: string): Action => ({
+    type: "APPLY_PENDING_DELTA",
+    payload: id,
+  }),
+  discardPendingDelta: (id: string): Action => ({
+    type: "DISCARD_PENDING_DELTA",
+    payload: id,
+  }),
+  applyAllPendingDeltas: (): Action => ({ type: "APPLY_ALL_PENDING_DELTAS" }),
+  discardAllPendingDeltas: (): Action => ({ type: "DISCARD_ALL_PENDING_DELTAS" }),
 };

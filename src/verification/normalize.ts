@@ -3,18 +3,27 @@ import type {
   VerificationStatus,
 } from "@/types/verification";
 
-export const toVerificationStatus = (value?: string): VerificationStatus => {
-  switch ((value || "").toLowerCase()) {
-    case "verified":
-    case "valid":
-      return "verified";
-    case "failed":
-    case "invalid":
-      return "failed";
-    default:
-      return "pending";
+export function toVerificationStatus(value?: string): VerificationStatus {
+  if (!value || !value.trim()) {
+    return "pending";
   }
-};
+
+  const normalized = value.trim().toLowerCase();
+
+  if (["verified", "valid", "success"].includes(normalized)) {
+    return "verified";
+  }
+
+  if (["failed", "invalid", "error"].includes(normalized)) {
+    return "failed";
+  }
+
+  if (["pending", "processing"].includes(normalized)) {
+    return "pending";
+  }
+
+  return "unknown";
+}
 
 export const shortenFingerprint = (value: string, visible = 6): string => {
   if (value.length <= visible * 2) return value;

@@ -3,11 +3,13 @@ import type {
   CompletionMessage,
   MessageRole,
 } from "@/types/agui-events";
+import type { VerificationMetadata } from "@/types/verification";
 
 export interface AgentRequestBody {
   messages: Array<{ role: MessageRole; content: string }>;
   threadId?: string;
   runId?: string;
+  parentRunId?: string;
   state?: Partial<AgentState>;
   verificationId?: string;
   verificationNonce?: string;
@@ -45,6 +47,7 @@ export type StreamResult = {
   toolCalls?: CompletionMessage["tool_calls"];
   finishReason: string | null;
   verificationId?: string;
+  lastVerification?: VerificationMetadata;
   toolStepStarted: boolean;
   rawSseText: string;
 };

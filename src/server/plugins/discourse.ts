@@ -62,8 +62,14 @@ export type DiscourseClient = DiscourseRuntimeResult["client"];
 const getGlobalMock = <T>(key: string): T | undefined =>
   (globalThis as Record<string, unknown>)[key] as T | undefined;
 
+const truthyValues = new Set(["1", "true", "yes", "on"]);
+const truthyEnv = (value?: string) =>
+  Boolean(value && truthyValues.has(value.trim().toLowerCase()));
+
 const isTestEnvironment =
-  Boolean(process.env.VITEST) || process.env.NODE_ENV === "test";
+  Boolean(process.env.VITEST) ||
+  process.env.NODE_ENV === "test" ||
+  truthyEnv(process.env.PLAYWRIGHT_TEST);
 
 const createFallbackDiscourseRouter = (): DiscourseRouter =>
   ({

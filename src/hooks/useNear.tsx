@@ -7,6 +7,49 @@ import { shouldRetryNonce } from "@/lib/auth/retry";
 import { NearError, type Near, type SignMessageParams } from "near-kit";
 import type { WalletInterface } from "near-sign-verify";
 
+type PlaywrightMockWallet = {
+  accountId: string;
+  signMessage: (params: SignMessageParams) => Promise<{
+    signature: string;
+    publicKey: string;
+    accountId: string;
+  }>;
+};
+
+type WindowWithMockWallet = Window & {
+  __PLAYWRIGHT_MOCK_WALLET__?: PlaywrightMockWallet;
+};
+
+const getPlaywrightMockWallet = (): PlaywrightMockWallet | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const win = window as WindowWithMockWallet;
+  return win.__PLAYWRIGHT_MOCK_WALLET__ ?? null;
+};
+
+const mockBalance = {
+  amount: "0",
+  locked: "0",
+  code_hash: "11111111111111111111111111111111",
+  storage_usage: 0,
+  storage_paid_at: 0,
+  block_height: 1,
+  block_hash: "00000000000000000000000000000000",
+};
+
+const createMockNearClient = (wallet: PlaywrightMockWallet): Near =>
+  ({
+    view: async () => {
+      return {};
+    },
+    call: async () => {
+      return {};
+    },
+    signMessage: (params: SignMessageParams) => wallet.signMessage(params),
+    getBalance: async () => mockBalance,
+  } as unknown as Near);
+
 export interface ViewFunctionParams {
   contractId: string;
   method: string;
@@ -68,6 +111,18 @@ export function useNear() {
 
     const initializeClient = async () => {
       try {
+        const mockWallet = getPlaywrightMockWallet();
+        if (mockWallet) {
+          const client = createMockNearClient(mockWallet);
+          if (cancelled) {
+            return;
+          }
+          setNearClient(client);
+          setWalletAccountId(mockWallet.accountId);
+          setIsClientReady(true);
+          return;
+        }
+
         const client = authClient.near.getNearClient();
         const resolvedMock = getPlaywrightWalletAccount();
         const accountId = resolvedMock ?? authClient.near.getAccountId() ?? "";
@@ -113,6 +168,11 @@ export function useNear() {
   const getSafeNearClient = useCallback(() => {
     if (nearClient) {
       return nearClient;
+    }
+
+    const mockWallet = getPlaywrightMockWallet();
+    if (mockWallet) {
+      return createMockNearClient(mockWallet);
     }
 
     try {

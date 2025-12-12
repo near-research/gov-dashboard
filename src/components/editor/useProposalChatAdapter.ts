@@ -1,7 +1,8 @@
-import { type RefObject, type SetStateAction } from "react";
+import { type RefObject, type SetStateAction, useCallback } from "react";
 import { useProposalChat } from "@/components/editor/useProposalChat";
 import {
   proposalEditorActions,
+  type PendingDelta,
   type ProposalEditorAction,
   type ProposalState,
 } from "@/components/editor/ProposalEditorContext";
@@ -36,6 +37,17 @@ export function useProposalChatAdapter({
   originalStateRef,
   setInputMessage,
 }: AdapterArgs) {
+  const setPendingBoth = useCallback(
+    (title: string, content: string) =>
+      dispatch(proposalEditorActions.setPending(title, content)),
+    [dispatch]
+  );
+  const addPendingDelta = useCallback(
+    (delta: PendingDelta) =>
+      dispatch(proposalEditorActions.addPendingDelta(delta)),
+    [dispatch]
+  );
+
   return useProposalChat({
     proposalState,
     setProposalState: (updater: SetStateAction<ProposalState>) =>
@@ -52,10 +64,7 @@ export function useProposalChatAdapter({
     localContent,
     setLocalTitle,
     setLocalContent,
-    setPendingTitle: (title: string) =>
-      dispatch(proposalEditorActions.setPending(title, pendingContent)),
-    setPendingContent: (content: string) =>
-      dispatch(proposalEditorActions.setPending(pendingTitle, content)),
+    setPending: setPendingBoth,
     setContentDiffHtml: (html: string) =>
       dispatch(proposalEditorActions.setDiffHtml(html)),
     setHasPendingChanges: (value: boolean) =>
@@ -66,5 +75,6 @@ export function useProposalChatAdapter({
       dispatch(proposalEditorActions.setShowDiff(value)),
     originalStateRef,
     setInputMessage,
+    addPendingDelta,
   });
 }

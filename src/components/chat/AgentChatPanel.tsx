@@ -9,6 +9,14 @@ import { ChatMessages } from "./ChatMessages";
 import { ChatInput, type ChatQuickAction } from "./ChatInput";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   EventType,
   type AGUIEvent,
   type AgentState,
@@ -260,6 +268,13 @@ export const AgentChatPanel = ({
   const lastUserMessageRef = useRef<string>("");
   const hasHydratedRef = useRef(false);
   const streamingAssistantIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionMetadataRef = useRef<{
+    threadId?: string;
+    runId?: string;
+    parentRunId?: string;
+  } | null>(null);
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   const track = useGovernanceAnalytics();
   const analyticsPath = trackingPath ?? "/";
@@ -286,6 +301,11 @@ export const AgentChatPanel = ({
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
         events?: AgentUIEvent[];
+        agentState?: Partial<AgentState>;
+        threadId?: string;
+        runId?: string;
+        parentRunId?: string;
+        currentTurn?: number;
       };
       if (Array.isArray(parsed?.events)) {
         const hydratedEvents = parsed.events.map((event) => ({
@@ -303,26 +323,56 @@ export const AgentChatPanel = ({
           setCurrentTurn(lastUserEvent.turnNumber);
         }
       }
+      if (parsed.agentState) {
+        agentStateRef.current = parsed.agentState;
+      }
+      if (typeof parsed.currentTurn === "number") {
+        setCurrentTurn(parsed.currentTurn);
+      }
+      const existingMetadata = sessionMetadataRef.current ?? {};
+      sessionMetadataRef.current = {
+        threadId:
+          parsed.threadId ??
+          existingMetadata.threadId ??
+          threadId ??
+          undefined,
+        runId:
+          parsed.runId ??
+          existingMetadata.runId ??
+          runId ??
+          undefined,
+        parentRunId:
+          parsed.parentRunId ?? existingMetadata.parentRunId,
+      };
       hasHydratedRef.current = true;
     } catch (hydrationError) {
       console.error("Failed to hydrate agent chat", hydrationError);
     }
-  }, []);
+  }, [runId, threadId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const eventsToPersist = prepareEventsForPersistence(events);
+      const metadata = sessionMetadataRef.current ?? {
+        threadId,
+        runId,
+      };
       sessionStorage.setItem(
         SESSION_STORAGE_KEY,
         JSON.stringify({
           events: eventsToPersist,
+          threadId: metadata.threadId,
+          runId: metadata.runId,
+          parentRunId: metadata.parentRunId,
+          currentTurn,
+          agentState: agentStateRef.current,
         })
       );
     } catch (persistError) {
       console.warn("Unable to persist agent chat session", persistError);
     }
-  }, [events]);
+  }, [events, threadId, runId, currentTurn]);
 
   useEffect(() => {
     setIsInitialized(true);
@@ -331,6 +381,21 @@ export const AgentChatPanel = ({
   useEffect(() => {
     agentStateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    const existingMetadata = sessionMetadataRef.current ?? {};
+    sessionMetadataRef.current = {
+      threadId: threadId ?? existingMetadata.threadId,
+      runId: runId ?? existingMetadata.runId,
+      parentRunId: existingMetadata.parentRunId,
+    };
+  }, [threadId, runId]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const addEvent = (event: AgentUIEvent) => {
     dispatchEvents({ type: "add", event });
@@ -468,6 +533,9 @@ export const AgentChatPanel = ({
       timestamp: new Date(),
       turnNumber,
     });
+    const abortController = new AbortController();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = abortController;
 
     try {
       const verificationId = `chatcmpl-${crypto.randomUUID()}`;
@@ -475,6 +543,7 @@ export const AgentChatPanel = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ verificationId }),
+        signal: abortController.signal,
       });
       if (!sessionResp.ok) {
         throw new Error("Failed to register verification session");
@@ -493,11 +562,12 @@ export const AgentChatPanel = ({
         },
       });
 
+      const metadata = sessionMetadataRef.current ?? { threadId, runId };
       const bodyPayload = JSON.stringify({
         messages: conversationHistory,
         state: agentStateRef.current,
-        threadId,
-        runId,
+        threadId: metadata.threadId,
+        runId: metadata.runId,
         verificationId,
         verificationNonce: nonce,
       });
@@ -506,6 +576,7 @@ export const AgentChatPanel = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: bodyPayload,
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -585,6 +656,14 @@ export const AgentChatPanel = ({
       const handleAgentEvent = (event: AGUIEvent) => {
         pendingAguiEvents.push(event);
         switch (event.type) {
+          case EventType.RUN_STARTED: {
+            sessionMetadataRef.current = {
+              threadId: event.threadId,
+              runId: event.runId,
+              parentRunId: event.parentRunId,
+            };
+            break;
+          }
           case EventType.RUN_ERROR: {
             const messageText = event.message || "Agent run failed";
             setError(messageText);
@@ -603,7 +682,7 @@ export const AgentChatPanel = ({
                 const nextState = applyPatch<Partial<AgentState>>(
                   agentStateRef.current ?? {},
                   event.delta as Operation[],
-                  false,
+                  true,
                   false
                 );
                 agentStateRef.current = nextState.newDocument;
@@ -679,8 +758,14 @@ export const AgentChatPanel = ({
 
       await delay(100);
     } catch (error) {
+      const isAbort =
+        error instanceof Error && error.name === "AbortError";
       removeEventById(assistantEventId);
       failActiveTools();
+
+      if (isAbort) {
+        return;
+      }
 
       const message =
         error instanceof Error ? error.message : "Unknown agent error";
@@ -694,27 +779,38 @@ export const AgentChatPanel = ({
 
       throw error;
     } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
       streamingAssistantIdRef.current = null;
     }
   };
 
   const clearChat = () => {
-    if (window.confirm("Clear chat history?")) {
-      track("agent_chat_cleared", {
-        props: {
-          had_events: events.length > 0,
-        },
-      });
+    track("agent_chat_cleared", {
+      props: {
+        had_events: events.length > 0,
+      },
+    });
 
-      dispatchEvents({ type: "set_all", events: [] });
-      setError(null);
-      setCurrentTurn(0);
-      agentStateRef.current = undefined;
-      streamingAssistantIdRef.current = null;
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem(SESSION_STORAGE_KEY);
-      }
+    dispatchEvents({ type: "set_all", events: [] });
+    setError(null);
+    setCurrentTurn(0);
+    agentStateRef.current = undefined;
+    streamingAssistantIdRef.current = null;
+    sessionMetadataRef.current = null;
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
     }
+  };
+
+  const requestClearChat = () => {
+    setIsClearDialogOpen(true);
+  };
+
+  const handleClearConfirmed = () => {
+    setIsClearDialogOpen(false);
+    clearChat();
   };
 
   const handleNearBottomChange = (nearBottom: boolean) => {
@@ -777,7 +873,7 @@ export const AgentChatPanel = ({
 
       <ChatInput
         onSend={handleSend}
-        onClear={clearChat}
+        onClear={requestClearChat}
         isLoading={isLoading}
         error={error}
         placeholder={placeholder}
@@ -785,6 +881,29 @@ export const AgentChatPanel = ({
         onHeightChange={setInputHeight}
         quickActions={quickActions}
       />
+      <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Clear chat history?</DialogTitle>
+            <DialogDescription>
+              This will remove all messages from the session. The action cannot
+              be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsClearDialogOpen(false)}
+              size="sm"
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleClearConfirmed} size="sm">
+              Clear chat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

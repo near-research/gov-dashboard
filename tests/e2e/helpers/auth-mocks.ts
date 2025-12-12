@@ -116,10 +116,14 @@ export const mockRequestSignIn = async (
   clearAuthRoutes(page, [
     "**/api/auth/near/nonce",
     "**/api/auth/get-session",
+    "**/api/auth/session",
   ]);
 
   await page.route("**/api/auth/near/nonce", (route) => {
     respondWithJson(route, { nonce });
+  });
+  await page.route("**/api/auth/session", (route) => {
+    respondWithJson(route, { session: null, user: null });
   });
   await page.route("**/api/auth/get-session", (route) => {
     respondWithJson(route, { session: null, user: null });
@@ -141,6 +145,7 @@ export const mockCompleteSignIn = async (
   clearAuthRoutes(page, [
     "**/api/auth/near/verify",
     "**/api/auth/get-session",
+    "**/api/auth/session",
     "**/api/auth/list-accounts",
     "**/api/auth/accounts",
   ]);
@@ -165,6 +170,10 @@ export const mockCompleteSignIn = async (
     respondWithJson(route, { data: linkedAccounts });
   });
 
+  await page.route("**/api/auth/session", (route) => {
+    respondWithJson(route, { session, user, linkedAccounts });
+  });
+
   return { session, user, linkedAccounts };
 };
 
@@ -184,8 +193,13 @@ export const mockUnauthenticatedSession = async (page: Page) => {
     "**/api/auth/accounts",
     "**/api/auth/near/verify",
     "**/api/auth/near/nonce",
+    "**/api/auth/session",
   ]);
   await page.route("**/api/auth/get-session", (route) => {
+    respondWithJson(route, { session: null, user: null });
+  });
+
+  await page.route("**/api/auth/session", (route) => {
     respondWithJson(route, { session: null, user: null });
   });
 };
@@ -200,6 +214,7 @@ export const mockWalletConnected = async (
     "**/api/auth/get-session",
     "**/api/auth/list-accounts",
     "**/api/auth/accounts",
+    "**/api/auth/session",
   ]);
   const linkedAccount = createLinkedAccountRecord(accountId, "wallet-only");
 
@@ -213,6 +228,10 @@ export const mockWalletConnected = async (
     respondWithJson(route, { data: [linkedAccount] });
   });
 
+  await page.route("**/api/auth/session", (route) => {
+    respondWithJson(route, { session: null, user: null });
+  });
+
   return linkedAccount;
 };
 
@@ -222,14 +241,22 @@ export const mockSignInFailure = async (
   code = "UNAUTHORIZED"
 ) => {
   markPageWithCustomAuthRoutes(page);
+  clearAuthRoutes(page, [
+    "**/api/auth/near/verify",
+    "**/api/auth/session",
+  ]);
   await page.route("**/api/auth/near/verify", (route) => {
     respondWithJson(route, { error: { message, code } }, 400);
+  });
+  await page.route("**/api/auth/session", (route) => {
+    respondWithJson(route, { session: null, user: null });
   });
 };
 
 export const mockNonceRetry = async (page: Page) => {
   let attempt = 0;
   markPageWithCustomAuthRoutes(page);
+  clearAuthRoutes(page, ["**/api/auth/near/verify", "**/api/auth/session"]);
 
   await page.route("**/api/auth/near/verify", (route) => {
     attempt += 1;
@@ -246,6 +273,10 @@ export const mockNonceRetry = async (page: Page) => {
       success: true,
       user: { id: "user-1", accountId: "test.near", network: "mainnet" },
     });
+  });
+
+  await page.route("**/api/auth/session", (route) => {
+    respondWithJson(route, { session: null, user: null });
   });
 
   return { getAttemptCount: () => attempt };
