@@ -1,9 +1,6 @@
 import React, { useState } from "react";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import type { ToolCallUIEvent, MessageProof } from "@/types/agent-ui";
-import type { VerificationMetadata } from "@/types/agui-events";
+import type { ToolCallUIEvent } from "@/types/agent-ui";
 import { Button } from "@/components/ui/button";
-import type { RemoteProof } from "@/types/verification";
 
 export type ToolHistoryStatus = "active" | "awaiting_response" | "completed";
 
@@ -51,20 +48,9 @@ const ToolStatusIcon = ({ status }: { status: ToolCallUIEvent["status"] }) => {
 interface ToolHistoryCardProps {
   status: ToolHistoryStatus;
   tools: ToolCallUIEvent[];
-  verification?: VerificationMetadata;
-  proof?: MessageProof;
-  remoteProof?: RemoteProof | null;
-  model?: string;
 }
 
-export const ToolHistoryCard = ({
-  status,
-  tools,
-  verification,
-  proof,
-  remoteProof,
-  model,
-}: ToolHistoryCardProps) => {
+export const ToolHistoryCard = ({ status, tools }: ToolHistoryCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const statusLabel =
     status === "active"
@@ -81,16 +67,6 @@ export const ToolHistoryCard = ({
         }
       : null;
 
-  const showProof =
-    Boolean(verification || remoteProof) ||
-    Boolean(proof?.verificationId && proof?.stage);
-
-  const triggerLabel =
-    proof?.stage === "initial_reasoning"
-      ? "Verify reasoning"
-      : proof?.stage === "final_synthesis"
-      ? "Verify decision"
-      : "View proof";
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 max-w-[80%]">
@@ -145,26 +121,6 @@ export const ToolHistoryCard = ({
           );
         })}
       </div>
-      {expanded && showProof && (
-        <div className="mt-3 pt-3 border-t border-blue-200">
-          <VerificationProof
-            verification={verification}
-            verificationId={proof?.verificationId}
-            model={model}
-            requestHash={proof?.requestHash}
-            responseHash={proof?.responseHash}
-            nonce={proof?.nonce ?? undefined}
-            expectedArch={proof?.arch}
-            expectedDeviceCertHash={proof?.deviceCertHash}
-            expectedRimHash={proof?.rimHash}
-            expectedUeid={proof?.ueid}
-            expectedMeasurements={proof?.measurements}
-            prefetchedProof={remoteProof}
-            triggerLabel={triggerLabel}
-            className="inline-flex"
-          />
-        </div>
-      )}
     </div>
   );
 };

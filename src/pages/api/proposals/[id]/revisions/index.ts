@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { servicesConfig } from "@/config/services";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/proposals/[id]/revisions
@@ -18,13 +20,23 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.METHOD_NOT_ALLOWED,
+        "Method not allowed",
+        405
+      )
+    );
   }
 
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {
-    return res.status(400).json({ error: "Invalid topic ID" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid topic ID", 400)
+    );
   }
 
   try {
@@ -40,23 +52,35 @@ export default async function handler(
     });
 
     if (!topicResponse.ok) {
-      return res.status(topicResponse.status).json({
-        error: "Failed to fetch topic",
-        status: topicResponse.status,
-      });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.UPSTREAM_ERROR,
+          "Failed to fetch topic",
+          topicResponse.status,
+          { status: topicResponse.status }
+        )
+      );
     }
 
     const topicData = await topicResponse.json();
     const firstPost = topicData.post_stream?.posts?.[0];
 
     if (!firstPost) {
-      return res.status(404).json({ error: "Post not found in topic" });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Post not found in topic",
+          404
+        )
+      );
     }
 
     const postId = firstPost.id;
     const version = firstPost.version || 1;
 
-    console.log(
+    logger.debug(
       `[Proposal Revisions] Topic ${id} -> Post ${postId} version ${version}`
     );
 
@@ -89,14 +113,14 @@ export default async function handler(
             title_changes: revData.title_changes,
           });
 
-          console.log(`[Proposal Revisions] Fetched revision ${i}/${version}`);
+          logger.debug(`[Proposal Revisions] Fetched revision ${i}/${version}`);
         } else {
-          console.warn(
+          logger.warn(
             `[Proposal Revisions] Failed to fetch revision ${i}: ${revResponse.status}`
           );
         }
       } catch (err) {
-        console.error(
+        logger.error(
           `[Proposal Revisions] Error fetching revision ${i}:`,
           err
         );
@@ -111,12 +135,17 @@ export default async function handler(
       current_version: version,
     });
   } catch (error: unknown) {
-    console.error("[Proposal Revisions] Error:", error);
+    logger.error("[Proposal Revisions] Error:", error);
     const message =
       error instanceof Error ? error.message : "Failed to fetch revisions";
-    return res.status(500).json({
-      error: "Failed to fetch revisions",
-      message,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to fetch revisions",
+        500,
+        { message }
+      )
+    );
   }
 }

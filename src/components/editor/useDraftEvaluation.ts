@@ -5,6 +5,7 @@ import type { Evaluation } from "@/types/evaluation";
 import type { ProposalEditorAction, ProposalState } from "@/components/editor/ProposalEditorContext";
 import { proposalEditorActions } from "@/components/editor/ProposalEditorContext";
 import { buildRateLimitMessage, extractRateLimitInfo } from "@/utils/rateLimitHelpers";
+import { logger } from "@/lib/logger";
 
 type UseDraftEvaluationParams = {
   localTitle: string;
@@ -135,7 +136,7 @@ export function useDraftEvaluation({
 
   const handleUnexpectedError = useCallback(
     (err: unknown) => {
-      console.error("Evaluation error:", err);
+      logger.error("Evaluation error:", err);
       const message = err instanceof Error ? err.message : "Failed to evaluate proposal";
       setEvaluationError(message);
       track("draft_evaluation_failed", {

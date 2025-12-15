@@ -4,8 +4,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 
 import type { DiscourseRevisionResponse } from "@/types/discourse";
-import type { ProposalDetailResponse } from "@/types/proposals";
-import { useProposalDetail } from "@/hooks/useProposalDetail";
+import type { ProposalDetailResponse } from "@/components/proposal/types/proposals";
+import { useProposalDetail } from "@/components/proposal/hooks/useProposalDetail";
 import type { Evaluation } from "@/types/evaluation";
 
 const PROPOSAL_ID = "proposal-100";

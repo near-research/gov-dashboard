@@ -171,4 +171,22 @@ export type GovernanceEvents = {
   revision_screening_failed: TopicEventBase & {
     revision: number;
   } & FailureBase;
+
+  screening_auth_failed: TopicEventBase &
+    FailureBase & {
+      revision: number | null;
+      account_id: string;
+    };
+
+  screening_duplicate: TopicEventBase &
+    FailureBase & {
+      revision: number | null;
+      account_id: string;
+    };
+
+  screening_rate_limited: TopicEventBase &
+    FailureBase & {
+      revision: number | null;
+      account_id: string;
+    };
 };

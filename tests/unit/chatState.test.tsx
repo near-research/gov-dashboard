@@ -100,10 +100,6 @@ describe("ToolHistoryCard", () => {
             turnNumber: 1,
           },
         ]}
-        verification={undefined}
-        proof={undefined}
-        remoteProof={null}
-        model="test"
       />
     );
     const toggle = screen.getByRole("button", { name: /show/i });

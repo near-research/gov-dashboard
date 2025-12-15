@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { DISCOURSE_RENDER_LIMIT } from "@/config/discourse";
 import { discourseReplies } from "@/server/plugins/discourse-client";
+import type { PaginatedPosts } from "@/server/plugins/discourse-schemas";
 
 const parseId = (value: string | string[] | undefined): number | null => {
   if (value === undefined) return null;
@@ -12,7 +13,7 @@ const parseId = (value: string | string[] | undefined): number | null => {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<any>
+  res: NextApiResponse<PaginatedPosts | { error: string }>
 ) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -31,7 +32,7 @@ export default async function handler(
       .json({ error: error ?? "Failed to fetch replies" });
   }
 
-  const responseData: any = { ...data };
+  const responseData: PaginatedPosts = { ...data };
   if (Array.isArray(responseData.posts)) {
     responseData.posts = responseData.posts.slice(0, DISCOURSE_RENDER_LIMIT);
   }

@@ -1,5 +1,9 @@
-import type { ChatCompletionRequest, ChatCompletionOptions } from "@/types/near-ai";
-import { extractChatId } from "@/lib/verification";
+import { z } from "zod";
+import type {
+  ChatCompletionRequest,
+  ChatCompletionOptions,
+} from "./types";
+import { extractChatId } from "./verification";
 import { NearAIClient } from "./client";
 
 export interface StreamChatResult {
@@ -7,6 +11,28 @@ export interface StreamChatResult {
   responseText: string;
   summary: string;
 }
+
+const nearAIStreamChunkSchema = z.object({
+  choices: z
+    .array(
+      z.object({
+        delta: z
+          .object({
+            content: z.string().optional(),
+            reasoning_content: z.string().optional(),
+          })
+          .partial()
+          .optional(),
+        message: z
+          .object({
+            content: z.string().optional(),
+          })
+          .partial()
+          .optional(),
+      })
+    )
+    .optional(),
+});
 
 const parseStreamedSummary = (streamText: string): string => {
   const lines = streamText.split(/\r?\n/);
@@ -19,14 +45,15 @@ const parseStreamedSummary = (streamText: string): string => {
     if (!payload || payload === "[DONE]") continue;
 
     try {
-      const chunk = JSON.parse(payload);
+      const parsedJson = JSON.parse(payload);
+      const parsedChunk = nearAIStreamChunkSchema.safeParse(parsedJson);
+      if (!parsedChunk.success) continue;
+      const chunk = parsedChunk.data;
       const choice = chunk?.choices?.[0];
       if (!choice) continue;
 
       const deltaContent =
-        typeof choice.delta?.content === "string"
-          ? choice.delta.content
-          : "";
+        typeof choice.delta?.content === "string" ? choice.delta.content : "";
       if (deltaContent) {
         content += deltaContent;
         continue;

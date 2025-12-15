@@ -10,14 +10,12 @@ import type {
   DiscourseTopic,
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
-import type { DiscussionSummaryResponse } from "@/types/summaries";
-import type { VerificationResult } from "@/types/verification";
+import type { DiscussionSummaryResponse } from "@/components/proposal/types/summaries";
 import { getNearAIClient } from "@/lib/near-ai";
-import { streamChatCompletion } from "@/lib/near-ai/stream";
-import {
-  finalizeSummaryVerification,
-  createSummaryVerificationId,
-} from "@/server/summaryVerification";
+import { runSummaryFlow } from "@/lib/near-ai/summarize";
+import { logger } from "@/lib/logger";
+import { createSummaryVerificationId } from "@/server/summaryVerification";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 
 const discussionLimiter = createRateLimiter(rateLimitConfig.discussionSummary);
 const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
@@ -43,13 +41,19 @@ export default async function handler(
   res: NextApiResponse<DiscussionSummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {
-    return res.status(400).json({ error: "Invalid topic ID" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid topic ID", 400)
+    );
   }
 
   const clientId = getClientIdentifier(req);
@@ -70,17 +74,19 @@ export default async function handler(
     const retryAfter =
       secondsUntilReset || rateLimitConfig.discussionSummary.windowMs / 1000;
     res.setHeader("Retry-After", retryAfter.toString());
-    return res.status(429).json({
-      error: "Rate limit exceeded",
-      message: `You've reached the limit of ${
-        rateLimitConfig.discussionSummary.maxRequests
-      } discussion summaries in ${Math.round(
-        rateLimitConfig.discussionSummary.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(
-        retryAfter / 60
-      )} minutes and try again.`,
-      retryAfter,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.RATE_LIMITED,
+        `You've reached the limit of ${
+          rateLimitConfig.discussionSummary.maxRequests
+        } discussion summaries in ${Math.round(
+          rateLimitConfig.discussionSummary.windowMs / 60000
+        )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+        429,
+        { retryAfter }
+      )
+    );
   }
 
   try {
@@ -106,7 +112,15 @@ export default async function handler(
     });
 
     if (!topicResponse.ok) {
-      return res.status(404).json({ error: "Discussion not found" });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Discussion not found",
+          topicResponse.status,
+          { status: topicResponse.status }
+        )
+      );
     }
 
     const topicData: DiscourseTopic = await topicResponse.json();
@@ -116,7 +130,14 @@ export default async function handler(
     const replies: DiscoursePost[] = posts.slice(1);
 
     if (!originalPost) {
-      return res.status(404).json({ error: "Original post not found" });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Original post not found",
+          404
+        )
+      );
     }
 
     if (replies.length === 0) {
@@ -227,7 +248,6 @@ ${truncatedOriginal}
 
     const client = getNearAIClient();
     const verificationId = createSummaryVerificationId();
-    const session = client.createSession(verificationId);
     const prompt = buildDiscussionSummaryPrompt(
       { title: topicData.title },
       replies,
@@ -238,38 +258,19 @@ ${truncatedOriginal}
       truncatedDiscussion
     );
 
-    const nearRequest = {
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
-      max_tokens: 1000,
-      stream: true,
-    };
-    const requestBody = JSON.stringify(nearRequest);
-
-    const { summary, chatId, responseText } = await streamChatCompletion(
+    const { summary, verification: verificationData } = await runSummaryFlow({
       client,
-      nearRequest,
-      {
-        verificationId,
-        verificationNonce: session.nonce,
-      }
-    );
+      origin,
+      verificationId,
+      model,
+      userPrompt: prompt,
+      temperature: 0.4,
+      maxTokens: 1000,
+    });
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
     }
-
-    const verificationData = await finalizeSummaryVerification({
-      client,
-      origin,
-      model,
-      verificationId,
-      sessionNonce: session.nonce,
-      requestBody,
-      responseText,
-      chatId,
-    });
 
     const response: DiscussionSummaryResponse = {
       success: true,
@@ -293,20 +294,24 @@ ${truncatedOriginal}
       verificationResult: verificationData.verificationResult,
       verificationId,
       proof: verificationData.proof,
-      remoteProof: verificationData.remoteProof ?? undefined,
     };
 
     discussionCache.set(cacheKey, response);
     return res.status(200).json(response);
   } catch (error: unknown) {
-    console.error("[Discussion Summary] Error:", error);
+    logger.error("[Discussion Summary] Error:", error);
     const details =
       error instanceof Error && process.env.NODE_ENV === "development"
         ? error.message
         : undefined;
-    return res.status(500).json({
-      error: "Failed to generate discussion summary",
-      details,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to generate discussion summary",
+        500,
+        details
+      )
+    );
   }
 }

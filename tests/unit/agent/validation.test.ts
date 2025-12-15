@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type { NextApiRequest } from "next";
-import { validateAgentRequest } from "@/server/agent/validation";
+import { validateAgentRequest } from "@/pages/api/agent/server/validation";
+
+const ORIGINAL_APP_BASE_URL = process.env.APP_BASE_URL;
+const RESTORABLE_ENV = process.env as Record<string, string | undefined>;
 
 const buildRequest = (overrides: Partial<NextApiRequest> = {}) =>
   ({
@@ -11,6 +14,18 @@ const buildRequest = (overrides: Partial<NextApiRequest> = {}) =>
     method: "POST",
     ...overrides,
   } as unknown as NextApiRequest);
+
+beforeEach(() => {
+  process.env.APP_BASE_URL = "https://example.com";
+});
+
+afterEach(() => {
+  if (ORIGINAL_APP_BASE_URL === undefined) {
+    delete process.env.APP_BASE_URL;
+  } else {
+    process.env.APP_BASE_URL = ORIGINAL_APP_BASE_URL;
+  }
+});
 
 describe("validateAgentRequest", () => {
   it("returns ok when messages exist", () => {
@@ -56,6 +71,25 @@ describe("validateAgentRequest", () => {
     if (!validated.ok) {
       expect(validated.status).toBe(413);
       expect(validated.error).toContain("maximum size");
+    }
+  });
+
+  it("fails when runtime base URL cannot be resolved", () => {
+    const originalNodeEnv = RESTORABLE_ENV.NODE_ENV;
+    delete process.env.APP_BASE_URL;
+    RESTORABLE_ENV.NODE_ENV = "production";
+    try {
+      const request = buildRequest({
+        headers: { host: "evil.com" },
+      });
+      const validated = validateAgentRequest(request);
+      expect(validated.ok).toBe(false);
+      if (!validated.ok) {
+        expect(validated.status).toBe(500);
+        expect(validated.error).toContain("Unable to determine runtime base URL");
+      }
+    } finally {
+      RESTORABLE_ENV.NODE_ENV = originalNodeEnv;
     }
   });
 });

@@ -71,6 +71,8 @@ export const useProposalFlowState = ({
     startDiscourseLink,
     completeDiscourseLink,
     publishToDiscourse,
+    clearPublishError,
+    clearLinkError,
   } = useProposalPublishing({
     client,
     walletSigner,
@@ -186,6 +188,8 @@ export const useProposalFlowState = ({
     startDiscourseLink,
     completeDiscourseLink,
     setLinkPayload,
+    clearPublishError,
+    clearLinkError,
     publishToDiscourse,
   };
 

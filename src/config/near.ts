@@ -1,28 +1,31 @@
+import { NEAR_MAINNET, NEAR_TESTNET, SIWN_RECIPIENT } from "@/constants/near";
+import { logger } from "@/lib/logger";
+
 const contractPerNetwork = {
-  mainnet: "social.near",
-  testnet: "v1.social08.testnet",
+  [NEAR_MAINNET]: SIWN_RECIPIENT,
+  [NEAR_TESTNET]: "v1.social08.testnet",
 } as const;
 
 type NetworkId = keyof typeof contractPerNetwork;
 
 const networkSettings = {
-  mainnet: {
+  [NEAR_MAINNET]: {
     rpcUrl: "https://rpc.fastnear.com",
   },
-  testnet: {
+  [NEAR_TESTNET]: {
     rpcUrl: "https://test.rpc.fastnear.com",
   },
 } as const;
 
 // Chains for EVM Wallets
 const evmWalletChains = {
-  mainnet: {
+  [NEAR_MAINNET]: {
     chainId: 397,
     name: "Near Mainnet",
     explorer: "https://eth-explorer.near.org",
     rpc: "https://eth-rpc.mainnet.near.org",
   },
-  testnet: {
+  [NEAR_TESTNET]: {
     chainId: 398,
     name: "Near Testnet",
     explorer: "https://eth-explorer-testnet.near.org",
@@ -32,25 +35,25 @@ const evmWalletChains = {
 
 const envNetwork = (process.env.NEXT_PUBLIC_NEAR_NETWORK || "").toLowerCase();
 const runtimeNetworkId: NetworkId =
-  envNetwork === "mainnet" || envNetwork === "testnet"
+  envNetwork === NEAR_MAINNET || envNetwork === NEAR_TESTNET
     ? (envNetwork as NetworkId)
     : process.env.NODE_ENV === "production"
-      ? "mainnet"
-      : "testnet";
+      ? NEAR_MAINNET
+      : NEAR_TESTNET;
 
 const isDomainMainnet = () => {
   const domain = process.env.NEXT_PUBLIC_NEAR_DOMAIN || "";
-  return domain.includes("near.org") && !domain.includes("testnet");
+  return domain.includes("near.org") && !domain.includes(NEAR_TESTNET);
 };
 
 if (typeof console !== "undefined") {
-  if (runtimeNetworkId === "testnet" && isDomainMainnet()) {
-    console.warn(
+  if (runtimeNetworkId === NEAR_TESTNET && isDomainMainnet()) {
+    logger.warn(
       "[nearConfig] Network is testnet but domain looks mainnet. Check NEXT_PUBLIC_NEAR_NETWORK / NEXT_PUBLIC_NEAR_DOMAIN."
     );
   }
-  if (runtimeNetworkId === "mainnet" && envNetwork === "testnet") {
-    console.warn(
+  if (runtimeNetworkId === NEAR_MAINNET && envNetwork === NEAR_TESTNET) {
+    logger.warn(
       "[nearConfig] Network forced to mainnet due to env mismatch fallback."
     );
   }

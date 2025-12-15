@@ -1,22 +1,17 @@
 import React from "react";
 import type { Evaluation } from "@/types/evaluation";
-import type { VerificationMetadata } from "@/types/agui-events";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { cn } from "@/utils/tailwind";
-import { VerificationProof } from "@/components/verification/VerificationProof";
 import { Button } from "@/components/ui/button";
+import { logger } from "@/lib/logger";
 
 interface EvaluationSummaryProps {
   evaluation: Evaluation;
-  verification?: VerificationMetadata;
-  verificationId?: string;
 }
 
 export function EvaluationSummary({
   evaluation,
-  verification,
-  verificationId,
 }: EvaluationSummaryProps) {
   const isPassing = evaluation.overallPass;
 
@@ -50,7 +45,7 @@ export function EvaluationSummary({
     try {
       navigator.clipboard.writeText(improvementPrompt);
     } catch (e) {
-      console.error("Copy failed:", e);
+      logger.error("Copy failed:", e);
     }
   };
 
@@ -76,14 +71,6 @@ export function EvaluationSummary({
       <AlertDescription className="text-xs leading-relaxed">
         {evaluation.summary}
       </AlertDescription>
-      {(verification || verificationId) && (
-        <VerificationProof
-          verification={verification}
-          verificationId={verificationId}
-          model={evaluation.model ?? undefined}
-          className="mt-3"
-        />
-      )}
       {!isPassing && (
         <div className="mt-3 space-y-2 border-t pt-3">
           <div className="flex items-center justify-between text-xs font-semibold text-foreground/80">

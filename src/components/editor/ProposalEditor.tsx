@@ -1,47 +1,13 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
-import { type MessageRole, type VerificationMetadata } from "@/types/agui-events";
+import { useState } from "react";
 import { EditorPane } from "@/components/editor/EditorPane";
-import { useNear } from "@/hooks/useNear";
-import { useGovernanceAnalytics } from "@/lib/analytics";
-import {
-  ProposalEditorProvider,
-  useProposalEditorContext,
-  proposalEditorActions,
-  type PendingDelta,
-  type ProposalState,
-} from "@/components/editor/ProposalEditorContext";
 import { AssistantSidebar } from "@/components/editor/AssistantSidebar";
-import { useViewModeToggle, type ViewMode } from "@/components/editor/useViewModeToggle";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useProposalChatController } from "@/components/editor/useProposalChatController";
-import { useProposalFlowState } from "@/components/editor/useProposalFlowState";
 import { DeltaConflictBanner, DeltaConflictReviewDialog } from "@/components/editor/DeltaConflictBanner";
-
-export interface Message {
-  id: string;
-  role: MessageRole;
-  content: string;
-  verification?: VerificationMetadata;
-  remoteId?: string;
-}
-
-export interface ToolCallState {
-  id: string;
-  name: string;
-  args: string;
-  status: "in_progress" | "completed";
-  verification?: VerificationMetadata;
-}
-
-const suggestions = [
-  "Screen this proposal against NEAR criteria",
-  "Write a proposal about improving developer documentation",
-  "Add a detailed budget breakdown section",
-  "Generate measurable KPIs for this proposal",
-  "Improve the timeline to be more realistic",
-];
+import { ProposalEditorProvider, type PendingDelta } from "@/components/editor/ProposalEditorContext";
+import { useEditorState } from "@/components/editor/hooks/useEditorState";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { type ViewMode } from "@/components/editor/useViewModeToggle";
 
 export default function ProposalEditor() {
   return (
@@ -52,7 +18,7 @@ export default function ProposalEditor() {
 }
 
 function ProposalEditorInner() {
-  const { editorProps, assistantProps } = useProposalEditorController();
+  const { editorProps, assistantProps } = useEditorState();
 
   return (
     <div className="page-wrapper">
@@ -66,94 +32,6 @@ function ProposalEditorInner() {
   );
 }
 
-function useProposalEditorController() {
-  const { signedAccountId, walletSigner, signIn } = useNear();
-  const trackEvent = useGovernanceAnalytics();
-  const { state, dispatch } = useProposalEditorContext();
-  const { viewMode, setViewMode } = useViewModeToggle();
-
-  const originalStateRef = useRef<ProposalState | null>(null);
-
-  const setLocalTitle = useCallback(
-    (title: string) => dispatch(proposalEditorActions.setLocalTitle(title)),
-    [dispatch]
-  );
-  const setLocalContent = useCallback(
-    (content: string) => dispatch(proposalEditorActions.setLocalContent(content)),
-    [dispatch]
-  );
-  const setShowEvalDetails = useCallback(
-    (show: boolean) => dispatch(proposalEditorActions.setShowEvalDetails(show)),
-    [dispatch]
-  );
-  const setEvaluationVerification = useCallback(
-    (v?: VerificationMetadata) => dispatch(proposalEditorActions.setEvaluationVerification(v)),
-    [dispatch]
-  );
-  const setEvaluationChatId = useCallback(
-    (id?: string) => dispatch(proposalEditorActions.setEvaluationChatId(id)),
-    [dispatch]
-  );
-  const applyAllPendingDeltas = useCallback(
-    () => dispatch(proposalEditorActions.applyAllPendingDeltas()),
-    [dispatch]
-  );
-  const discardAllPendingDeltas = useCallback(
-    () => dispatch(proposalEditorActions.discardAllPendingDeltas()),
-    [dispatch]
-  );
-
-  const { chatProps, isRunning } = useProposalChatController({
-    proposalState: state.proposal,
-    dispatch,
-    pendingTitle: state.pendingTitle,
-    pendingContent: state.pendingContent,
-    localTitle: state.localTitle,
-    localContent: state.localContent,
-    setLocalTitle,
-    setLocalContent,
-    setEvaluationVerification,
-    setEvaluationChatId,
-    originalStateRef,
-    suggestions,
-  });
-
-  const { isPassing, editorProps: flowEditorProps, evaluationPanelProps, publishBarProps } =
-    useProposalFlowState({
-      state,
-      dispatch,
-      setLocalTitle,
-      setLocalContent,
-      setShowEvalDetails,
-      setEvaluationVerification,
-      setEvaluationChatId,
-      signedAccountId,
-      walletSigner,
-      track: trackEvent,
-      isRunning,
-      originalStateRef,
-    });
-
-  const editorProps: EditorColumnProps = {
-    viewMode,
-    setViewMode,
-    isRunning,
-    pendingDeltas: state.pendingDeltas,
-    hasConflictingDeltas: state.hasConflictingDeltas,
-    onApplyPendingDeltas: applyAllPendingDeltas,
-    onDiscardPendingDeltas: discardAllPendingDeltas,
-    ...flowEditorProps,
-  };
-
-  const assistantProps = {
-    isPassing,
-    evaluationPanelProps,
-    publishBarProps: { ...publishBarProps, signIn },
-    chatProps,
-  };
-
-  return { editorProps, assistantProps };
-}
 type EditorColumnProps = {
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;

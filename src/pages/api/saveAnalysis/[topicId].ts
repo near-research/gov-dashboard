@@ -4,6 +4,7 @@ import { screeningResults } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import type { Evaluation } from "@/types/evaluation";
 import { getCurrentTopicVersion } from "@/lib/db/revision-utils";
+import { logger } from "@/lib/logger";
 import {
   sanitizeProposalInput,
   verifyNearAuth,
@@ -82,7 +83,7 @@ export default async function handler(
       validateMessage: (message: string) => {
         const expectedMessage = `Screen proposal ${topicId}`;
         if (message !== expectedMessage) {
-          console.error(
+          logger.error(
             `[Save Analysis] Message mismatch. Expected "${expectedMessage}", received "${message}"`
           );
           return false;
@@ -111,7 +112,7 @@ export default async function handler(
     try {
       versionToScreen = await getCurrentTopicVersion(topicId);
     } catch (error) {
-      console.warn(
+      logger.warn(
         `[Save Analysis] Could not fetch current version from Discourse for topic ${topicId}, defaulting to 1`
       );
       versionToScreen = 1;
@@ -159,7 +160,7 @@ export default async function handler(
         attentionScore, // Save computed attention score
       });
 
-      console.log(
+      logger.debug(
         `[Save Analysis] ✓ Saved screening for topic ${topicId} revision ${versionToScreen} by ${signerAccountId} (Q: ${qualityScore}, A: ${attentionScore})`
       );
     } catch (dbError: unknown) {

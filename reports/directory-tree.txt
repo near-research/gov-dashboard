@@ -1,0 +1,426 @@
+.
+└── .env
+└── .env.example
+└── .gitignore
+└── AGENTS.md
+└── LICENSE
+└── README.md
+└── bun.lock
+└── bunfig.toml
+└── components.json
+└── drizzle.config.ts
+└── eslint.config.mjs
+└── jsconfig.json
+└── next-env.d.ts
+└── next.config.js
+└── package.json
+└── playwright.config.ts
+└── postcss.config.js
+└── railpack.toml
+└── tailwind.config.js
+└── test-setup.ts
+└── tsconfig.json
+└── tsconfig.tsbuildinfo
+└── vi-compat.ts
+└── vitest.config.ts
+├── tests/
+│   └── vi-compat.ts
+│   ├── mocks/
+│   │   └── server-only.ts
+│   ├── unit/
+│   │   └── auth-utils.test.ts
+│   │   └── chatPersistence.test.tsx
+│   │   └── chatState.test.tsx
+│   │   └── context.test.ts
+│   │   └── crypto.test.ts
+│   │   └── jwt-claims.test.ts
+│   │   └── model-attestation-structure.test.ts
+│   │   └── near-ai-client.test.ts
+│   │   └── official-examples.test.ts
+│   │   └── signature-persistence.test.ts
+│   │   └── vi-compat.test.ts
+│   │   ├── mocks/
+│   │   │   └── near-ai-client.ts
+│   │   ├── types/
+│   │   │   └── agent-ui.test.ts
+│   │   ├── config/
+│   │   │   └── rateLimit.test.ts
+│   │   ├── providers/
+│   │   │   └── AuthProvider.test.tsx
+│   │   ├── server/
+│   │   │   └── crypto.test.ts
+│   │   │   └── discourse-client.test.ts
+│   │   │   └── rateLimiter.test.ts
+│   │   │   └── tools-handlers.test.ts
+│   │   │   └── tools-index.test.ts
+│   │   │   ├── plugins/
+│   │   │   │   └── discourse.integration.test.ts
+│   │   │   ├── agent/
+│   │   ├── utils/
+│   │   │   └── cache-utils.test.ts
+│   │   │   └── discourse-storage.test.ts
+│   │   │   └── metadata.test.ts
+│   │   │   └── model-utils.test.ts
+│   │   │   └── revision-content.test.ts
+│   │   ├── agent/
+│   │   │   └── tools.test.ts
+│   │   │   └── validation.test.ts
+│   │   ├── components/
+│   │   │   └── DiscourseConnect.test.tsx
+│   │   │   └── ProposalCard.test.tsx
+│   │   │   └── SignInForm.test.tsx
+│   │   │   ├── chat/
+│   │   │   │   └── Chat.test.tsx
+│   │   │   ├── proposal/
+│   │   │   │   └── DiscussionSection.test.tsx
+│   │   │   │   └── VersionHistory.test.tsx
+│   │   │   │   ├── screening/
+│   │   ├── hooks/
+│   │   │   └── proposal-detail.test.ts
+│   │   │   └── useNear.test.ts
+│   │   │   └── useProposalDetail.test.ts
+│   │   │   └── useProposalPublishing.test.ts
+│   │   ├── attestation/
+│   │   ├── lib/
+│   │   │   └── analytics.test.ts
+│   │   │   └── retry.test.ts
+│   │   │   ├── near-ai/
+│   │   │   │   └── verification.test.ts
+│   │   ├── api/
+│   │   │   └── auth-all.test.ts
+│   │   │   └── chat-completions.test.ts
+│   │   │   └── discourse-handlers.test.ts
+│   ├── types/
+│   │   └── vi-mocks.d.ts
+│   ├── verification/
+│   ├── fixtures/
+│   │   └── context.ts
+│   │   └── verification.ts
+│   │   └── verificationMocks.ts
+│   │   ├── playwright/
+│   │   │   └── discourse-reply-summary.json
+│   │   │   └── discourse-topic-summary.json
+│   │   │   └── proposal-detail.json
+│   │   │   └── proposal-revision-summary.json
+│   │   │   └── proposal-revisions.json
+│   │   │   └── proposals-latest.json
+│   │   │   └── revision-analyses.json
+│   │   │   └── screening-response.json
+│   ├── e2e/
+│   │   └── README.md
+│   │   └── agent.spec.ts
+│   │   └── auth.spec.ts
+│   │   └── chat.spec.ts
+│   │   └── draft.spec.ts
+│   │   └── playwright.spec.ts
+│   │   └── profile.spec.ts
+│   │   └── proposal.spec.ts
+│   │   └── proposals.spec.ts
+│   │   └── seed.spec.ts
+│   │   └── settings.spec.ts
+│   │   └── tsconfig.json
+│   │   ├── utils/
+│   │   │   └── mock-wallet.ts
+│   │   ├── helpers/
+│   │   │   └── auth-mocks.ts
+│   │   │   └── playwright-guard.ts
+│   │   │   └── playwright-mocks.ts
+│   │   │   └── setup.ts
+│   ├── services/
+├── scripts/
+│   └── test-db.ts
+│   └── test-rate-limit.ts
+│   └── verification-health.ts
+├── .github/
+│   ├── workflows/
+│   │   └── copilot-setup-steps.yml
+│   │   └── playwright.yml
+│   ├── agents/
+│   │   └── playwright-test-generator.agent.md
+│   │   └── playwright-test-healer.agent.md
+│   │   └── playwright-test-planner.agent.md
+├── discourse-plugin/
+│   └── index.d.ts
+├── .vscode/
+│   └── mcp.json
+├── src/
+│   ├── types/
+│   │   └── agent-ui.ts
+│   │   └── agui-events.ts
+│   │   └── analytics.ts
+│   │   └── api.ts
+│   │   └── better-near-auth.d.ts
+│   │   └── discourse-linkage.ts
+│   │   └── discourse.ts
+│   │   └── evaluation.ts
+│   │   └── every-plugin.d.ts
+│   │   └── global.d.ts
+│   │   └── jsdom.d.ts
+│   │   └── modules.d.ts
+│   │   └── proposals.ts
+│   │   └── summaries.ts
+│   ├── config/
+│   │   └── discourse.ts
+│   │   └── near.ts
+│   │   └── postgres.ts
+│   │   └── rateLimit.ts
+│   │   └── services.ts
+│   │   └── siwn.ts
+│   │   └── verification.ts
+│   ├── constants/
+│   │   └── agent.ts
+│   │   └── auth.ts
+│   │   └── index.ts
+│   │   └── near.ts
+│   │   └── services.ts
+│   │   └── signing-messages.ts
+│   │   └── ui.ts
+│   ├── server/
+│   │   └── crypto.ts
+│   │   └── rateLimiter.ts
+│   │   └── screening.ts
+│   │   └── summaryVerification.ts
+│   │   ├── tools/
+│   │   │   └── discourse.ts
+│   │   │   └── docs.ts
+│   │   │   └── index.ts
+│   │   │   └── proposals.ts
+│   │   ├── plugins/
+│   │   │   └── discourse-client.ts
+│   │   │   └── discourse-schemas.ts
+│   │   │   └── discourse.ts
+│   │   ├── agent/
+│   │   │   └── completion.ts
+│   │   │   └── ids.ts
+│   │   │   └── sse.ts
+│   │   │   └── streaming.ts
+│   │   │   └── tool-args.ts
+│   │   │   └── tools.ts
+│   │   │   └── types.ts
+│   │   │   └── validation.ts
+│   │   │   └── verification-flow.ts
+│   ├── utils/
+│   │   └── cache-utils.ts
+│   │   └── json.ts
+│   │   └── metadata.ts
+│   │   └── model-utils.ts
+│   │   └── rateLimitHelpers.ts
+│   │   └── tailwind.ts
+│   │   ├── ui/
+│   │   │   └── diff.ts
+│   │   │   └── html.ts
+│   │   │   └── index.ts
+│   │   │   └── revision-content.ts
+│   │   ├── wallet/
+│   │   │   └── guards.ts
+│   │   ├── discourse/
+│   │   │   └── index.ts
+│   │   │   └── storage.ts
+│   │   ├── errors/
+│   │   │   └── near-errors.ts
+│   │   │   └── screening-errors.ts
+│   │   ├── screening/
+│   │   │   └── screen-proposal.ts
+│   ├── styles/
+│   │   └── globals.css
+│   ├── components/
+│   │   ├── ui/
+│   │   │   └── NearErrorAlert.tsx
+│   │   │   └── alert.tsx
+│   │   │   └── avatar.tsx
+│   │   │   └── badge.tsx
+│   │   │   └── button.tsx
+│   │   │   └── card.tsx
+│   │   │   └── checkbox.tsx
+│   │   │   └── collapsible.tsx
+│   │   │   └── command.tsx
+│   │   │   └── dialog.tsx
+│   │   │   └── dropdown-menu.tsx
+│   │   │   └── input.tsx
+│   │   │   └── label.tsx
+│   │   │   └── popover.tsx
+│   │   │   └── scroll-area.tsx
+│   │   │   └── select.tsx
+│   │   │   └── separator.tsx
+│   │   │   └── skeleton.tsx
+│   │   │   └── sonner.tsx
+│   │   │   └── switch.tsx
+│   │   │   └── tabs.tsx
+│   │   │   └── textarea.tsx
+│   │   │   └── tooltip.tsx
+│   │   ├── chat/
+│   │   │   └── AgentChatPanel.tsx
+│   │   │   └── AgentMessage.tsx
+│   │   │   └── Chat.tsx
+│   │   │   └── ChatInput.tsx
+│   │   │   └── ChatMessages.tsx
+│   │   │   └── ChatWidget.tsx
+│   │   │   └── Chatbot.tsx
+│   │   │   └── Message.tsx
+│   │   │   └── Status.tsx
+│   │   │   └── ToolHistoryCard.tsx
+│   │   │   └── ToolMessage.tsx
+│   │   ├── auth/
+│   │   │   └── sign-in-form.tsx
+│   │   ├── providers/
+│   │   │   └── auth-provider.tsx
+│   │   ├── proposal/
+│   │   │   └── DiscussionSection.tsx
+│   │   │   └── Markdown.tsx
+│   │   │   └── ProposalCard.tsx
+│   │   │   └── ProposalChatbot.tsx
+│   │   │   └── ProposalContent.tsx
+│   │   │   └── ProposalForm.tsx
+│   │   │   └── ProposalScreener.tsx
+│   │   │   └── ReplyCard.tsx
+│   │   │   ├── revisions/
+│   │   │   │   └── VersionHistory.tsx
+│   │   │   │   └── VersionSelector.tsx
+│   │   │   ├── screening/
+│   │   │   │   └── ScreeningBadge.tsx
+│   │   │   │   └── ScreeningButton.tsx
+│   │   │   │   └── ScreeningResults.tsx
+│   │   ├── profile/
+│   │   │   └── DiscourseConnect.tsx
+│   │   │   └── WalletStatus.tsx
+│   │   ├── nav/
+│   │   │   └── WalletStatus.tsx
+│   │   │   └── navigation.tsx
+│   │   ├── editor/
+│   │   │   └── AssistantSidebar.tsx
+│   │   │   └── ChatPane.tsx
+│   │   │   └── ConfirmModal.tsx
+│   │   │   └── DeltaConflictBanner.tsx
+│   │   │   └── EditorPane.tsx
+│   │   │   └── EvaluationPanel.tsx
+│   │   │   └── EvaluationSummary.tsx
+│   │   │   └── ProposalEditor.tsx
+│   │   │   └── ProposalEditorContext.tsx
+│   │   │   └── PublishBar.tsx
+│   │   │   └── SidebarChat.tsx
+│   │   │   └── useDraftEvaluation.ts
+│   │   │   └── useProposalChat.ts
+│   │   │   └── useProposalChatAdapter.ts
+│   │   │   └── useProposalChatController.ts
+│   │   │   └── useProposalFlowState.ts
+│   │   │   └── useProposalPublishing.ts
+│   │   │   └── useViewModeToggle.ts
+│   ├── hooks/
+│   │   └── index.ts
+│   │   └── useNear.tsx
+│   │   └── useProposalDetail.ts
+│   │   └── useProposalSummaries.ts
+│   ├── lib/
+│   │   └── analytics.ts
+│   │   └── context.ts
+│   │   └── logger.ts
+│   │   └── orpc.ts
+│   │   └── procedures.ts
+│   │   └── rate-limit.ts
+│   │   └── router.ts
+│   │   └── telemetry.ts
+│   │   ├── near-ai/
+│   │   │   └── client.ts
+│   │   │   └── errors.ts
+│   │   │   └── index.ts
+│   │   │   └── stream.ts
+│   │   │   └── types.ts
+│   │   │   ├── verification/
+│   │   │   │   └── attestation.ts
+│   │   │   │   └── hash-utils.ts
+│   │   │   │   └── hash.ts
+│   │   │   │   └── hashes.ts
+│   │   │   │   └── index.ts
+│   │   │   │   └── nvidia.ts
+│   │   │   │   └── signature.ts
+│   │   │   │   └── types.ts
+│   │   │   │   └── verify.ts
+│   │   │   │   ├── __tests__/
+│   │   │   │   │   └── verification.test.ts
+│   │   ├── auth/
+│   │   │   └── auth-client.ts
+│   │   │   └── auth-utils.ts
+│   │   │   └── index.ts
+│   │   │   └── retry.ts
+│   │   ├── prompts/
+│   │   │   └── index.ts
+│   │   │   └── screenProposal.ts
+│   │   │   └── summarizeDiscussion.ts
+│   │   │   └── summarizeProposal.ts
+│   │   │   └── summarizeReply.ts
+│   │   │   └── summarizeRevisions.ts
+│   │   ├── db/
+│   │   │   └── index.ts
+│   │   │   └── queries.ts
+│   │   │   └── revision-utils.ts
+│   │   │   └── schema.ts
+│   ├── pages/
+│   │   └── _app.tsx
+│   │   └── chat.tsx
+│   │   └── discourse-test.tsx
+│   │   └── editor.tsx
+│   │   └── index.tsx
+│   │   └── login.tsx
+│   │   └── profile.tsx
+│   │   └── settings.tsx
+│   │   ├── playwright/
+│   │   │   └── screening.tsx
+│   │   │   └── summaries.tsx
+│   │   ├── api/
+│   │   │   └── agent.ts
+│   │   │   └── evaluateDraft.ts
+│   │   │   └── screen.ts
+│   │   │   ├── chat/
+│   │   │   │   └── completions.ts
+│   │   │   ├── saveAnalysis/
+│   │   │   │   └── [topicId].ts
+│   │   │   ├── auth/
+│   │   │   │   └── [...all].ts
+│   │   │   ├── getAnalysis/
+│   │   │   │   └── [topicId].ts
+│   │   │   ├── summarize/
+│   │   │   ├── discourse/
+│   │   │   │   └── categories.ts
+│   │   │   │   └── latest.ts
+│   │   │   │   └── posts.ts
+│   │   │   │   └── search.ts
+│   │   │   │   └── tags.ts
+│   │   │   │   ├── posts/
+│   │   │   │   │   ├── [id]/
+│   │   │   │   │   │   └── index.ts
+│   │   │   │   │   │   └── replies.ts
+│   │   │   │   │   │   ├── revisions/
+│   │   │   │   │   │   │   └── index.ts
+│   │   │   │   │   │   │   └── summarize.ts
+│   │   │   │   ├── replies/
+│   │   │   │   │   ├── [id]/
+│   │   │   │   │   │   └── summarize.ts
+│   │   │   │   ├── user/
+│   │   │   │   │   └── [username].ts
+│   │   │   │   ├── categories/
+│   │   │   │   │   └── [id].ts
+│   │   │   │   ├── topics/
+│   │   │   │   │   ├── [id]/
+│   │   │   │   │   │   └── index.ts
+│   │   │   │   │   │   └── summarize.ts
+│   │   │   ├── rpc/
+│   │   │   │   └── [[...rest]].ts
+│   │   │   ├── proposals/
+│   │   │   │   ├── [id]/
+│   │   │   │   │   └── index.ts
+│   │   │   │   │   └── summarize.ts
+│   │   │   │   │   ├── revisions/
+│   │   │   │   │   │   └── index.ts
+│   │   │   │   │   │   └── summarize.ts
+│   │   ├── proposals/
+│   │   │   └── [id].tsx
+│   │   │   └── index.tsx
+│   │   │   └── new.tsx
+├── drizzle/
+│   └── 0000_init_screening_results.sql
+│   └── 0001_keen_nocturne.sql
+│   └── 0002_unique_auth_indexes.sql
+│   ├── meta/
+│   │   └── 0000_snapshot.json
+│   │   └── 0001_snapshot.json
+│   │   └── _journal.json

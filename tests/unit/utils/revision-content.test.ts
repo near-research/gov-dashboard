@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRevisionView } from "@/hooks/useProposalDetail";
+import { buildRevisionView } from "@/components/proposal/hooks/useProposalDetail";
 import { reconstructRevisionContent } from "@/utils/ui/revision-content";
-import type { ProposalRevision } from "@/types/proposals";
+import type { ProposalRevision } from "@/components/proposal/types/proposals";
 
 const sideBySide = (before: string, after: string) => `
 <div class="revision-content">

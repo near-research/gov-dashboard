@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, X, Send } from "lucide-react";
 import { cn } from "@/utils/tailwind";
+import { logger } from "@/lib/logger";
 
 interface CompactMessage {
   id: string;
@@ -128,7 +129,7 @@ export const NEARChatWidget = ({
         content: fullContent,
       });
     } catch (error: unknown) {
-      console.error("Error:", error);
+      logger.error("Error:", error);
       setMessages((prev) => prev.slice(0, -1));
       addMessage(
         error instanceof Error

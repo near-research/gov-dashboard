@@ -2,6 +2,20 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { RPCHandler } from "@orpc/server/node";
 import { router } from "@/lib/router";
 import { createContext } from "@/lib/context";
+import { logger } from "@/lib/logger";
+
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error && error.message
+    ? error.message
+    : typeof error === "string" && error.length > 0
+    ? error
+    : "Unknown error";
+
 
 export const config = {
   api: {
@@ -31,17 +45,20 @@ export default async function handler(
 
     res.statusCode = 404;
     res.end("Not found");
-  } catch (error: any) {
-    console.error("=== [oRPC] ERROR START ===");
-    console.error("[oRPC] Error:", error);
-    console.error("[oRPC] Message:", error?.message);
-    console.error("[oRPC] Stack:", error?.stack);
-    console.error("[oRPC] Cause:", error?.cause);
-
-    if (error?.data) {
-      console.error("[oRPC] Data:", JSON.stringify(error.data, null, 2));
+  } catch (error: unknown) {
+    logger.error("=== [oRPC] ERROR START ===");
+    logger.error("[oRPC] Error:", error);
+    logger.error("[oRPC] Message:", getErrorMessage(error));
+    if (error instanceof Error) {
+      logger.error("[oRPC] Stack:", error.stack);
+      logger.error("[oRPC] Cause:", error.cause);
     }
-    console.error("[oRPC] Error:", error);
+
+    const record = toRecord(error);
+    if (record?.data) {
+      logger.error("[oRPC] Data:", JSON.stringify(record.data, null, 2));
+    }
+    logger.error("[oRPC] Error:", error);
 
     res.statusCode = 500;
     res.end("Internal server error");

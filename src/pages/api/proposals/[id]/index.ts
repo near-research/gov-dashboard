@@ -7,7 +7,9 @@ import type {
   DiscoursePostDetail,
   DiscourseTopic,
 } from "@/types/discourse";
-import type { ProposalDetailResponse } from "@/types/proposals";
+import type { ProposalDetailResponse } from "@/components/proposal/types/proposals";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/proposals/[id]
@@ -32,13 +34,19 @@ export default async function handler(
   >
 ) {
   if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {
-    return res.status(400).json({ error: "Invalid proposal ID" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid proposal ID", 400)
+    );
   }
 
   try {
@@ -54,10 +62,15 @@ export default async function handler(
     });
 
     if (!topicResponse.ok) {
-      return res.status(topicResponse.status).json({
-        error: "Failed to fetch proposal",
-        status: topicResponse.status,
-      } as const);
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.UPSTREAM_ERROR,
+          "Failed to fetch proposal",
+          topicResponse.status,
+          { upstreamStatus: topicResponse.status }
+        )
+      );
     }
 
     const topicData: DiscourseTopic = await topicResponse.json();
@@ -66,7 +79,14 @@ export default async function handler(
       topicData.post_stream?.posts?.[0];
 
     if (!firstPost) {
-      return res.status(404).json({ error: "Proposal post not found" });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Proposal post not found",
+          404
+        )
+      );
     }
 
     let rawContent = "";
@@ -84,7 +104,7 @@ export default async function handler(
         rawContent = postData.raw || "";
       }
     } catch (err) {
-      console.warn(
+      logger.warn(
         `[Proposal] Could not fetch raw content for post ${firstPost.id}:`,
         err
       );
@@ -146,7 +166,7 @@ export default async function handler(
       replies: replies,
     };
 
-    console.log(
+    logger.debug(
       `[Proposal] Fetched topic ${id}: "${topicData.title}" by @${
         firstPost.username
       } v${firstPost.version || 1} (using ${
@@ -156,11 +176,16 @@ export default async function handler(
 
     return res.status(200).json(proposalDetail);
   } catch (error: unknown) {
-    console.error("[Proposal] Error fetching proposal details:", error);
+    logger.error("[Proposal] Error fetching proposal details:", error);
     const message = error instanceof Error ? error.message : undefined;
-    return res.status(500).json({
-      error: "Failed to fetch proposal details",
-      message,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to fetch proposal details",
+        500,
+        message ? { message } : undefined
+      )
+    );
   }
 }

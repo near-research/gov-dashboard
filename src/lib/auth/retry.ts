@@ -1,20 +1,58 @@
 const normalizeMessage = (value: unknown) =>
   value?.toString?.().toLowerCase?.() ?? "";
 
-const getErrorCode = (err: any) =>
-  err?.code ?? err?.data?.code ?? err?.error?.code;
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
 
-export const shouldRetryNonce = (err: any) => {
-  const code = getErrorCode(err);
-  const message = normalizeMessage(err?.message ?? err?.data?.message);
-  const reason = normalizeMessage(err?.reason);
-  return code === "NONCE_NOT_FOUND" || message.includes("nonce") || reason.includes("nonce");
+const getNestedRecord = (
+  record: Record<string, unknown> | null,
+  key: string
+): Record<string, unknown> | null => toRecord(record?.[key]);
+
+const getErrorCode = (err: unknown): string | number | undefined => {
+  const record = toRecord(err);
+  if (!record) return undefined;
+  const code =
+    record.code ??
+    getNestedRecord(record, "data")?.code ??
+    getNestedRecord(record, "error")?.code;
+
+  if (typeof code === "string" || typeof code === "number") {
+    return code;
+  }
+  return undefined;
 };
 
-export const isUserRejected = (err: any) => {
+const getPrimaryMessage = (err: unknown): unknown => {
+  const record = toRecord(err);
+  if (!record) return undefined;
+  const dataRecord = getNestedRecord(record, "data");
+  return record.message ?? dataRecord?.message;
+};
+
+const getReasonMessage = (err: unknown): unknown => {
+  const record = toRecord(err);
+  if (!record) return undefined;
+  return record.reason ?? getNestedRecord(record, "data")?.reason;
+};
+
+export const shouldRetryNonce = (err: unknown) => {
   const code = getErrorCode(err);
-  const message = normalizeMessage(err?.message ?? err?.data?.message);
-  const reason = normalizeMessage(err?.reason);
+  const message = normalizeMessage(getPrimaryMessage(err));
+  const reason = normalizeMessage(getReasonMessage(err));
+  return (
+    code === "NONCE_NOT_FOUND" ||
+    message.includes("nonce") ||
+    reason.includes("nonce")
+  );
+};
+
+export const isUserRejected = (err: unknown) => {
+  const code = getErrorCode(err);
+  const message = normalizeMessage(getPrimaryMessage(err));
+  const reason = normalizeMessage(getReasonMessage(err));
   return (
     code === "ACTION_REJECTED" ||
     code === 4001 ||

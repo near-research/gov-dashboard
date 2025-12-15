@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Readable } from "stream";
 
@@ -6,87 +7,117 @@ type AuthProxyRequestInit = RequestInit & {
   duplex?: "half";
 };
 
+type HeadersWithGetSetCookie = Headers & {
+  getSetCookie?: () => string[];
+};
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  const protocol = req.headers["x-forwarded-proto"] || "http";
-  const host = req.headers["x-forwarded-host"] || req.headers.host;
-  const url = new URL(req.url || "", `${protocol}://${host}`);
+  try {
+    const protocol = req.headers["x-forwarded-proto"] || "http";
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    const url = new URL(req.url || "", `${protocol}://${host}`);
 
-  // Preserve incoming body without double-encoding JSON/Buffer payloads.
-  let body: BodyInit | undefined;
+    const body = normalizeRequestBody(req);
+
+    const requestInit: AuthProxyRequestInit = {
+      method: req.method,
+      headers: new Headers(req.headers as Record<string, string>),
+      body,
+    };
+
+    if (body && typeof requestInit.duplex === "undefined") {
+      requestInit.duplex = "half";
+    }
+
+    const webRequest = new Request(url, requestInit);
+    const response = await auth.handler(webRequest);
+
+    await forwardAuthResponse(response, res);
+  } catch (error) {
+    handleProxyError(error, req, res);
+  }
+}
+
+const normalizeRequestBody = (req: NextApiRequest): BodyInit | undefined => {
   const methodAllowsBody =
     req.method && req.method !== "GET" && req.method !== "HEAD";
+  if (!methodAllowsBody) {
+    return undefined;
+  }
 
-  if (methodAllowsBody) {
-    const incoming = (req as any).body;
-    const contentType =
-      (req.headers["content-type"] as string | undefined) || "";
-    const hasReadableBody =
-      !!req.readable &&
-      (!!req.headers["content-length"] || !!req.headers["transfer-encoding"]);
+  const incoming: unknown = req.body;
+  const contentType =
+    (req.headers["content-type"] as string | undefined) || "";
+  const hasReadableBody =
+    !!req.readable &&
+    (!!req.headers["content-length"] || !!req.headers["transfer-encoding"]);
 
-    if (incoming === null || typeof incoming === "undefined") {
-      if (hasReadableBody) {
-        body =
-          typeof Readable.toWeb === "function"
-            ? (Readable.toWeb(req) as BodyInit)
-            : ((req as unknown as BodyInit) ?? undefined);
-      }
-    } else if (typeof incoming === "string" || Buffer.isBuffer(incoming)) {
-      body =
-        typeof incoming === "string"
-          ? incoming
-          : new Uint8Array(incoming); // convert Buffer to a typed array accepted by BodyInit
-    } else if (
-      typeof ReadableStream !== "undefined" &&
-      incoming instanceof ReadableStream
-    ) {
-      body = incoming;
-    } else if (incoming instanceof Readable) {
-      body =
-        typeof Readable.toWeb === "function"
-          ? (Readable.toWeb(incoming) as BodyInit)
-          : (incoming as unknown as BodyInit);
-    } else if (
-      typeof URLSearchParams !== "undefined" &&
-      incoming instanceof URLSearchParams
-    ) {
-      body = incoming;
-    } else if (typeof FormData !== "undefined" && incoming instanceof FormData) {
-      body = incoming as BodyInit;
-    } else if (typeof incoming === "object") {
-      if (contentType.includes("application/json")) {
-        body = JSON.stringify(incoming);
-      } else if (contentType.includes("application/x-www-form-urlencoded")) {
-        body = new URLSearchParams(incoming as Record<string, string>);
-      }
+  if (incoming === null || typeof incoming === "undefined") {
+    if (hasReadableBody) {
+      return typeof Readable.toWeb === "function"
+        ? (Readable.toWeb(req) as BodyInit)
+        : ((req as unknown as BodyInit) ?? undefined);
+    }
+    return undefined;
+  }
+
+  if (typeof incoming === "string" || Buffer.isBuffer(incoming)) {
+    return typeof incoming === "string"
+      ? incoming
+      : new Uint8Array(incoming);
+  }
+
+  if (
+    typeof ReadableStream !== "undefined" &&
+    incoming instanceof ReadableStream
+  ) {
+    return incoming;
+  }
+
+  if (incoming instanceof Readable) {
+    return typeof Readable.toWeb === "function"
+      ? (Readable.toWeb(incoming) as BodyInit)
+      : (incoming as unknown as BodyInit);
+  }
+
+  if (
+    typeof URLSearchParams !== "undefined" &&
+    incoming instanceof URLSearchParams
+  ) {
+    return incoming;
+  }
+
+  if (typeof FormData !== "undefined" && incoming instanceof FormData) {
+    return incoming as BodyInit;
+  }
+
+  if (typeof incoming === "object") {
+    if (contentType.includes("application/json")) {
+      return JSON.stringify(incoming);
+    }
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      return new URLSearchParams(incoming as Record<string, string>);
     }
   }
 
-  const requestInit: AuthProxyRequestInit = {
-    method: req.method,
-    headers: new Headers(req.headers as Record<string, string>),
-    body,
-  };
+  return undefined;
+};
 
-  if (body && typeof requestInit.duplex === "undefined") {
-    requestInit.duplex = "half";
-  }
-
-  const webRequest = new Request(url, requestInit);
-
-  const response = await auth.handler(webRequest);
-
-  // Preserve multi-value headers like Set-Cookie.
-  const getSetCookie = (response.headers as any).getSetCookie;
+const forwardAuthResponse = async (
+  response: Response,
+  res: NextApiResponse
+) => {
+  const responseHeaders = response.headers as HeadersWithGetSetCookie;
+  const getSetCookie = responseHeaders.getSetCookie;
   let setCookieHeaders =
     typeof getSetCookie === "function"
-      ? (getSetCookie.call(response.headers) as string[])
+      ? getSetCookie.call(responseHeaders)
       : undefined;
 
-  response.headers.forEach((value, key) => {
+  responseHeaders.forEach((value, key) => {
     if (key.toLowerCase() === "set-cookie") {
       if (setCookieHeaders) return;
       setCookieHeaders = [];
@@ -97,7 +128,7 @@ export default async function handler(
   });
 
   if (!setCookieHeaders) {
-    const single = response.headers.get("set-cookie");
+    const single = responseHeaders.get("set-cookie");
     setCookieHeaders = single ? [single] : undefined;
   }
 
@@ -107,12 +138,12 @@ export default async function handler(
 
   res.status(response.status);
 
-  // Stream the response when possible to keep binary bodies intact.
   if (response.body) {
+    const responseBody = response.body;
     const nodeStream =
       typeof Readable.fromWeb === "function"
-        ? Readable.fromWeb(response.body as any)
-        : (response.body as any);
+        ? Readable.fromWeb(responseBody as any)
+        : (responseBody as unknown as Readable);
 
     await new Promise<void>((resolve, reject) => {
       nodeStream.on("error", reject);
@@ -133,8 +164,55 @@ export default async function handler(
       // fall through to send raw text
     }
   }
+
   res.send(text);
-}
+};
+
+const handleProxyError = (
+  error: unknown,
+  req: NextApiRequest,
+  res: NextApiResponse
+) => {
+  logger.error("[Auth Proxy] request failed", {
+    error,
+    method: req.method,
+    url: req.url,
+  });
+
+  if (res.headersSent) {
+    return;
+  }
+
+  res
+    .status(resolveErrorStatus(error))
+    .json({
+      error: "Authentication proxy error",
+      message: resolveErrorMessage(error),
+    });
+};
+
+const resolveErrorStatus = (error: unknown): number => {
+  if (typeof error === "object" && error !== null) {
+    const typed = error as { status?: unknown; statusCode?: unknown };
+    if (typeof typed.status === "number") {
+      return typed.status;
+    }
+    if (typeof typed.statusCode === "number") {
+      return typed.statusCode;
+    }
+  }
+  return 502;
+};
+
+const resolveErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "Unknown error";
+};
 
 export const config = {
   api: {

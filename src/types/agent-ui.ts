@@ -4,15 +4,14 @@ import {
   type MessageRole,
   type VerificationMetadata,
 } from "@/types/agui-events";
-import type { PartialExpectations, RemoteProof } from "@/types/verification";
-
 export type ToolCallStatus = "pending" | "running" | "completed" | "failed";
 export type StatusLevel = "info" | "success" | "warning" | "error";
 export type SubAgentPhase = "spawned" | "running" | "completed" | "failed";
 
-export interface MessageProof extends PartialExpectations {
+export interface MessageProof {
   requestHash?: string;
   responseHash?: string;
+  chatId?: string;
   verificationId?: string;
   nonce?: string;
   stage?: "initial_reasoning" | "final_synthesis";
@@ -35,7 +34,6 @@ export interface MessageUIEvent extends BaseAgentUIEvent {
   messageId?: string;
   verification?: VerificationMetadata;
   proof?: MessageProof;
-  remoteProof?: RemoteProof | null;
 }
 
 export interface ToolCallUIEvent extends BaseAgentUIEvent {

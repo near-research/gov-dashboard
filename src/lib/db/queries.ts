@@ -4,7 +4,8 @@ import {
   type NewScreeningResult,
   type ScreeningResult,
 } from "./schema";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, lt, sql } from "drizzle-orm";
+import { evaluationSchema } from "@/types/evaluation";
 
 /**
  * Get screening result by topic ID and revision number
@@ -62,8 +63,7 @@ export async function getScreeningsByTopic(
 export async function saveScreeningResult(
   data: NewScreeningResult
 ): Promise<void> {
-  // Extract quality and attention scores from evaluation
-  const evaluation = data.evaluation as any;
+  const evaluation = evaluationSchema.parse(data.evaluation);
   const qualityScore = evaluation.qualityScore ?? null;
   const attentionScore = evaluation.attentionScore ?? null;
 
@@ -80,25 +80,15 @@ export async function saveScreeningResult(
  */
 export async function getScreeningsByAccount(
   nearAccount: string,
-  latestOnly = true
-): Promise<ScreeningResult[]> {
-  if (!latestOnly) {
-    // Return all revisions for all topics
-    return db
-      .select()
-      .from(screeningResults)
-      .where(eq(screeningResults.nearAccount, nearAccount))
-      .orderBy(desc(screeningResults.timestamp));
+  latestOnly = true,
+  options?: {
+    limit?: number;
+    beforeTimestamp?: Date;
   }
+): Promise<ScreeningResult[]> {
+  const { limit = 100, beforeTimestamp } = options ?? {};
 
-  // Get latest revision for each topic
-  const allResults = await db
-    .select()
-    .from(screeningResults)
-    .where(eq(screeningResults.nearAccount, nearAccount))
-    .orderBy(desc(screeningResults.timestamp));
-
-  const ranked = db
+  const filtered = db
     .select({
       topicId: screeningResults.topicId,
       revisionNumber: screeningResults.revisionNumber,
@@ -109,15 +99,55 @@ export async function getScreeningsByAccount(
       revisionTimestamp: screeningResults.revisionTimestamp,
       qualityScore: screeningResults.qualityScore,
       attentionScore: screeningResults.attentionScore,
+    })
+    .from(screeningResults)
+    .where(
+      and(
+        eq(screeningResults.nearAccount, nearAccount),
+        beforeTimestamp
+          ? lt(screeningResults.timestamp, beforeTimestamp)
+          : undefined
+      )
+    )
+    .orderBy(desc(screeningResults.timestamp))
+    .limit(limit)
+    .as("filtered");
+
+  if (!latestOnly) {
+    return db
+      .select({
+        topicId: filtered.topicId,
+        revisionNumber: filtered.revisionNumber,
+        evaluation: filtered.evaluation,
+        title: filtered.title,
+        nearAccount: filtered.nearAccount,
+        timestamp: filtered.timestamp,
+        revisionTimestamp: filtered.revisionTimestamp,
+        qualityScore: filtered.qualityScore,
+        attentionScore: filtered.attentionScore,
+      })
+      .from(filtered);
+  }
+
+  const ranked = db
+    .select({
+      topicId: filtered.topicId,
+      revisionNumber: filtered.revisionNumber,
+      evaluation: filtered.evaluation,
+      title: filtered.title,
+      nearAccount: filtered.nearAccount,
+      timestamp: filtered.timestamp,
+      revisionTimestamp: filtered.revisionTimestamp,
+      qualityScore: filtered.qualityScore,
+      attentionScore: filtered.attentionScore,
       rowNumber: sql<number>`
         row_number() over (
-          partition by ${screeningResults.topicId}
-          order by ${screeningResults.revisionNumber} desc
+          partition by ${filtered.topicId}
+          order by ${filtered.revisionNumber} desc
         )
       `.as("rowNumber"),
     })
-    .from(screeningResults)
-    .where(eq(screeningResults.nearAccount, nearAccount))
+    .from(filtered)
     .as("ranked");
 
   return db
@@ -141,9 +171,10 @@ export async function getScreeningsByAccount(
  * Get recent screening results (latest revision of each topic)
  */
 export async function getRecentScreenings(
-  limit = 10
+  limit = 10,
+  beforeTimestamp?: Date
 ): Promise<ScreeningResult[]> {
-  const ranked = db
+  const filtered = db
     .select({
       topicId: screeningResults.topicId,
       revisionNumber: screeningResults.revisionNumber,
@@ -154,14 +185,34 @@ export async function getRecentScreenings(
       revisionTimestamp: screeningResults.revisionTimestamp,
       qualityScore: screeningResults.qualityScore,
       attentionScore: screeningResults.attentionScore,
+    })
+    .from(screeningResults)
+    .where(
+      beforeTimestamp ? lt(screeningResults.timestamp, beforeTimestamp) : undefined
+    )
+    .orderBy(desc(screeningResults.timestamp))
+    .limit(limit)
+    .as("filtered");
+
+  const ranked = db
+    .select({
+      topicId: filtered.topicId,
+      revisionNumber: filtered.revisionNumber,
+      evaluation: filtered.evaluation,
+      title: filtered.title,
+      nearAccount: filtered.nearAccount,
+      timestamp: filtered.timestamp,
+      revisionTimestamp: filtered.revisionTimestamp,
+      qualityScore: filtered.qualityScore,
+      attentionScore: filtered.attentionScore,
       rowNumber: sql<number>`
         row_number() over (
-          partition by ${screeningResults.topicId}
-          order by ${screeningResults.revisionNumber} desc
+          partition by ${filtered.topicId}
+          order by ${filtered.revisionNumber} desc
         )
       `.as("rowNumber"),
     })
-    .from(screeningResults)
+    .from(filtered)
     .as("ranked");
 
   return db
@@ -178,8 +229,7 @@ export async function getRecentScreenings(
     })
     .from(ranked)
     .where(eq(ranked.rowNumber, 1))
-    .orderBy(desc(ranked.timestamp))
-    .limit(limit);
+    .orderBy(desc(ranked.timestamp));
 }
 
 /**

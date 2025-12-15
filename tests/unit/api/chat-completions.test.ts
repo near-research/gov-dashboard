@@ -1,19 +1,35 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHash } from "crypto";
 import handler from "@/pages/api/chat/completions";
-import { NearAIError, NearAITimeoutError } from "@/lib/near-ai";
+import type { ChatVerificationResult, NearAIClient } from "@/lib/near-ai";
+import * as nearAI from "@/lib/near-ai";
 import { EventEmitter } from "events";
 import { createNearAiClientMock } from "../mocks/near-ai-client";
+import {
+  serializeChatCompletionRequest,
+  type NormalizedChatCompletionRequest,
+} from "@/lib/near-ai/request";
 
-const { client: nearAIClientMock, spies } = createNearAiClientMock();
-const { createSession, updateSessionHashes, clearSession, verifyChatPayload } = spies;
+const { NearAIError, NearAITimeoutError } = nearAI;
+const nearAIClientMock = createNearAiClientMock();
 const { chatCompletions: chatSpy, chatCompletionsStream: streamSpy } =
   nearAIClientMock;
-const getNearAIClientSpy = vi.fn(() => nearAIClientMock);
+const getNearAIClientSpy = vi.spyOn(nearAI, "getNearAIClient");
+const verifyChatMessageMock = vi.spyOn(nearAI, "verifyChatMessage");
 
-vi.mock("@/lib/near-ai/client", () => ({
-  getNearAIClient: () => getNearAIClientSpy(),
-}));
+const createMockVerificationResult = (
+  overrides: Partial<ChatVerificationResult> = {}
+): ChatVerificationResult => ({
+  verified: true,
+  chatId: "mock-chat-id",
+  requestHash: "mock-request-hash",
+  responseHash: "mock-response-hash",
+  signature: null,
+  hashValidation: null,
+  signatureValidation: null,
+  attestation: null,
+  ...overrides,
+});
 
 const createResponse = () => {
   const emitter = new EventEmitter();
@@ -90,17 +106,13 @@ describe("POST /api/chat/completions", () => {
     chatSpy.mockResolvedValue({ id: "abc", choices: [] });
     streamSpy.mockReset();
     getNearAIClientSpy.mockReset();
-    getNearAIClientSpy.mockReturnValue(nearAIClientMock);
-    createSession.mockClear();
-    updateSessionHashes.mockClear();
-    clearSession.mockClear();
-    verifyChatPayload.mockReset();
-    verifyChatPayload.mockResolvedValue({
-      verified: true,
-      reasons: [],
-      status: "verified",
-      chatId: "abc",
-    });
+    getNearAIClientSpy.mockReturnValue(
+      nearAIClientMock as unknown as NearAIClient
+    );
+    verifyChatMessageMock.mockReset();
+    verifyChatMessageMock.mockResolvedValue(
+      createMockVerificationResult()
+    );
   });
 
   it("rejects invalid bodies with 400", async () => {
@@ -129,42 +141,36 @@ describe("POST /api/chat/completions", () => {
   });
 
   it("proxies valid non-streaming requests through the NearAI client", async () => {
-    const reqBody = {
+    const reqBody: NormalizedChatCompletionRequest = {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       stream: false,
     };
     const req = createRequest(reqBody);
     const res = createResponse();
-    const verificationResult = {
-      verified: true,
-      reasons: [],
-      status: "verified",
+    const verificationResult = createMockVerificationResult({
       chatId: "abc",
-    };
-    verifyChatPayload.mockResolvedValue(verificationResult);
+    });
+    verifyChatMessageMock.mockResolvedValueOnce(verificationResult);
 
     await handler(req as any, res as any);
 
     expect(chatSpy).toHaveBeenCalledWith(reqBody, {
-      verificationId: undefined,
-      verificationNonce: undefined,
       timeout: undefined,
     });
     const responseText = JSON.stringify({ id: "abc", choices: [] });
-    expect(verifyChatPayload).toHaveBeenCalledWith({
-      requestBody: JSON.stringify(reqBody),
+    expect(verifyChatMessageMock).toHaveBeenCalledWith(
+      serializeChatCompletionRequest(reqBody),
       responseText,
-      chatId: "abc",
-      model: "m",
-    });
+      "m"
+    );
     expect(res.statusCode).toBe(200);
     expect(res.body?.id).toBe("abc");
     expect(res.body?.verification).toBe(verificationResult);
   });
 
   it("attaches the verification result from the NEAR AI client", async () => {
-    const reqBody = {
+    const reqBody: NormalizedChatCompletionRequest = {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       stream: false,
@@ -173,14 +179,11 @@ describe("POST /api/chat/completions", () => {
       id: "resp-123",
       choices: [],
     };
-    const verificationResult = {
-      verified: true,
-      reasons: [],
-      status: "verified",
+    const verificationResult = createMockVerificationResult({
       chatId: "resp-123",
-    };
+    });
     chatSpy.mockResolvedValue(responseData);
-    verifyChatPayload.mockResolvedValue(verificationResult);
+    verifyChatMessageMock.mockResolvedValueOnce(verificationResult);
     const responseText = JSON.stringify(responseData);
 
     const req = createRequest(reqBody);
@@ -188,13 +191,11 @@ describe("POST /api/chat/completions", () => {
 
     await handler(req as any, res as any);
 
-    expect(verifyChatPayload).toHaveBeenCalledWith({
-      requestBody: JSON.stringify(reqBody),
+    expect(verifyChatMessageMock).toHaveBeenCalledWith(
+      serializeChatCompletionRequest(reqBody),
       responseText,
-      chatId: "resp-123",
-      model: "m",
-    });
-    expect(res.body?.verificationId).toBe("resp-123");
+      "m"
+    );
     expect(res.body?.verification).toBe(verificationResult);
   });
 
@@ -215,47 +216,28 @@ describe("POST /api/chat/completions", () => {
       })
     );
 
-    const requestBody = {
+    const requestBody: NormalizedChatCompletionRequest = {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       stream: true,
     };
 
-    const req = createRequest({
-      ...requestBody,
-      verificationId: "ver-123",
-      verificationNonce: "nonce-xyz",
-    });
+    const req = createRequest(requestBody);
     const res = createResponse();
 
     await handler(req as any, res as any);
 
-    expect(streamSpy).toHaveBeenCalledWith(requestBody, {
-      verificationId: "ver-123",
-      verificationNonce: "nonce-xyz",
-    });
+    expect(streamSpy).toHaveBeenCalledWith(requestBody);
     expect(res.headers["Content-Type"]).toContain("text/event-stream");
     expect(res.headers["Cache-Control"]).toBe("no-cache, no-transform");
     expect(res.headers["Connection"]).toBe("keep-alive");
     expect(res.headers["X-Accel-Buffering"]).toBe("no");
     expect(res.getBody()).toBe("data: one\n\ndata: two\n\n");
 
-    const expectedRequestHash = createHash("sha256")
-      .update(JSON.stringify(requestBody))
-      .digest("hex");
-
-    expect(createSession).toHaveBeenCalledWith("ver-123", "nonce-xyz");
-    expect(updateSessionHashes.mock.calls[0]).toEqual([
-      "ver-123",
-      { requestHash: expectedRequestHash },
-    ]);
-    const lastCall = updateSessionHashes.mock.calls.at(-1);
-    expect(lastCall?.[0]).toBe("ver-123");
-    expect(lastCall?.[1]).toEqual(
-      expect.objectContaining({
-        requestHash: expectedRequestHash,
-        responseHash: expect.stringMatching(/^[0-9a-f]{64}$/),
-      })
+    expect(verifyChatMessageMock).toHaveBeenCalledWith(
+      serializeChatCompletionRequest(requestBody),
+      "data: one\n\ndata: two\n\n",
+      "m"
     );
   });
 
@@ -268,23 +250,19 @@ describe("POST /api/chat/completions", () => {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       stream: true,
-      verificationId: "ver-stream-fail",
-      verificationNonce: "nonce-fail",
     });
     const res = createResponse();
 
     await handler(req as any, res as any);
 
-    expect(streamSpy).toHaveBeenCalledWith(
+    expect(streamSpy).toHaveBeenCalled();
+    const [firstStreamBody] = streamSpy.mock.calls[0];
+    expect(firstStreamBody).toEqual(
       expect.objectContaining({
         model: "m",
         messages: [{ role: "user", content: "hi" }],
         stream: true,
-      }),
-      {
-        verificationId: "ver-stream-fail",
-        verificationNonce: "nonce-fail",
-      }
+      })
     );
 
     expect(res.statusCode).toBe(502);
@@ -292,7 +270,6 @@ describe("POST /api/chat/completions", () => {
       error: "NEAR AI Cloud API Error: 502",
       details: "Stream failed unexpectedly",
     });
-    expect(createSession).not.toHaveBeenCalled();
   });
 
   it("hashes the decoder flush chunk in streamed responses", async () => {
@@ -315,28 +292,21 @@ describe("POST /api/chat/completions", () => {
       model: "m",
       messages: [{ role: "user", content: "hi" }],
       stream: true,
-      verificationId: "ver-flush",
-      verificationNonce: "a".repeat(64),
     });
     const res = createResponse();
 
     await handler(req as any, res as any);
 
-    const lastCall = updateSessionHashes.mock.calls.at(-1);
-    expect(lastCall?.[0]).toBe("ver-flush");
+    const flushedRequest: NormalizedChatCompletionRequest = {
+      model: "m",
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    };
 
-    const expectedHash = createHash("sha256")
-      .update(Uint8Array.from([0xe2]))
-      .update("�")
-      .digest("hex");
-
-    const updateHashesSpy = updateSessionHashes;
-
-    expect(updateHashesSpy).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        responseHash: expectedHash,
-      })
+    expect(verifyChatMessageMock).toHaveBeenCalledWith(
+      serializeChatCompletionRequest(flushedRequest),
+      "�",
+      "m"
     );
   });
 
@@ -405,10 +375,28 @@ describe("POST /api/chat/completions", () => {
   });
 
   it("sends negotiated tool metadata when provided", async () => {
-    const tools = [{ name: "fetch-url", description: "Fetch remote data" }];
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "fetch-url",
+          description: "Fetch remote data",
+          parameters: {
+            type: "object",
+            properties: {
+              url: {
+                type: "string",
+                description: "Target URL to fetch",
+              },
+            },
+            required: ["url"],
+          },
+        },
+      },
+    ];
     const toolChoice = {
-      name: "fetch-url",
-      arguments: { url: "https://example.com" },
+      type: "function",
+      function: { name: "fetch-url" },
     };
     const reqBody = {
       model: "deepseek-ai/DeepSeek-V3.1",
@@ -422,8 +410,8 @@ describe("POST /api/chat/completions", () => {
     await handler(req as any, res as any);
 
     const [forwarded] = chatSpy.mock.calls[0];
-    expect(forwarded.tools).toBe(tools);
-    expect(forwarded.tool_choice).toStrictEqual(toolChoice);
+    expect(forwarded.tools).toEqual(tools);
+    expect(forwarded.tool_choice).toEqual(toolChoice);
     expect(res.statusCode).toBe(200);
   });
 

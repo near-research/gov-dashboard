@@ -5,11 +5,11 @@ declare module "jsdom" {
     contentType?: string;
     includeNodeLocations?: boolean;
     storageQuota?: number;
-    [key: string]: any;
+    [key: string]: unknown;
   }
 
   export class JSDOM {
     constructor(html?: string, options?: JSDOMOptions);
-    window: any;
+    window: Window & typeof globalThis;
   }
 }

@@ -29,9 +29,9 @@ import {
   type MessageUIEvent,
   type MessageProof,
 } from "@/types/agent-ui";
-import type { RemoteProof } from "@/types/verification";
-import { AGENT_MODEL } from "@/agent/contract";
+import { AGENT_MODEL } from "@/constants/agent";
 import { useGovernanceAnalytics } from "@/lib/analytics";
+import { logger } from "@/lib/logger";
 
 type AgentRole = "user" | "assistant" | "system";
 
@@ -307,17 +307,16 @@ export const AgentChatPanel = ({
         parentRunId?: string;
         currentTurn?: number;
       };
-      if (Array.isArray(parsed?.events)) {
-        const hydratedEvents = parsed.events.map((event) => ({
+      const storedEvents = parsed.events;
+      if (Array.isArray(storedEvents)) {
+        const hydratedEvents = storedEvents.map((event) => ({
           ...event,
           timestamp: new Date(event.timestamp),
-          turnNumber: (event as AgentUIEvent).turnNumber ?? 0,
+          turnNumber: event.turnNumber ?? 0,
         }));
         dispatchEvents({ type: "set_all", events: hydratedEvents });
-        const lastUserEvent = parsed.events
-          .filter(
-            (event: any) => event.kind === "message" && event.role === "user"
-          )
+        const lastUserEvent = storedEvents
+          .filter((event) => event.kind === "message" && event.role === "user")
           .pop();
         if (lastUserEvent?.turnNumber) {
           setCurrentTurn(lastUserEvent.turnNumber);
@@ -346,7 +345,7 @@ export const AgentChatPanel = ({
       };
       hasHydratedRef.current = true;
     } catch (hydrationError) {
-      console.error("Failed to hydrate agent chat", hydrationError);
+      logger.error("Failed to hydrate agent chat", hydrationError);
     }
   }, [runId, threadId]);
 
@@ -370,7 +369,7 @@ export const AgentChatPanel = ({
         })
       );
     } catch (persistError) {
-      console.warn("Unable to persist agent chat session", persistError);
+      logger.warn("Unable to persist agent chat session", persistError);
     }
   }, [events, threadId, runId, currentTurn]);
 
@@ -406,7 +405,6 @@ export const AgentChatPanel = ({
     messageId?: string;
     verification?: VerificationMetadata;
     proof?: MessageProof;
-    remoteProof?: RemoteProof | null;
     status?: MessageUIEvent["status"];
   }
 
@@ -434,9 +432,6 @@ export const AgentChatPanel = ({
             ...(event.proof ?? {}),
             ...data.proof,
           };
-        }
-        if (data.remoteProof !== undefined) {
-          next.remoteProof = data.remoteProof;
         }
         return next;
       },
@@ -596,10 +591,11 @@ export const AgentChatPanel = ({
       const decoder = new TextDecoder();
       let buffer = "";
 
-      const handleCustomVerification = (value: any) => {
+      const handleCustomVerification = (value: unknown) => {
         if (!value || typeof value !== "object") return;
+        const payload = value as Record<string, unknown>;
 
-        const stage = value.stage as
+        const stage = payload.stage as
           | "initial_reasoning"
           | "final_synthesis"
           | undefined;
@@ -613,31 +609,31 @@ export const AgentChatPanel = ({
           : null;
 
         if (!targetProof) {
-          console.warn("[verification] Unknown stage:", stage);
+          logger.warn("[verification] Unknown stage:", stage);
           return;
         }
 
-        if (typeof value.verificationId === "string") {
-          targetProof.verificationId = value.verificationId;
+        if (typeof payload.verificationId === "string") {
+          targetProof.verificationId = payload.verificationId;
         }
-        if (typeof value.requestHash === "string") {
-          targetProof.requestHash = value.requestHash;
+        if (typeof payload.requestHash === "string") {
+          targetProof.requestHash = payload.requestHash;
         }
-        if (typeof value.responseHash === "string") {
-          targetProof.responseHash = value.responseHash;
+        if (typeof payload.responseHash === "string") {
+          targetProof.responseHash = payload.responseHash;
         }
-        if (typeof value.nonce === "string") {
-          targetProof.nonce = value.nonce;
+        if (typeof payload.nonce === "string") {
+          targetProof.nonce = payload.nonce;
         }
-        if (typeof value.messageId === "string") {
-          targetProof.messageId = value.messageId;
+        if (typeof payload.messageId === "string") {
+          targetProof.messageId = payload.messageId;
         }
 
         updateMessageEvent(assistantEventId, {
           proof: {
             ...(isSynthesis ? synthesisProofData : initialProofData),
           },
-          verification: value,
+          verification: payload as unknown as VerificationMetadata,
         });
       };
 
@@ -687,7 +683,7 @@ export const AgentChatPanel = ({
                 );
                 agentStateRef.current = nextState.newDocument;
               } catch (stateError) {
-                console.error("Failed to apply state delta", stateError);
+                logger.error("Failed to apply state delta", stateError);
               }
             }
             break;
@@ -718,7 +714,7 @@ export const AgentChatPanel = ({
             const parsed = JSON.parse(payload) as AGUIEvent;
             handleAgentEvent(parsed);
           } catch (parseError) {
-            console.error("Failed to parse agent event", parseError, payload);
+            logger.error("Failed to parse agent event", parseError, payload);
           }
         }
         flushPendingEvents();

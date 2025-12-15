@@ -2,6 +2,7 @@ import { createContext, useContext, useReducer, type ReactNode } from "react";
 import { applyPatch, type Operation } from "fast-json-patch";
 import type { VerificationMetadata } from "@/types/agui-events";
 import type { Evaluation } from "@/types/evaluation";
+import { logger } from "@/lib/logger";
 
 export type ProposalState = {
   title: string;
@@ -136,7 +137,7 @@ function reducer(state: ProposalEditorState, action: ProposalEditorAction): Prop
         const result = applyPatch(updatedProposal, targetDelta.delta, true, false);
         updatedProposal = result.newDocument as ProposalState;
       } catch (error) {
-        console.error("[Editor] Failed to apply pending delta", error);
+        logger.error("[Editor] Failed to apply pending delta", error);
       }
       const remaining = state.pendingDeltas.filter((delta) => delta.id !== action.payload);
       return {
@@ -164,7 +165,7 @@ function reducer(state: ProposalEditorState, action: ProposalEditorAction): Prop
           updatedProposal = result.newDocument as ProposalState;
         });
       } catch (error) {
-        console.error("[Editor] Failed to apply pending deltas", error);
+        logger.error("[Editor] Failed to apply pending deltas", error);
       }
       return {
         ...state,

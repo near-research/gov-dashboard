@@ -7,8 +7,8 @@ import { DiscussionSection } from "@/components/proposal/DiscussionSection";
 import { ProposalChatbot } from "@/components/proposal/ProposalChatbot";
 import { ScreeningBadge } from "@/components/proposal/screening/ScreeningBadge";
 import { ScreeningButton } from "@/components/proposal/screening/ScreeningButton";
-import { useProposalDetail } from "@/hooks/useProposalDetail";
-import { useProposalSummaries } from "@/hooks/useProposalSummaries";
+import { useProposalDetail } from "@/components/proposal/hooks/useProposalDetail";
+import { useProposalSummaries } from "@/components/proposal/hooks/useProposalSummaries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -305,11 +305,7 @@ export default function ProposalDetail() {
                 {screeningChecked &&
                   screening &&
                   screening.revisionNumber === selectedVersion && (
-                    <ScreeningBadge
-                      screening={screening}
-                      verification={screening.verification ?? undefined}
-                      verificationId={screening.verificationId ?? undefined}
-                    />
+                    <ScreeningBadge screening={screening} />
                   )}
 
                 {screeningChecked &&

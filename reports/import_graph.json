@@ -1,0 +1,4400 @@
+{
+  "all_files": [
+    "discourse-plugin/index.d.ts",
+    "drizzle.config.ts",
+    "eslint.config.mjs",
+    "next-env.d.ts",
+    "next.config.js",
+    "playwright.config.ts",
+    "postcss.config.js",
+    "scripts/test-db.ts",
+    "scripts/test-rate-limit.ts",
+    "scripts/verification-health.ts",
+    "src/components/auth/sign-in-form.tsx",
+    "src/components/chat/AgentChatPanel.tsx",
+    "src/components/chat/AgentMessage.tsx",
+    "src/components/chat/Chat.tsx",
+    "src/components/chat/ChatInput.tsx",
+    "src/components/chat/ChatMessages.tsx",
+    "src/components/chat/ChatWidget.tsx",
+    "src/components/chat/Chatbot.tsx",
+    "src/components/chat/Message.tsx",
+    "src/components/chat/Status.tsx",
+    "src/components/chat/ToolHistoryCard.tsx",
+    "src/components/chat/ToolMessage.tsx",
+    "src/components/editor/AssistantSidebar.tsx",
+    "src/components/editor/ChatPane.tsx",
+    "src/components/editor/ConfirmModal.tsx",
+    "src/components/editor/DeltaConflictBanner.tsx",
+    "src/components/editor/EditorPane.tsx",
+    "src/components/editor/EvaluationPanel.tsx",
+    "src/components/editor/EvaluationSummary.tsx",
+    "src/components/editor/ProposalEditor.tsx",
+    "src/components/editor/ProposalEditorContext.tsx",
+    "src/components/editor/PublishBar.tsx",
+    "src/components/editor/SidebarChat.tsx",
+    "src/components/editor/useDraftEvaluation.ts",
+    "src/components/editor/useProposalChat.ts",
+    "src/components/editor/useProposalChatAdapter.ts",
+    "src/components/editor/useProposalChatController.ts",
+    "src/components/editor/useProposalFlowState.ts",
+    "src/components/editor/useProposalPublishing.ts",
+    "src/components/editor/useViewModeToggle.ts",
+    "src/components/nav/WalletStatus.tsx",
+    "src/components/nav/navigation.tsx",
+    "src/components/profile/DiscourseConnect.tsx",
+    "src/components/profile/WalletStatus.tsx",
+    "src/components/proposal/DiscussionSection.tsx",
+    "src/components/proposal/Markdown.tsx",
+    "src/components/proposal/ProposalCard.tsx",
+    "src/components/proposal/ProposalChatbot.tsx",
+    "src/components/proposal/ProposalContent.tsx",
+    "src/components/proposal/ProposalForm.tsx",
+    "src/components/proposal/ProposalScreener.tsx",
+    "src/components/proposal/ReplyCard.tsx",
+    "src/components/proposal/revisions/VersionHistory.tsx",
+    "src/components/proposal/revisions/VersionSelector.tsx",
+    "src/components/proposal/screening/ScreeningBadge.tsx",
+    "src/components/proposal/screening/ScreeningButton.tsx",
+    "src/components/proposal/screening/ScreeningResults.tsx",
+    "src/components/providers/auth-provider.tsx",
+    "src/components/ui/NearErrorAlert.tsx",
+    "src/components/ui/alert.tsx",
+    "src/components/ui/avatar.tsx",
+    "src/components/ui/badge.tsx",
+    "src/components/ui/button.tsx",
+    "src/components/ui/card.tsx",
+    "src/components/ui/checkbox.tsx",
+    "src/components/ui/collapsible.tsx",
+    "src/components/ui/command.tsx",
+    "src/components/ui/dialog.tsx",
+    "src/components/ui/dropdown-menu.tsx",
+    "src/components/ui/input.tsx",
+    "src/components/ui/label.tsx",
+    "src/components/ui/popover.tsx",
+    "src/components/ui/scroll-area.tsx",
+    "src/components/ui/select.tsx",
+    "src/components/ui/separator.tsx",
+    "src/components/ui/skeleton.tsx",
+    "src/components/ui/sonner.tsx",
+    "src/components/ui/switch.tsx",
+    "src/components/ui/tabs.tsx",
+    "src/components/ui/textarea.tsx",
+    "src/components/ui/tooltip.tsx",
+    "src/config/discourse.ts",
+    "src/config/near.ts",
+    "src/config/postgres.ts",
+    "src/config/rateLimit.ts",
+    "src/config/services.ts",
+    "src/config/siwn.ts",
+    "src/config/verification.ts",
+    "src/constants/agent.ts",
+    "src/constants/auth.ts",
+    "src/constants/index.ts",
+    "src/constants/near.ts",
+    "src/constants/services.ts",
+    "src/constants/signing-messages.ts",
+    "src/constants/ui.ts",
+    "src/hooks/index.ts",
+    "src/hooks/useNear.tsx",
+    "src/hooks/useProposalDetail.ts",
+    "src/hooks/useProposalSummaries.ts",
+    "src/lib/analytics.ts",
+    "src/lib/auth/auth-client.ts",
+    "src/lib/auth/auth-utils.ts",
+    "src/lib/auth/index.ts",
+    "src/lib/auth/retry.ts",
+    "src/lib/context.ts",
+    "src/lib/db/index.ts",
+    "src/lib/db/queries.ts",
+    "src/lib/db/revision-utils.ts",
+    "src/lib/db/schema.ts",
+    "src/lib/logger.ts",
+    "src/lib/near-ai/client.ts",
+    "src/lib/near-ai/errors.ts",
+    "src/lib/near-ai/index.ts",
+    "src/lib/near-ai/stream.ts",
+    "src/lib/near-ai/types.ts",
+    "src/lib/near-ai/verification/__tests__/verification.test.ts",
+    "src/lib/near-ai/verification/attestation.ts",
+    "src/lib/near-ai/verification/hash-utils.ts",
+    "src/lib/near-ai/verification/hash.ts",
+    "src/lib/near-ai/verification/hashes.ts",
+    "src/lib/near-ai/verification/index.ts",
+    "src/lib/near-ai/verification/nvidia.ts",
+    "src/lib/near-ai/verification/signature.ts",
+    "src/lib/near-ai/verification/types.ts",
+    "src/lib/near-ai/verification/verify.ts",
+    "src/lib/orpc.ts",
+    "src/lib/procedures.ts",
+    "src/lib/prompts/index.ts",
+    "src/lib/prompts/screenProposal.ts",
+    "src/lib/prompts/summarizeDiscussion.ts",
+    "src/lib/prompts/summarizeProposal.ts",
+    "src/lib/prompts/summarizeReply.ts",
+    "src/lib/prompts/summarizeRevisions.ts",
+    "src/lib/rate-limit.ts",
+    "src/lib/router.ts",
+    "src/lib/telemetry.ts",
+    "src/pages/_app.tsx",
+    "src/pages/api/agent.ts",
+    "src/pages/api/auth/[...all].ts",
+    "src/pages/api/chat/completions.ts",
+    "src/pages/api/discourse/categories.ts",
+    "src/pages/api/discourse/categories/[id].ts",
+    "src/pages/api/discourse/latest.ts",
+    "src/pages/api/discourse/posts.ts",
+    "src/pages/api/discourse/posts/[id]/index.ts",
+    "src/pages/api/discourse/posts/[id]/replies.ts",
+    "src/pages/api/discourse/posts/[id]/revisions/index.ts",
+    "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+    "src/pages/api/discourse/replies/[id]/summarize.ts",
+    "src/pages/api/discourse/search.ts",
+    "src/pages/api/discourse/tags.ts",
+    "src/pages/api/discourse/topics/[id]/index.ts",
+    "src/pages/api/discourse/topics/[id]/summarize.ts",
+    "src/pages/api/discourse/user/[username].ts",
+    "src/pages/api/evaluateDraft.ts",
+    "src/pages/api/getAnalysis/[topicId].ts",
+    "src/pages/api/proposals/[id]/index.ts",
+    "src/pages/api/proposals/[id]/revisions/index.ts",
+    "src/pages/api/proposals/[id]/revisions/summarize.ts",
+    "src/pages/api/proposals/[id]/summarize.ts",
+    "src/pages/api/rpc/[[...rest]].ts",
+    "src/pages/api/saveAnalysis/[topicId].ts",
+    "src/pages/api/screen.ts",
+    "src/pages/chat.tsx",
+    "src/pages/discourse-test.tsx",
+    "src/pages/editor.tsx",
+    "src/pages/index.tsx",
+    "src/pages/login.tsx",
+    "src/pages/playwright/screening.tsx",
+    "src/pages/playwright/summaries.tsx",
+    "src/pages/profile.tsx",
+    "src/pages/proposals/[id].tsx",
+    "src/pages/proposals/index.tsx",
+    "src/pages/proposals/new.tsx",
+    "src/pages/settings.tsx",
+    "src/server/agent/completion.ts",
+    "src/server/agent/ids.ts",
+    "src/server/agent/sse.ts",
+    "src/server/agent/streaming.ts",
+    "src/server/agent/tool-args.ts",
+    "src/server/agent/tools.ts",
+    "src/server/agent/types.ts",
+    "src/server/agent/validation.ts",
+    "src/server/agent/verification-flow.ts",
+    "src/server/crypto.ts",
+    "src/server/plugins/discourse-client.ts",
+    "src/server/plugins/discourse-schemas.ts",
+    "src/server/plugins/discourse.ts",
+    "src/server/rateLimiter.ts",
+    "src/server/screening.ts",
+    "src/server/summaryVerification.ts",
+    "src/server/tools/discourse.ts",
+    "src/server/tools/docs.ts",
+    "src/server/tools/index.ts",
+    "src/server/tools/proposals.ts",
+    "src/types/agent-ui.ts",
+    "src/types/agui-events.ts",
+    "src/types/analytics.ts",
+    "src/types/api.ts",
+    "src/types/better-near-auth.d.ts",
+    "src/types/discourse-linkage.ts",
+    "src/types/discourse.ts",
+    "src/types/evaluation.ts",
+    "src/types/every-plugin.d.ts",
+    "src/types/global.d.ts",
+    "src/types/jsdom.d.ts",
+    "src/types/modules.d.ts",
+    "src/types/proposals.ts",
+    "src/types/summaries.ts",
+    "src/utils/cache-utils.ts",
+    "src/utils/discourse/index.ts",
+    "src/utils/discourse/storage.ts",
+    "src/utils/errors/near-errors.ts",
+    "src/utils/errors/screening-errors.ts",
+    "src/utils/json.ts",
+    "src/utils/metadata.ts",
+    "src/utils/model-utils.ts",
+    "src/utils/rateLimitHelpers.ts",
+    "src/utils/screening/screen-proposal.ts",
+    "src/utils/tailwind.ts",
+    "src/utils/ui/diff.ts",
+    "src/utils/ui/html.ts",
+    "src/utils/ui/index.ts",
+    "src/utils/ui/revision-content.ts",
+    "src/utils/wallet/guards.ts",
+    "tailwind.config.js",
+    "test-setup.ts",
+    "tests/e2e/agent.spec.ts",
+    "tests/e2e/auth.spec.ts",
+    "tests/e2e/chat.spec.ts",
+    "tests/e2e/draft.spec.ts",
+    "tests/e2e/helpers/auth-mocks.ts",
+    "tests/e2e/helpers/playwright-guard.ts",
+    "tests/e2e/helpers/playwright-mocks.ts",
+    "tests/e2e/helpers/setup.ts",
+    "tests/e2e/playwright.spec.ts",
+    "tests/e2e/profile.spec.ts",
+    "tests/e2e/proposal.spec.ts",
+    "tests/e2e/proposals.spec.ts",
+    "tests/e2e/seed.spec.ts",
+    "tests/e2e/settings.spec.ts",
+    "tests/e2e/utils/mock-wallet.ts",
+    "tests/fixtures/context.ts",
+    "tests/fixtures/verification.ts",
+    "tests/fixtures/verificationMocks.ts",
+    "tests/mocks/server-only.ts",
+    "tests/types/vi-mocks.d.ts",
+    "tests/unit/agent/tools.test.ts",
+    "tests/unit/agent/validation.test.ts",
+    "tests/unit/api/auth-all.test.ts",
+    "tests/unit/api/chat-completions.test.ts",
+    "tests/unit/api/discourse-handlers.test.ts",
+    "tests/unit/auth-utils.test.ts",
+    "tests/unit/chatPersistence.test.tsx",
+    "tests/unit/chatState.test.tsx",
+    "tests/unit/components/DiscourseConnect.test.tsx",
+    "tests/unit/components/ProposalCard.test.tsx",
+    "tests/unit/components/SignInForm.test.tsx",
+    "tests/unit/components/chat/Chat.test.tsx",
+    "tests/unit/components/proposal/DiscussionSection.test.tsx",
+    "tests/unit/components/proposal/VersionHistory.test.tsx",
+    "tests/unit/config/rateLimit.test.ts",
+    "tests/unit/context.test.ts",
+    "tests/unit/crypto.test.ts",
+    "tests/unit/hooks/proposal-detail.test.ts",
+    "tests/unit/hooks/useNear.test.ts",
+    "tests/unit/hooks/useProposalDetail.test.ts",
+    "tests/unit/hooks/useProposalPublishing.test.ts",
+    "tests/unit/jwt-claims.test.ts",
+    "tests/unit/lib/analytics.test.ts",
+    "tests/unit/lib/near-ai/verification.test.ts",
+    "tests/unit/lib/retry.test.ts",
+    "tests/unit/mocks/near-ai-client.ts",
+    "tests/unit/model-attestation-structure.test.ts",
+    "tests/unit/near-ai-client.test.ts",
+    "tests/unit/official-examples.test.ts",
+    "tests/unit/providers/AuthProvider.test.tsx",
+    "tests/unit/server/crypto.test.ts",
+    "tests/unit/server/discourse-client.test.ts",
+    "tests/unit/server/plugins/discourse.integration.test.ts",
+    "tests/unit/server/rateLimiter.test.ts",
+    "tests/unit/server/tools-handlers.test.ts",
+    "tests/unit/server/tools-index.test.ts",
+    "tests/unit/signature-persistence.test.ts",
+    "tests/unit/types/agent-ui.test.ts",
+    "tests/unit/utils/cache-utils.test.ts",
+    "tests/unit/utils/discourse-storage.test.ts",
+    "tests/unit/utils/metadata.test.ts",
+    "tests/unit/utils/model-utils.test.ts",
+    "tests/unit/utils/revision-content.test.ts",
+    "tests/unit/vi-compat.test.ts",
+    "tests/vi-compat.ts",
+    "vi-compat.ts",
+    "vitest.config.ts"
+  ],
+  "imports_map": {
+    "discourse-plugin/index.d.ts": [],
+    "drizzle.config.ts": [
+      "src/config/postgres.ts"
+    ],
+    "eslint.config.mjs": [],
+    "next-env.d.ts": [],
+    "next.config.js": [],
+    "playwright.config.ts": [],
+    "postcss.config.js": [],
+    "scripts/test-db.ts": [
+      "src/lib/db/index.ts",
+      "src/lib/db/schema.ts",
+      "src/types/evaluation.ts"
+    ],
+    "scripts/test-rate-limit.ts": [],
+    "scripts/verification-health.ts": [],
+    "src/components/auth/sign-in-form.tsx": [
+      "src/components/providers/auth-provider.tsx",
+      "src/lib/auth/retry.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/components/chat/AgentChatPanel.tsx": [
+      "src/components/chat/ChatInput.tsx",
+      "src/components/chat/ChatMessages.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/dialog.tsx",
+      "src/constants/agent.ts",
+      "src/lib/analytics.ts",
+      "src/lib/logger.ts",
+      "src/types/agent-ui.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/components/chat/AgentMessage.tsx": [
+      "src/components/ui/badge.tsx"
+    ],
+    "src/components/chat/Chat.tsx": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/chat/ChatInput.tsx"
+    ],
+    "src/components/chat/ChatInput.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx"
+    ],
+    "src/components/chat/ChatMessages.tsx": [
+      "src/components/chat/AgentMessage.tsx",
+      "src/components/chat/Message.tsx",
+      "src/components/chat/ToolHistoryCard.tsx",
+      "src/components/proposal/ProposalCard.tsx",
+      "src/components/ui/button.tsx",
+      "src/lib/logger.ts",
+      "src/types/agent-ui.ts",
+      "src/types/proposals.ts"
+    ],
+    "src/components/chat/ChatWidget.tsx": [
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/scroll-area.tsx",
+      "src/lib/logger.ts",
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/chat/Chatbot.tsx": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/chat/ChatInput.tsx"
+    ],
+    "src/components/chat/Message.tsx": [
+      "src/types/agent-ui.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/components/chat/Status.tsx": [],
+    "src/components/chat/ToolHistoryCard.tsx": [
+      "src/components/ui/button.tsx",
+      "src/types/agent-ui.ts"
+    ],
+    "src/components/chat/ToolMessage.tsx": [
+      "src/components/ui/badge.tsx"
+    ],
+    "src/components/editor/AssistantSidebar.tsx": [
+      "src/components/editor/ChatPane.tsx",
+      "src/components/editor/EvaluationPanel.tsx",
+      "src/components/editor/ProposalEditor.tsx",
+      "src/components/editor/PublishBar.tsx"
+    ],
+    "src/components/editor/ChatPane.tsx": [
+      "src/components/editor/ProposalEditor.tsx",
+      "src/components/editor/SidebarChat.tsx"
+    ],
+    "src/components/editor/ConfirmModal.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/dialog.tsx",
+      "src/components/ui/scroll-area.tsx",
+      "src/components/ui/separator.tsx",
+      "src/types/evaluation.ts",
+      "src/utils/ui/diff.ts"
+    ],
+    "src/components/editor/DeltaConflictBanner.tsx": [
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/dialog.tsx"
+    ],
+    "src/components/editor/EditorPane.tsx": [
+      "src/components/proposal/Markdown.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/dialog.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/label.tsx",
+      "src/components/ui/tabs.tsx",
+      "src/components/ui/textarea.tsx"
+    ],
+    "src/components/editor/EvaluationPanel.tsx": [
+      "src/components/editor/EvaluationSummary.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/types/evaluation.ts"
+    ],
+    "src/components/editor/EvaluationSummary.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/lib/logger.ts",
+      "src/types/evaluation.ts",
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/editor/ProposalEditor.tsx": [
+      "src/components/editor/AssistantSidebar.tsx",
+      "src/components/editor/DeltaConflictBanner.tsx",
+      "src/components/editor/EditorPane.tsx",
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/editor/useProposalChatController.ts",
+      "src/components/editor/useProposalFlowState.ts",
+      "src/components/editor/useViewModeToggle.ts",
+      "src/components/ui/tabs.tsx",
+      "src/hooks/useNear.tsx",
+      "src/lib/analytics.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/components/editor/ProposalEditorContext.tsx": [
+      "src/lib/logger.ts",
+      "src/types/agui-events.ts",
+      "src/types/evaluation.ts"
+    ],
+    "src/components/editor/PublishBar.tsx": [
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/utils/errors/near-errors.ts"
+    ],
+    "src/components/editor/SidebarChat.tsx": [
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/scroll-area.tsx",
+      "src/types/agui-events.ts"
+    ],
+    "src/components/editor/useDraftEvaluation.ts": [
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/lib/analytics.ts",
+      "src/lib/logger.ts",
+      "src/types/agui-events.ts",
+      "src/types/evaluation.ts",
+      "src/utils/rateLimitHelpers.ts"
+    ],
+    "src/components/editor/useProposalChat.ts": [
+      "src/components/editor/ProposalEditor.tsx",
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/lib/logger.ts",
+      "src/types/agui-events.ts",
+      "src/types/evaluation.ts",
+      "src/utils/ui/diff.ts"
+    ],
+    "src/components/editor/useProposalChatAdapter.ts": [
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/editor/useProposalChat.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/components/editor/useProposalChatController.ts": [
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/editor/useProposalChatAdapter.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/components/editor/useProposalFlowState.ts": [
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/editor/PublishBar.tsx",
+      "src/components/editor/useDraftEvaluation.ts",
+      "src/components/editor/useProposalPublishing.ts",
+      "src/lib/analytics.ts",
+      "src/lib/orpc.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/components/editor/useProposalPublishing.ts": [
+      "src/config/discourse.ts",
+      "src/constants/near.ts",
+      "src/constants/signing-messages.ts",
+      "src/lib/analytics.ts",
+      "src/lib/logger.ts",
+      "src/lib/orpc.ts",
+      "src/types/discourse-linkage.ts",
+      "src/utils/discourse/index.ts",
+      "src/utils/errors/near-errors.ts",
+      "src/utils/wallet/guards.ts"
+    ],
+    "src/components/editor/useViewModeToggle.ts": [],
+    "src/components/nav/WalletStatus.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/skeleton.tsx"
+    ],
+    "src/components/nav/navigation.tsx": [
+      "public/near-logo.svg",
+      "src/components/providers/auth-provider.tsx",
+      "src/components/ui/avatar.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/dropdown-menu.tsx",
+      "src/config/siwn.ts",
+      "src/lib/analytics.ts",
+      "src/lib/auth/auth-client.ts",
+      "src/lib/auth/retry.ts",
+      "src/lib/logger.ts",
+      "src/lib/orpc.ts"
+    ],
+    "src/components/profile/DiscourseConnect.tsx": [
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/label.tsx",
+      "src/components/ui/textarea.tsx",
+      "src/constants/auth.ts",
+      "src/constants/near.ts",
+      "src/constants/signing-messages.ts",
+      "src/hooks/useNear.tsx",
+      "src/lib/logger.ts",
+      "src/lib/orpc.ts",
+      "src/types/discourse-linkage.ts",
+      "src/utils/discourse/index.ts",
+      "src/utils/errors/near-errors.ts",
+      "src/utils/wallet/guards.ts"
+    ],
+    "src/components/profile/WalletStatus.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/skeleton.tsx"
+    ],
+    "src/components/proposal/DiscussionSection.tsx": [
+      "src/components/proposal/Markdown.tsx",
+      "src/components/proposal/ReplyCard.tsx",
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/textarea.tsx",
+      "src/constants/near.ts",
+      "src/constants/signing-messages.ts",
+      "src/hooks/useNear.tsx",
+      "src/lib/analytics.ts",
+      "src/lib/logger.ts",
+      "src/lib/orpc.ts",
+      "src/types/discourse-linkage.ts",
+      "src/types/proposals.ts",
+      "src/types/summaries.ts",
+      "src/utils/discourse/index.ts",
+      "src/utils/errors/near-errors.ts",
+      "src/utils/wallet/guards.ts"
+    ],
+    "src/components/proposal/Markdown.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/proposal/ProposalCard.tsx": [
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/config/services.ts"
+    ],
+    "src/components/proposal/ProposalChatbot.tsx": [
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/scroll-area.tsx",
+      "src/lib/analytics.ts",
+      "src/lib/logger.ts",
+      "src/types/proposals.ts",
+      "src/types/summaries.ts"
+    ],
+    "src/components/proposal/ProposalContent.tsx": [
+      "src/components/proposal/Markdown.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/separator.tsx",
+      "src/types/proposals.ts",
+      "src/types/summaries.ts",
+      "src/utils/metadata.ts"
+    ],
+    "src/components/proposal/ProposalForm.tsx": [
+      "src/components/ui/button.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/label.tsx",
+      "src/components/ui/textarea.tsx"
+    ],
+    "src/components/proposal/ProposalScreener.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/label.tsx",
+      "src/components/ui/separator.tsx",
+      "src/components/ui/textarea.tsx",
+      "src/types/evaluation.ts"
+    ],
+    "src/components/proposal/ReplyCard.tsx": [
+      "src/components/proposal/Markdown.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/types/proposals.ts",
+      "src/types/summaries.ts"
+    ],
+    "src/components/proposal/revisions/VersionHistory.tsx": [
+      "src/components/proposal/screening/ScreeningBadge.tsx",
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/collapsible.tsx",
+      "src/components/ui/separator.tsx",
+      "src/hooks/useNear.tsx",
+      "src/lib/analytics.ts",
+      "src/lib/logger.ts",
+      "src/types/agui-events.ts",
+      "src/types/discourse.ts",
+      "src/types/evaluation.ts",
+      "src/types/proposals.ts",
+      "src/utils/errors/near-errors.ts",
+      "src/utils/errors/screening-errors.ts",
+      "src/utils/screening/screen-proposal.ts",
+      "src/utils/ui/html.ts",
+      "src/utils/ui/revision-content.ts"
+    ],
+    "src/components/proposal/revisions/VersionSelector.tsx": [
+      "src/components/proposal/Markdown.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/checkbox.tsx",
+      "src/components/ui/label.tsx",
+      "src/components/ui/select.tsx",
+      "src/types/proposals.ts",
+      "src/types/summaries.ts"
+    ],
+    "src/components/proposal/screening/ScreeningBadge.tsx": [
+      "src/components/proposal/Markdown.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/collapsible.tsx",
+      "src/components/ui/tooltip.tsx",
+      "src/types/evaluation.ts"
+    ],
+    "src/components/proposal/screening/ScreeningButton.tsx": [
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/components/ui/button.tsx",
+      "src/hooks/useNear.tsx",
+      "src/lib/analytics.ts",
+      "src/types/evaluation.ts",
+      "src/utils/errors/near-errors.ts",
+      "src/utils/errors/screening-errors.ts",
+      "src/utils/screening/screen-proposal.ts"
+    ],
+    "src/components/proposal/screening/ScreeningResults.tsx": [
+      "src/types/evaluation.ts"
+    ],
+    "src/components/providers/auth-provider.tsx": [
+      "src/hooks/useNear.tsx",
+      "src/lib/auth/auth-client.ts",
+      "src/lib/auth/auth-utils.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/components/ui/NearErrorAlert.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/utils/errors/near-errors.ts"
+    ],
+    "src/components/ui/alert.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/avatar.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/badge.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/button.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/card.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/checkbox.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/collapsible.tsx": [],
+    "src/components/ui/command.tsx": [
+      "src/components/ui/dialog.tsx",
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/dialog.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/dropdown-menu.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/input.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/label.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/popover.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/scroll-area.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/select.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/separator.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/skeleton.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/sonner.tsx": [],
+    "src/components/ui/switch.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/tabs.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/textarea.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/components/ui/tooltip.tsx": [
+      "src/utils/tailwind.ts"
+    ],
+    "src/config/discourse.ts": [],
+    "src/config/near.ts": [
+      "src/constants/near.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/config/postgres.ts": [],
+    "src/config/rateLimit.ts": [],
+    "src/config/services.ts": [
+      "src/constants/services.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/config/siwn.ts": [],
+    "src/config/verification.ts": [],
+    "src/constants/agent.ts": [],
+    "src/constants/auth.ts": [],
+    "src/constants/index.ts": [
+      "src/constants/agent.ts",
+      "src/constants/auth.ts",
+      "src/constants/near.ts",
+      "src/constants/ui.ts"
+    ],
+    "src/constants/near.ts": [],
+    "src/constants/services.ts": [],
+    "src/constants/signing-messages.ts": [],
+    "src/constants/ui.ts": [],
+    "src/hooks/index.ts": [
+      "src/hooks/useNear.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/hooks/useProposalSummaries.ts"
+    ],
+    "src/hooks/useNear.tsx": [
+      "src/config/siwn.ts",
+      "src/lib/auth/auth-client.ts",
+      "src/lib/auth/retry.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/hooks/useProposalDetail.ts": [
+      "src/lib/analytics.ts",
+      "src/lib/logger.ts",
+      "src/types/agui-events.ts",
+      "src/types/discourse.ts",
+      "src/types/evaluation.ts",
+      "src/types/proposals.ts",
+      "src/utils/ui/revision-content.ts"
+    ],
+    "src/hooks/useProposalSummaries.ts": [
+      "src/lib/analytics.ts",
+      "src/types/summaries.ts",
+      "src/utils/rateLimitHelpers.ts"
+    ],
+    "src/lib/analytics.ts": [
+      "src/types/analytics.ts"
+    ],
+    "src/lib/auth/auth-client.ts": [
+      "src/config/siwn.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/lib/auth/auth-utils.ts": [],
+    "src/lib/auth/index.ts": [
+      "src/config/siwn.ts",
+      "src/lib/db/index.ts",
+      "src/lib/db/schema.ts"
+    ],
+    "src/lib/auth/retry.ts": [],
+    "src/lib/context.ts": [
+      "src/lib/auth/index.ts"
+    ],
+    "src/lib/db/index.ts": [
+      "src/config/postgres.ts",
+      "src/lib/db/schema.ts"
+    ],
+    "src/lib/db/queries.ts": [
+      "src/lib/db/index.ts",
+      "src/lib/db/schema.ts"
+    ],
+    "src/lib/db/revision-utils.ts": [
+      "src/lib/db/queries.ts",
+      "src/lib/db/schema.ts",
+      "src/lib/logger.ts",
+      "src/types/discourse.ts",
+      "src/types/evaluation.ts"
+    ],
+    "src/lib/db/schema.ts": [
+      "src/types/evaluation.ts"
+    ],
+    "src/lib/logger.ts": [],
+    "src/lib/near-ai/client.ts": [
+      "src/lib/near-ai/errors.ts",
+      "src/lib/near-ai/types.ts"
+    ],
+    "src/lib/near-ai/errors.ts": [],
+    "src/lib/near-ai/index.ts": [
+      "src/lib/near-ai/client.ts",
+      "src/lib/near-ai/errors.ts",
+      "src/lib/near-ai/stream.ts",
+      "src/lib/near-ai/types.ts",
+      "src/lib/near-ai/verification/index.ts"
+    ],
+    "src/lib/near-ai/stream.ts": [
+      "src/lib/near-ai/client.ts",
+      "src/lib/near-ai/types.ts",
+      "src/lib/near-ai/verification/index.ts"
+    ],
+    "src/lib/near-ai/types.ts": [],
+    "src/lib/near-ai/verification/__tests__/verification.test.ts": [
+      "src/lib/near-ai/verification/attestation.ts",
+      "src/lib/near-ai/verification/hash.ts",
+      "src/lib/near-ai/verification/nvidia.ts",
+      "src/lib/near-ai/verification/signature.ts",
+      "src/lib/near-ai/verification/verify.ts"
+    ],
+    "src/lib/near-ai/verification/attestation.ts": [
+      "src/lib/near-ai/verification/nvidia.ts",
+      "src/lib/near-ai/verification/types.ts"
+    ],
+    "src/lib/near-ai/verification/hash-utils.ts": [],
+    "src/lib/near-ai/verification/hash.ts": [],
+    "src/lib/near-ai/verification/hashes.ts": [
+      "src/lib/near-ai/verification/hash-utils.ts"
+    ],
+    "src/lib/near-ai/verification/index.ts": [
+      "src/lib/near-ai/verification/attestation.ts",
+      "src/lib/near-ai/verification/hash.ts",
+      "src/lib/near-ai/verification/nvidia.ts",
+      "src/lib/near-ai/verification/signature.ts",
+      "src/lib/near-ai/verification/types.ts",
+      "src/lib/near-ai/verification/verify.ts"
+    ],
+    "src/lib/near-ai/verification/nvidia.ts": [],
+    "src/lib/near-ai/verification/signature.ts": [
+      "src/lib/near-ai/verification/types.ts"
+    ],
+    "src/lib/near-ai/verification/types.ts": [],
+    "src/lib/near-ai/verification/verify.ts": [
+      "src/lib/near-ai/verification/attestation.ts",
+      "src/lib/near-ai/verification/hash.ts",
+      "src/lib/near-ai/verification/signature.ts",
+      "src/lib/near-ai/verification/types.ts"
+    ],
+    "src/lib/orpc.ts": [
+      "src/lib/router.ts"
+    ],
+    "src/lib/procedures.ts": [
+      "src/lib/context.ts"
+    ],
+    "src/lib/prompts/index.ts": [
+      "src/lib/prompts/screenProposal.ts",
+      "src/lib/prompts/summarizeDiscussion.ts",
+      "src/lib/prompts/summarizeProposal.ts",
+      "src/lib/prompts/summarizeReply.ts",
+      "src/lib/prompts/summarizeRevisions.ts"
+    ],
+    "src/lib/prompts/screenProposal.ts": [],
+    "src/lib/prompts/summarizeDiscussion.ts": [
+      "src/types/discourse.ts"
+    ],
+    "src/lib/prompts/summarizeProposal.ts": [],
+    "src/lib/prompts/summarizeReply.ts": [],
+    "src/lib/prompts/summarizeRevisions.ts": [
+      "src/types/proposals.ts"
+    ],
+    "src/lib/rate-limit.ts": [],
+    "src/lib/router.ts": [
+      "src/lib/context.ts",
+      "src/lib/db/index.ts",
+      "src/lib/db/schema.ts",
+      "src/lib/logger.ts",
+      "src/lib/procedures.ts",
+      "src/server/plugins/discourse.ts",
+      "src/types/discourse-linkage.ts"
+    ],
+    "src/lib/telemetry.ts": [
+      "src/lib/logger.ts"
+    ],
+    "src/pages/_app.tsx": [
+      "src/components/nav/navigation.tsx",
+      "src/components/providers/auth-provider.tsx",
+      "src/components/ui/sonner.tsx",
+      "src/styles/globals.css"
+    ],
+    "src/pages/api/agent.ts": [
+      "src/constants/agent.ts",
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/telemetry.ts",
+      "src/server/agent/completion.ts",
+      "src/server/agent/sse.ts",
+      "src/server/agent/tools.ts",
+      "src/server/agent/types.ts",
+      "src/server/agent/validation.ts",
+      "src/server/agent/verification-flow.ts",
+      "src/server/tools/index.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/pages/api/auth/[...all].ts": [
+      "src/lib/auth/index.ts"
+    ],
+    "src/pages/api/chat/completions.ts": [
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts"
+    ],
+    "src/pages/api/discourse/categories.ts": [
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/categories/[id].ts": [
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/latest.ts": [
+      "src/config/discourse.ts",
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/posts.ts": [
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/posts/[id]/index.ts": [
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/posts/[id]/replies.ts": [
+      "src/config/discourse.ts",
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/posts/[id]/revisions/index.ts": [
+      "src/config/services.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/pages/api/discourse/posts/[id]/revisions/summarize.ts": [
+      "src/config/rateLimit.ts",
+      "src/config/services.ts",
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts",
+      "src/lib/prompts/summarizeRevisions.ts",
+      "src/server/rateLimiter.ts",
+      "src/server/summaryVerification.ts",
+      "src/types/api.ts",
+      "src/types/discourse.ts",
+      "src/types/summaries.ts",
+      "src/utils/cache-utils.ts"
+    ],
+    "src/pages/api/discourse/replies/[id]/summarize.ts": [
+      "src/config/rateLimit.ts",
+      "src/config/services.ts",
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts",
+      "src/lib/prompts/summarizeReply.ts",
+      "src/server/rateLimiter.ts",
+      "src/server/summaryVerification.ts",
+      "src/types/api.ts",
+      "src/types/discourse.ts",
+      "src/types/summaries.ts",
+      "src/utils/cache-utils.ts",
+      "src/utils/model-utils.ts"
+    ],
+    "src/pages/api/discourse/search.ts": [
+      "src/config/discourse.ts",
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/tags.ts": [
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/topics/[id]/index.ts": [
+      "src/config/discourse.ts",
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "src/pages/api/discourse/topics/[id]/summarize.ts": [
+      "src/config/rateLimit.ts",
+      "src/config/services.ts",
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts",
+      "src/lib/prompts/summarizeDiscussion.ts",
+      "src/server/rateLimiter.ts",
+      "src/server/summaryVerification.ts",
+      "src/types/api.ts",
+      "src/types/discourse.ts",
+      "src/types/summaries.ts",
+      "src/utils/cache-utils.ts"
+    ],
+    "src/pages/api/discourse/user/[username].ts": [
+      "src/config/services.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/pages/api/evaluateDraft.ts": [
+      "src/config/rateLimit.ts",
+      "src/lib/logger.ts",
+      "src/server/rateLimiter.ts",
+      "src/server/screening.ts",
+      "src/types/evaluation.ts"
+    ],
+    "src/pages/api/getAnalysis/[topicId].ts": [
+      "src/lib/db/index.ts",
+      "src/lib/db/schema.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/pages/api/proposals/[id]/index.ts": [
+      "src/config/services.ts",
+      "src/lib/logger.ts",
+      "src/types/discourse.ts",
+      "src/types/proposals.ts",
+      "src/utils/metadata.ts"
+    ],
+    "src/pages/api/proposals/[id]/revisions/index.ts": [
+      "src/config/services.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/pages/api/proposals/[id]/revisions/summarize.ts": [
+      "src/config/rateLimit.ts",
+      "src/config/services.ts",
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts",
+      "src/lib/prompts/summarizeRevisions.ts",
+      "src/server/rateLimiter.ts",
+      "src/server/summaryVerification.ts",
+      "src/types/api.ts",
+      "src/types/discourse.ts",
+      "src/types/summaries.ts",
+      "src/utils/cache-utils.ts",
+      "src/utils/ui/html.ts"
+    ],
+    "src/pages/api/proposals/[id]/summarize.ts": [
+      "src/config/rateLimit.ts",
+      "src/config/services.ts",
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts",
+      "src/lib/prompts/summarizeProposal.ts",
+      "src/server/rateLimiter.ts",
+      "src/server/summaryVerification.ts",
+      "src/types/api.ts",
+      "src/types/summaries.ts",
+      "src/utils/cache-utils.ts",
+      "src/utils/metadata.ts",
+      "src/utils/model-utils.ts"
+    ],
+    "src/pages/api/rpc/[[...rest]].ts": [
+      "src/lib/context.ts",
+      "src/lib/logger.ts",
+      "src/lib/router.ts"
+    ],
+    "src/pages/api/saveAnalysis/[topicId].ts": [
+      "src/lib/db/index.ts",
+      "src/lib/db/revision-utils.ts",
+      "src/lib/db/schema.ts",
+      "src/lib/logger.ts",
+      "src/server/screening.ts",
+      "src/types/evaluation.ts"
+    ],
+    "src/pages/api/screen.ts": [
+      "src/config/rateLimit.ts",
+      "src/lib/logger.ts",
+      "src/server/rateLimiter.ts",
+      "src/server/screening.ts",
+      "src/types/evaluation.ts"
+    ],
+    "src/pages/chat.tsx": [
+      "src/components/chat/ChatInput.tsx",
+      "src/components/chat/Chatbot.tsx"
+    ],
+    "src/pages/discourse-test.tsx": [],
+    "src/pages/editor.tsx": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/pages/index.tsx": [
+      "src/components/chat/Chat.tsx"
+    ],
+    "src/pages/login.tsx": [
+      "src/components/auth/sign-in-form.tsx",
+      "src/components/providers/auth-provider.tsx"
+    ],
+    "src/pages/playwright/screening.tsx": [
+      "src/components/proposal/ProposalScreener.tsx"
+    ],
+    "src/pages/playwright/summaries.tsx": [
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/textarea.tsx",
+      "src/types/summaries.ts"
+    ],
+    "src/pages/profile.tsx": [
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/profile/WalletStatus.tsx",
+      "src/components/providers/auth-provider.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/avatar.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/separator.tsx",
+      "src/config/services.ts",
+      "src/lib/logger.ts",
+      "src/lib/orpc.ts",
+      "src/types/discourse-linkage.ts",
+      "src/utils/discourse/index.ts"
+    ],
+    "src/pages/proposals/[id].tsx": [
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/screening/ScreeningBadge.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/separator.tsx",
+      "src/components/ui/skeleton.tsx",
+      "src/config/services.ts",
+      "src/hooks/useNear.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/hooks/useProposalSummaries.ts",
+      "src/lib/analytics.ts"
+    ],
+    "src/pages/proposals/index.tsx": [
+      "src/components/proposal/ProposalCard.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/skeleton.tsx",
+      "src/lib/analytics.ts",
+      "src/types/discourse.ts",
+      "src/utils/discourse/index.ts"
+    ],
+    "src/pages/proposals/new.tsx": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/pages/settings.tsx": [
+      "src/components/ui/alert.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/select.tsx",
+      "src/components/ui/separator.tsx",
+      "src/components/ui/textarea.tsx",
+      "src/lib/logger.ts",
+      "src/lib/prompts/index.ts",
+      "src/types/discourse.ts",
+      "src/types/proposals.ts"
+    ],
+    "src/server/agent/completion.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/server/agent/streaming.ts",
+      "src/server/agent/types.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/server/agent/ids.ts": [],
+    "src/server/agent/sse.ts": [
+      "src/constants/agent.ts",
+      "src/lib/logger.ts",
+      "src/lib/telemetry.ts",
+      "src/server/agent/types.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/server/agent/streaming.ts": [
+      "src/constants/agent.ts",
+      "src/lib/logger.ts",
+      "src/server/agent/ids.ts",
+      "src/server/agent/types.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/server/agent/tool-args.ts": [
+      "src/server/agent/types.ts"
+    ],
+    "src/server/agent/tools.ts": [
+      "src/lib/logger.ts",
+      "src/lib/telemetry.ts",
+      "src/server/agent/ids.ts",
+      "src/server/agent/tool-args.ts",
+      "src/server/agent/types.ts",
+      "src/server/tools/discourse.ts",
+      "src/server/tools/docs.ts",
+      "src/server/tools/proposals.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/server/agent/types.ts": [
+      "src/types/agui-events.ts"
+    ],
+    "src/server/agent/validation.ts": [
+      "src/config/services.ts",
+      "src/constants/services.ts",
+      "src/lib/logger.ts",
+      "src/server/agent/ids.ts",
+      "src/server/agent/types.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/server/agent/verification-flow.ts": [
+      "src/lib/near-ai/verification/hashes.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/server/crypto.ts": [],
+    "src/server/plugins/discourse-client.ts": [
+      "src/config/discourse.ts",
+      "src/lib/logger.ts",
+      "src/server/plugins/discourse-schemas.ts",
+      "src/server/plugins/discourse.ts"
+    ],
+    "src/server/plugins/discourse-schemas.ts": [],
+    "src/server/plugins/discourse.ts": [
+      "src/constants/services.ts",
+      "src/lib/logger.ts"
+    ],
+    "src/server/rateLimiter.ts": [],
+    "src/server/screening.ts": [
+      "src/config/siwn.ts",
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/prompts/screenProposal.ts",
+      "src/types/evaluation.ts",
+      "src/utils/model-utils.ts"
+    ],
+    "src/server/summaryVerification.ts": [
+      "src/lib/logger.ts",
+      "src/lib/near-ai/index.ts",
+      "src/types/summaries.ts"
+    ],
+    "src/server/tools/discourse.ts": [
+      "src/config/services.ts",
+      "src/server/plugins/discourse-client.ts",
+      "src/server/plugins/discourse-schemas.ts"
+    ],
+    "src/server/tools/docs.ts": [
+      "src/lib/logger.ts"
+    ],
+    "src/server/tools/index.ts": [
+      "src/constants/agent.ts",
+      "src/server/tools/discourse.ts",
+      "src/server/tools/docs.ts",
+      "src/server/tools/proposals.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/server/tools/proposals.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/server/screening.ts",
+      "src/types/agui-events.ts",
+      "src/types/evaluation.ts"
+    ],
+    "src/types/agent-ui.ts": [
+      "src/types/agui-events.ts"
+    ],
+    "src/types/agui-events.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/types/evaluation.ts"
+    ],
+    "src/types/analytics.ts": [],
+    "src/types/api.ts": [],
+    "src/types/better-near-auth.d.ts": [],
+    "src/types/discourse-linkage.ts": [],
+    "src/types/discourse.ts": [],
+    "src/types/evaluation.ts": [],
+    "src/types/every-plugin.d.ts": [],
+    "src/types/global.d.ts": [],
+    "src/types/jsdom.d.ts": [],
+    "src/types/modules.d.ts": [],
+    "src/types/proposals.ts": [
+      "src/types/discourse.ts",
+      "src/utils/metadata.ts"
+    ],
+    "src/types/summaries.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/types/agui-events.ts"
+    ],
+    "src/utils/cache-utils.ts": [
+      "src/lib/logger.ts"
+    ],
+    "src/utils/discourse/index.ts": [
+      "src/utils/discourse/storage.ts"
+    ],
+    "src/utils/discourse/storage.ts": [],
+    "src/utils/errors/near-errors.ts": [
+      "src/lib/logger.ts"
+    ],
+    "src/utils/errors/screening-errors.ts": [
+      "src/types/analytics.ts",
+      "src/utils/errors/near-errors.ts"
+    ],
+    "src/utils/json.ts": [],
+    "src/utils/metadata.ts": [],
+    "src/utils/model-utils.ts": [],
+    "src/utils/rateLimitHelpers.ts": [],
+    "src/utils/screening/screen-proposal.ts": [
+      "src/constants/near.ts",
+      "src/constants/signing-messages.ts",
+      "src/utils/json.ts",
+      "src/utils/wallet/guards.ts"
+    ],
+    "src/utils/tailwind.ts": [],
+    "src/utils/ui/diff.ts": [],
+    "src/utils/ui/html.ts": [],
+    "src/utils/ui/index.ts": [
+      "src/utils/ui/diff.ts",
+      "src/utils/ui/html.ts",
+      "src/utils/ui/revision-content.ts"
+    ],
+    "src/utils/ui/revision-content.ts": [
+      "src/lib/logger.ts"
+    ],
+    "src/utils/wallet/guards.ts": [],
+    "tailwind.config.js": [],
+    "test-setup.ts": [],
+    "tests/e2e/agent.spec.ts": [
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/e2e/auth.spec.ts": [
+      "tests/e2e/helpers/auth-mocks.ts",
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/e2e/chat.spec.ts": [
+      "src/types/agui-events.ts",
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/e2e/draft.spec.ts": [
+      "tests/e2e/helpers/auth-mocks.ts",
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/fixtures/playwright/screening-response.json"
+    ],
+    "tests/e2e/helpers/auth-mocks.ts": [
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/e2e/helpers/playwright-guard.ts": [],
+    "tests/e2e/helpers/playwright-mocks.ts": [
+      "src/types/agui-events.ts",
+      "tests/fixtures/playwright/discourse-reply-summary.json",
+      "tests/fixtures/playwright/discourse-topic-summary.json",
+      "tests/fixtures/playwright/proposal-detail.json",
+      "tests/fixtures/playwright/proposal-revision-summary.json",
+      "tests/fixtures/playwright/proposal-revisions.json",
+      "tests/fixtures/playwright/proposals-latest.json",
+      "tests/fixtures/playwright/revision-analyses.json",
+      "tests/fixtures/playwright/screening-response.json"
+    ],
+    "tests/e2e/helpers/setup.ts": [
+      "tests/e2e/helpers/auth-mocks.ts",
+      "tests/fixtures/playwright/discourse-reply-summary.json",
+      "tests/fixtures/playwright/discourse-topic-summary.json",
+      "tests/fixtures/playwright/proposal-detail.json",
+      "tests/fixtures/playwright/proposals-latest.json"
+    ],
+    "tests/e2e/playwright.spec.ts": [
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/e2e/helpers/setup.ts"
+    ],
+    "tests/e2e/profile.spec.ts": [
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/e2e/helpers/setup.ts",
+      "tests/e2e/utils/mock-wallet.ts"
+    ],
+    "tests/e2e/proposal.spec.ts": [
+      "tests/e2e/helpers/auth-mocks.ts",
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/fixtures/playwright/proposal-detail.json"
+    ],
+    "tests/e2e/proposals.spec.ts": [
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/e2e/seed.spec.ts": [
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/e2e/settings.spec.ts": [
+      "tests/e2e/helpers/playwright-guard.ts",
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/fixtures/playwright/proposal-detail.json"
+    ],
+    "tests/e2e/utils/mock-wallet.ts": [],
+    "tests/fixtures/context.ts": [],
+    "tests/fixtures/verification.ts": [
+      "tests/fixtures/verificationMocks.ts"
+    ],
+    "tests/fixtures/verificationMocks.ts": [
+      "src/config/verification.ts"
+    ],
+    "tests/mocks/server-only.ts": [],
+    "tests/types/vi-mocks.d.ts": [],
+    "tests/unit/agent/tools.test.ts": [
+      "src/server/agent/tool-args.ts"
+    ],
+    "tests/unit/agent/validation.test.ts": [
+      "src/server/agent/validation.ts"
+    ],
+    "tests/unit/api/auth-all.test.ts": [
+      "src/lib/auth/index.ts",
+      "src/lib/near-ai/index.ts",
+      "src/pages/api/auth/[...all].ts"
+    ],
+    "tests/unit/api/chat-completions.test.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/pages/api/chat/completions.ts",
+      "tests/unit/mocks/near-ai-client.ts"
+    ],
+    "tests/unit/api/discourse-handlers.test.ts": [
+      "src/config/discourse.ts",
+      "src/pages/api/discourse/latest.ts",
+      "src/pages/api/discourse/search.ts",
+      "src/server/plugins/discourse-client.ts"
+    ],
+    "tests/unit/auth-utils.test.ts": [
+      "src/lib/auth/auth-utils.ts"
+    ],
+    "tests/unit/chatPersistence.test.tsx": [
+      "src/components/chat/Chat.tsx",
+      "src/types/agent-ui.ts"
+    ],
+    "tests/unit/chatState.test.tsx": [
+      "src/components/chat/Chat.tsx",
+      "src/components/chat/ToolHistoryCard.tsx",
+      "src/types/agent-ui.ts"
+    ],
+    "tests/unit/components/DiscourseConnect.test.tsx": [
+      "src/components/profile/DiscourseConnect.tsx",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/components/ProposalCard.test.tsx": [
+      "src/components/proposal/ProposalCard.tsx",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/components/SignInForm.test.tsx": [
+      "src/components/auth/sign-in-form.tsx",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/components/chat/Chat.test.tsx": [
+      "src/components/chat/Chat.tsx",
+      "src/types/agui-events.ts"
+    ],
+    "tests/unit/components/proposal/DiscussionSection.test.tsx": [
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/constants/signing-messages.ts",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/components/proposal/VersionHistory.test.tsx": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/types/discourse.ts",
+      "src/types/evaluation.ts",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/config/rateLimit.test.ts": [
+      "src/config/rateLimit.ts"
+    ],
+    "tests/unit/context.test.ts": [
+      "src/lib/context.ts",
+      "tests/fixtures/context.ts"
+    ],
+    "tests/unit/crypto.test.ts": [
+      "src/server/crypto.ts"
+    ],
+    "tests/unit/hooks/proposal-detail.test.ts": [
+      "src/hooks/useProposalDetail.ts",
+      "src/types/proposals.ts",
+      "src/utils/ui/revision-content.ts"
+    ],
+    "tests/unit/hooks/useNear.test.ts": [
+      "src/hooks/useNear.tsx",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/hooks/useProposalDetail.test.ts": [
+      "src/hooks/useProposalDetail.ts",
+      "src/types/discourse.ts",
+      "src/types/evaluation.ts",
+      "src/types/proposals.ts",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/hooks/useProposalPublishing.test.ts": [
+      "src/components/editor/useProposalPublishing.ts",
+      "src/constants/signing-messages.ts",
+      "src/lib/orpc.ts",
+      "src/utils/discourse/index.ts",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/jwt-claims.test.ts": [],
+    "tests/unit/lib/analytics.test.ts": [
+      "src/lib/analytics.ts",
+      "src/types/analytics.ts"
+    ],
+    "tests/unit/lib/near-ai/verification.test.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/verification/attestation.ts",
+      "src/lib/near-ai/verification/signature.ts",
+      "src/lib/near-ai/verification/types.ts"
+    ],
+    "tests/unit/lib/retry.test.ts": [
+      "src/lib/auth/retry.ts"
+    ],
+    "tests/unit/mocks/near-ai-client.ts": [],
+    "tests/unit/model-attestation-structure.test.ts": [],
+    "tests/unit/near-ai-client.test.ts": [
+      "src/lib/near-ai/index.ts"
+    ],
+    "tests/unit/official-examples.test.ts": [],
+    "tests/unit/providers/AuthProvider.test.tsx": [
+      "src/components/providers/auth-provider.tsx",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/server/crypto.test.ts": [
+      "src/server/crypto.ts"
+    ],
+    "tests/unit/server/discourse-client.test.ts": [
+      "src/config/discourse.ts",
+      "src/server/plugins/discourse-client.ts",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/server/plugins/discourse.integration.test.ts": [
+      "src/server/plugins/discourse-client.ts",
+      "src/server/plugins/discourse.ts"
+    ],
+    "tests/unit/server/rateLimiter.test.ts": [
+      "src/server/rateLimiter.ts"
+    ],
+    "tests/unit/server/tools-handlers.test.ts": [
+      "src/server/plugins/discourse-client.ts",
+      "src/server/tools/discourse.ts",
+      "src/server/tools/docs.ts",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/server/tools-index.test.ts": [
+      "src/server/tools/discourse.ts",
+      "src/server/tools/docs.ts",
+      "src/server/tools/index.ts",
+      "src/server/tools/proposals.ts",
+      "tests/vi-compat.ts"
+    ],
+    "tests/unit/signature-persistence.test.ts": [],
+    "tests/unit/types/agent-ui.test.ts": [
+      "src/types/agent-ui.ts",
+      "src/types/agui-events.ts"
+    ],
+    "tests/unit/utils/cache-utils.test.ts": [
+      "src/utils/cache-utils.ts"
+    ],
+    "tests/unit/utils/discourse-storage.test.ts": [
+      "src/utils/discourse/storage.ts"
+    ],
+    "tests/unit/utils/metadata.test.ts": [
+      "src/utils/metadata.ts"
+    ],
+    "tests/unit/utils/model-utils.test.ts": [
+      "src/utils/model-utils.ts"
+    ],
+    "tests/unit/utils/revision-content.test.ts": [
+      "src/hooks/useProposalDetail.ts",
+      "src/types/proposals.ts",
+      "src/utils/ui/revision-content.ts"
+    ],
+    "tests/unit/vi-compat.test.ts": [
+      "tests/vi-compat.ts"
+    ],
+    "tests/vi-compat.ts": [],
+    "vi-compat.ts": [
+      "tests/vi-compat.ts"
+    ],
+    "vitest.config.ts": []
+  },
+  "imported_by": {
+    "src/config/postgres.ts": [
+      "drizzle.config.ts",
+      "src/lib/db/index.ts"
+    ],
+    "src/lib/db/schema.ts": [
+      "scripts/test-db.ts",
+      "src/lib/auth/index.ts",
+      "src/lib/db/index.ts",
+      "src/lib/db/queries.ts",
+      "src/lib/db/revision-utils.ts",
+      "src/lib/router.ts",
+      "src/pages/api/getAnalysis/[topicId].ts",
+      "src/pages/api/saveAnalysis/[topicId].ts"
+    ],
+    "src/types/evaluation.ts": [
+      "scripts/test-db.ts",
+      "src/components/editor/ConfirmModal.tsx",
+      "src/components/editor/EvaluationPanel.tsx",
+      "src/components/editor/EvaluationSummary.tsx",
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/editor/useDraftEvaluation.ts",
+      "src/components/editor/useProposalChat.ts",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningBadge.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx",
+      "src/components/proposal/screening/ScreeningResults.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/lib/db/revision-utils.ts",
+      "src/lib/db/schema.ts",
+      "src/pages/api/evaluateDraft.ts",
+      "src/pages/api/saveAnalysis/[topicId].ts",
+      "src/pages/api/screen.ts",
+      "src/server/screening.ts",
+      "src/server/tools/proposals.ts",
+      "src/types/agui-events.ts",
+      "tests/unit/components/proposal/VersionHistory.test.tsx",
+      "tests/unit/hooks/useProposalDetail.test.ts"
+    ],
+    "src/lib/db/index.ts": [
+      "scripts/test-db.ts",
+      "src/lib/auth/index.ts",
+      "src/lib/db/queries.ts",
+      "src/lib/router.ts",
+      "src/pages/api/getAnalysis/[topicId].ts",
+      "src/pages/api/saveAnalysis/[topicId].ts"
+    ],
+    "src/lib/auth/retry.ts": [
+      "src/components/auth/sign-in-form.tsx",
+      "src/components/nav/navigation.tsx",
+      "src/hooks/useNear.tsx",
+      "tests/unit/lib/retry.test.ts"
+    ],
+    "src/lib/logger.ts": [
+      "src/components/auth/sign-in-form.tsx",
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/chat/ChatMessages.tsx",
+      "src/components/chat/ChatWidget.tsx",
+      "src/components/editor/EvaluationSummary.tsx",
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/editor/useDraftEvaluation.ts",
+      "src/components/editor/useProposalChat.ts",
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/nav/navigation.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/providers/auth-provider.tsx",
+      "src/config/near.ts",
+      "src/config/services.ts",
+      "src/hooks/useNear.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/lib/auth/auth-client.ts",
+      "src/lib/db/revision-utils.ts",
+      "src/lib/router.ts",
+      "src/lib/telemetry.ts",
+      "src/pages/api/agent.ts",
+      "src/pages/api/chat/completions.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/index.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/discourse/user/[username].ts",
+      "src/pages/api/evaluateDraft.ts",
+      "src/pages/api/getAnalysis/[topicId].ts",
+      "src/pages/api/proposals/[id]/index.ts",
+      "src/pages/api/proposals/[id]/revisions/index.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/pages/api/rpc/[[...rest]].ts",
+      "src/pages/api/saveAnalysis/[topicId].ts",
+      "src/pages/api/screen.ts",
+      "src/pages/profile.tsx",
+      "src/pages/settings.tsx",
+      "src/server/agent/sse.ts",
+      "src/server/agent/streaming.ts",
+      "src/server/agent/tools.ts",
+      "src/server/agent/validation.ts",
+      "src/server/plugins/discourse-client.ts",
+      "src/server/plugins/discourse.ts",
+      "src/server/screening.ts",
+      "src/server/summaryVerification.ts",
+      "src/server/tools/docs.ts",
+      "src/utils/cache-utils.ts",
+      "src/utils/errors/near-errors.ts",
+      "src/utils/ui/revision-content.ts"
+    ],
+    "src/components/providers/auth-provider.tsx": [
+      "src/components/auth/sign-in-form.tsx",
+      "src/components/nav/navigation.tsx",
+      "src/pages/_app.tsx",
+      "src/pages/login.tsx",
+      "src/pages/profile.tsx",
+      "tests/unit/providers/AuthProvider.test.tsx"
+    ],
+    "src/components/chat/ChatInput.tsx": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/chat/Chat.tsx",
+      "src/components/chat/Chatbot.tsx",
+      "src/pages/chat.tsx"
+    ],
+    "src/components/ui/dialog.tsx": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/editor/ConfirmModal.tsx",
+      "src/components/editor/DeltaConflictBanner.tsx",
+      "src/components/editor/EditorPane.tsx",
+      "src/components/ui/command.tsx"
+    ],
+    "src/components/chat/ChatMessages.tsx": [
+      "src/components/chat/AgentChatPanel.tsx"
+    ],
+    "src/constants/agent.ts": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/constants/index.ts",
+      "src/pages/api/agent.ts",
+      "src/server/agent/sse.ts",
+      "src/server/agent/streaming.ts",
+      "src/server/tools/index.ts"
+    ],
+    "src/lib/analytics.ts": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/editor/ProposalEditor.tsx",
+      "src/components/editor/useDraftEvaluation.ts",
+      "src/components/editor/useProposalFlowState.ts",
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/nav/navigation.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/hooks/useProposalSummaries.ts",
+      "src/pages/proposals/[id].tsx",
+      "src/pages/proposals/index.tsx",
+      "tests/unit/lib/analytics.test.ts"
+    ],
+    "src/types/agent-ui.ts": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/chat/ChatMessages.tsx",
+      "src/components/chat/Message.tsx",
+      "src/components/chat/ToolHistoryCard.tsx",
+      "tests/unit/chatPersistence.test.tsx",
+      "tests/unit/chatState.test.tsx",
+      "tests/unit/types/agent-ui.test.ts"
+    ],
+    "src/components/ui/button.tsx": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/chat/ChatInput.tsx",
+      "src/components/chat/ChatMessages.tsx",
+      "src/components/chat/ChatWidget.tsx",
+      "src/components/chat/ToolHistoryCard.tsx",
+      "src/components/editor/ConfirmModal.tsx",
+      "src/components/editor/DeltaConflictBanner.tsx",
+      "src/components/editor/EditorPane.tsx",
+      "src/components/editor/EvaluationPanel.tsx",
+      "src/components/editor/EvaluationSummary.tsx",
+      "src/components/editor/PublishBar.tsx",
+      "src/components/editor/SidebarChat.tsx",
+      "src/components/nav/navigation.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalCard.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ProposalForm.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/components/proposal/ReplyCard.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx",
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/pages/playwright/summaries.tsx",
+      "src/pages/profile.tsx",
+      "src/pages/proposals/[id].tsx",
+      "src/pages/settings.tsx"
+    ],
+    "src/types/agui-events.ts": [
+      "src/components/chat/AgentChatPanel.tsx",
+      "src/components/chat/Message.tsx",
+      "src/components/editor/ProposalEditor.tsx",
+      "src/components/editor/ProposalEditorContext.tsx",
+      "src/components/editor/SidebarChat.tsx",
+      "src/components/editor/useDraftEvaluation.ts",
+      "src/components/editor/useProposalChat.ts",
+      "src/components/editor/useProposalChatAdapter.ts",
+      "src/components/editor/useProposalChatController.ts",
+      "src/components/editor/useProposalFlowState.ts",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/pages/api/agent.ts",
+      "src/server/agent/completion.ts",
+      "src/server/agent/sse.ts",
+      "src/server/agent/streaming.ts",
+      "src/server/agent/tools.ts",
+      "src/server/agent/types.ts",
+      "src/server/agent/validation.ts",
+      "src/server/agent/verification-flow.ts",
+      "src/server/tools/index.ts",
+      "src/server/tools/proposals.ts",
+      "src/types/agent-ui.ts",
+      "src/types/summaries.ts",
+      "tests/e2e/chat.spec.ts",
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/unit/components/chat/Chat.test.tsx",
+      "tests/unit/types/agent-ui.test.ts"
+    ],
+    "src/components/ui/badge.tsx": [
+      "src/components/chat/AgentMessage.tsx",
+      "src/components/chat/ToolMessage.tsx",
+      "src/components/editor/SidebarChat.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalCard.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx"
+    ],
+    "src/components/chat/AgentChatPanel.tsx": [
+      "src/components/chat/Chat.tsx",
+      "src/components/chat/Chatbot.tsx"
+    ],
+    "src/components/ui/alert.tsx": [
+      "src/components/chat/ChatInput.tsx",
+      "src/components/editor/ConfirmModal.tsx",
+      "src/components/editor/EditorPane.tsx",
+      "src/components/editor/EvaluationPanel.tsx",
+      "src/components/editor/EvaluationSummary.tsx",
+      "src/components/editor/PublishBar.tsx",
+      "src/components/nav/WalletStatus.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/profile/WalletStatus.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/components/proposal/ReplyCard.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/pages/profile.tsx",
+      "src/pages/proposals/[id].tsx",
+      "src/pages/proposals/index.tsx",
+      "src/pages/settings.tsx"
+    ],
+    "src/components/chat/ToolHistoryCard.tsx": [
+      "src/components/chat/ChatMessages.tsx",
+      "tests/unit/chatState.test.tsx"
+    ],
+    "src/types/proposals.ts": [
+      "src/components/chat/ChatMessages.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ReplyCard.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/lib/prompts/summarizeRevisions.ts",
+      "src/pages/api/proposals/[id]/index.ts",
+      "src/pages/settings.tsx",
+      "tests/unit/hooks/proposal-detail.test.ts",
+      "tests/unit/hooks/useProposalDetail.test.ts",
+      "tests/unit/utils/revision-content.test.ts"
+    ],
+    "src/components/chat/AgentMessage.tsx": [
+      "src/components/chat/ChatMessages.tsx"
+    ],
+    "src/components/proposal/ProposalCard.tsx": [
+      "src/components/chat/ChatMessages.tsx",
+      "src/pages/proposals/index.tsx",
+      "tests/unit/components/ProposalCard.test.tsx"
+    ],
+    "src/components/chat/Message.tsx": [
+      "src/components/chat/ChatMessages.tsx"
+    ],
+    "src/components/ui/scroll-area.tsx": [
+      "src/components/chat/ChatWidget.tsx",
+      "src/components/editor/ConfirmModal.tsx",
+      "src/components/editor/SidebarChat.tsx",
+      "src/components/proposal/ProposalChatbot.tsx"
+    ],
+    "src/components/ui/card.tsx": [
+      "src/components/chat/ChatWidget.tsx",
+      "src/components/editor/SidebarChat.tsx",
+      "src/components/nav/WalletStatus.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/profile/WalletStatus.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalCard.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/components/proposal/ReplyCard.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/components/proposal/screening/ScreeningBadge.tsx",
+      "src/pages/playwright/summaries.tsx",
+      "src/pages/profile.tsx",
+      "src/pages/proposals/[id].tsx",
+      "src/pages/proposals/index.tsx",
+      "src/pages/settings.tsx"
+    ],
+    "src/utils/tailwind.ts": [
+      "src/components/chat/ChatWidget.tsx",
+      "src/components/editor/EvaluationSummary.tsx",
+      "src/components/proposal/Markdown.tsx",
+      "src/components/ui/alert.tsx",
+      "src/components/ui/avatar.tsx",
+      "src/components/ui/badge.tsx",
+      "src/components/ui/button.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/checkbox.tsx",
+      "src/components/ui/command.tsx",
+      "src/components/ui/dialog.tsx",
+      "src/components/ui/dropdown-menu.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/label.tsx",
+      "src/components/ui/popover.tsx",
+      "src/components/ui/scroll-area.tsx",
+      "src/components/ui/select.tsx",
+      "src/components/ui/separator.tsx",
+      "src/components/ui/skeleton.tsx",
+      "src/components/ui/switch.tsx",
+      "src/components/ui/tabs.tsx",
+      "src/components/ui/textarea.tsx",
+      "src/components/ui/tooltip.tsx"
+    ],
+    "src/components/editor/ProposalEditor.tsx": [
+      "src/components/editor/AssistantSidebar.tsx",
+      "src/components/editor/ChatPane.tsx",
+      "src/components/editor/useProposalChat.ts",
+      "src/pages/editor.tsx",
+      "src/pages/proposals/new.tsx"
+    ],
+    "src/components/editor/PublishBar.tsx": [
+      "src/components/editor/AssistantSidebar.tsx",
+      "src/components/editor/useProposalFlowState.ts"
+    ],
+    "src/components/editor/EvaluationPanel.tsx": [
+      "src/components/editor/AssistantSidebar.tsx"
+    ],
+    "src/components/editor/ChatPane.tsx": [
+      "src/components/editor/AssistantSidebar.tsx"
+    ],
+    "src/components/editor/SidebarChat.tsx": [
+      "src/components/editor/ChatPane.tsx"
+    ],
+    "src/utils/ui/diff.ts": [
+      "src/components/editor/ConfirmModal.tsx",
+      "src/components/editor/useProposalChat.ts",
+      "src/utils/ui/index.ts"
+    ],
+    "src/components/ui/separator.tsx": [
+      "src/components/editor/ConfirmModal.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/pages/profile.tsx",
+      "src/pages/proposals/[id].tsx",
+      "src/pages/settings.tsx"
+    ],
+    "src/components/editor/ProposalEditorContext.tsx": [
+      "src/components/editor/DeltaConflictBanner.tsx",
+      "src/components/editor/ProposalEditor.tsx",
+      "src/components/editor/useDraftEvaluation.ts",
+      "src/components/editor/useProposalChat.ts",
+      "src/components/editor/useProposalChatAdapter.ts",
+      "src/components/editor/useProposalChatController.ts",
+      "src/components/editor/useProposalFlowState.ts"
+    ],
+    "src/components/ui/label.tsx": [
+      "src/components/editor/EditorPane.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/ProposalForm.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx"
+    ],
+    "src/components/ui/input.tsx": [
+      "src/components/editor/EditorPane.tsx",
+      "src/components/editor/SidebarChat.tsx",
+      "src/components/proposal/ProposalForm.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/pages/playwright/summaries.tsx",
+      "src/pages/settings.tsx"
+    ],
+    "src/components/proposal/Markdown.tsx": [
+      "src/components/editor/EditorPane.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ReplyCard.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/components/proposal/screening/ScreeningBadge.tsx"
+    ],
+    "src/components/ui/tabs.tsx": [
+      "src/components/editor/EditorPane.tsx",
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/components/ui/textarea.tsx": [
+      "src/components/editor/EditorPane.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalForm.tsx",
+      "src/components/proposal/ProposalScreener.tsx",
+      "src/pages/playwright/summaries.tsx",
+      "src/pages/settings.tsx"
+    ],
+    "src/components/editor/EvaluationSummary.tsx": [
+      "src/components/editor/EvaluationPanel.tsx"
+    ],
+    "src/components/editor/DeltaConflictBanner.tsx": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/components/editor/useViewModeToggle.ts": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/components/editor/useProposalChatController.ts": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/components/editor/AssistantSidebar.tsx": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/components/editor/useProposalFlowState.ts": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/components/editor/EditorPane.tsx": [
+      "src/components/editor/ProposalEditor.tsx"
+    ],
+    "src/hooks/useNear.tsx": [
+      "src/components/editor/ProposalEditor.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx",
+      "src/components/providers/auth-provider.tsx",
+      "src/hooks/index.ts",
+      "src/pages/proposals/[id].tsx",
+      "tests/unit/hooks/useNear.test.ts"
+    ],
+    "src/components/ui/NearErrorAlert.tsx": [
+      "src/components/editor/PublishBar.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx"
+    ],
+    "src/utils/errors/near-errors.ts": [
+      "src/components/editor/PublishBar.tsx",
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx",
+      "src/components/ui/NearErrorAlert.tsx",
+      "src/utils/errors/screening-errors.ts"
+    ],
+    "src/utils/rateLimitHelpers.ts": [
+      "src/components/editor/useDraftEvaluation.ts",
+      "src/hooks/useProposalSummaries.ts"
+    ],
+    "src/components/editor/useProposalChat.ts": [
+      "src/components/editor/useProposalChatAdapter.ts"
+    ],
+    "src/components/editor/useProposalChatAdapter.ts": [
+      "src/components/editor/useProposalChatController.ts"
+    ],
+    "src/components/editor/useProposalPublishing.ts": [
+      "src/components/editor/useProposalFlowState.ts",
+      "tests/unit/hooks/useProposalPublishing.test.ts"
+    ],
+    "src/lib/orpc.ts": [
+      "src/components/editor/useProposalFlowState.ts",
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/nav/navigation.tsx",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/pages/profile.tsx",
+      "tests/unit/hooks/useProposalPublishing.test.ts"
+    ],
+    "src/components/editor/useDraftEvaluation.ts": [
+      "src/components/editor/useProposalFlowState.ts"
+    ],
+    "src/config/discourse.ts": [
+      "src/components/editor/useProposalPublishing.ts",
+      "src/pages/api/discourse/latest.ts",
+      "src/pages/api/discourse/posts/[id]/replies.ts",
+      "src/pages/api/discourse/search.ts",
+      "src/pages/api/discourse/topics/[id]/index.ts",
+      "src/server/plugins/discourse-client.ts",
+      "tests/unit/api/discourse-handlers.test.ts",
+      "tests/unit/server/discourse-client.test.ts"
+    ],
+    "src/utils/discourse/index.ts": [
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/pages/profile.tsx",
+      "src/pages/proposals/index.tsx",
+      "tests/unit/hooks/useProposalPublishing.test.ts"
+    ],
+    "src/constants/signing-messages.ts": [
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/utils/screening/screen-proposal.ts",
+      "tests/unit/components/proposal/DiscussionSection.test.tsx",
+      "tests/unit/hooks/useProposalPublishing.test.ts"
+    ],
+    "src/constants/near.ts": [
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/config/near.ts",
+      "src/constants/index.ts",
+      "src/utils/screening/screen-proposal.ts"
+    ],
+    "src/types/discourse-linkage.ts": [
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/lib/router.ts",
+      "src/pages/profile.tsx"
+    ],
+    "src/utils/wallet/guards.ts": [
+      "src/components/editor/useProposalPublishing.ts",
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/utils/screening/screen-proposal.ts"
+    ],
+    "src/components/ui/skeleton.tsx": [
+      "src/components/nav/WalletStatus.tsx",
+      "src/components/profile/WalletStatus.tsx",
+      "src/pages/proposals/[id].tsx",
+      "src/pages/proposals/index.tsx"
+    ],
+    "src/lib/auth/auth-client.ts": [
+      "src/components/nav/navigation.tsx",
+      "src/components/providers/auth-provider.tsx",
+      "src/hooks/useNear.tsx"
+    ],
+    "src/components/ui/dropdown-menu.tsx": [
+      "src/components/nav/navigation.tsx"
+    ],
+    "public/near-logo.svg": [
+      "src/components/nav/navigation.tsx"
+    ],
+    "src/config/siwn.ts": [
+      "src/components/nav/navigation.tsx",
+      "src/hooks/useNear.tsx",
+      "src/lib/auth/auth-client.ts",
+      "src/lib/auth/index.ts",
+      "src/server/screening.ts"
+    ],
+    "src/components/ui/avatar.tsx": [
+      "src/components/nav/navigation.tsx",
+      "src/pages/profile.tsx"
+    ],
+    "src/constants/auth.ts": [
+      "src/components/profile/DiscourseConnect.tsx",
+      "src/constants/index.ts"
+    ],
+    "src/components/proposal/ReplyCard.tsx": [
+      "src/components/proposal/DiscussionSection.tsx"
+    ],
+    "src/types/summaries.ts": [
+      "src/components/proposal/DiscussionSection.tsx",
+      "src/components/proposal/ProposalChatbot.tsx",
+      "src/components/proposal/ProposalContent.tsx",
+      "src/components/proposal/ReplyCard.tsx",
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/hooks/useProposalSummaries.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/pages/playwright/summaries.tsx",
+      "src/server/summaryVerification.ts"
+    ],
+    "src/config/services.ts": [
+      "src/components/proposal/ProposalCard.tsx",
+      "src/pages/api/discourse/posts/[id]/revisions/index.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/discourse/user/[username].ts",
+      "src/pages/api/proposals/[id]/index.ts",
+      "src/pages/api/proposals/[id]/revisions/index.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/pages/profile.tsx",
+      "src/pages/proposals/[id].tsx",
+      "src/server/agent/validation.ts",
+      "src/server/tools/discourse.ts"
+    ],
+    "src/components/proposal/revisions/VersionSelector.tsx": [
+      "src/components/proposal/ProposalContent.tsx"
+    ],
+    "src/utils/metadata.ts": [
+      "src/components/proposal/ProposalContent.tsx",
+      "src/pages/api/proposals/[id]/index.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/types/proposals.ts",
+      "tests/unit/utils/metadata.test.ts"
+    ],
+    "src/utils/ui/revision-content.ts": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/utils/ui/index.ts",
+      "tests/unit/hooks/proposal-detail.test.ts",
+      "tests/unit/utils/revision-content.test.ts"
+    ],
+    "src/components/proposal/screening/ScreeningBadge.tsx": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/pages/proposals/[id].tsx"
+    ],
+    "src/components/ui/collapsible.tsx": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningBadge.tsx"
+    ],
+    "src/utils/errors/screening-errors.ts": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx"
+    ],
+    "src/types/discourse.ts": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/hooks/useProposalDetail.ts",
+      "src/lib/db/revision-utils.ts",
+      "src/lib/prompts/summarizeDiscussion.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/index.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/proposals/index.tsx",
+      "src/pages/settings.tsx",
+      "src/types/proposals.ts",
+      "tests/unit/components/proposal/VersionHistory.test.tsx",
+      "tests/unit/hooks/useProposalDetail.test.ts"
+    ],
+    "src/utils/screening/screen-proposal.ts": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/components/proposal/screening/ScreeningButton.tsx"
+    ],
+    "src/utils/ui/html.ts": [
+      "src/components/proposal/revisions/VersionHistory.tsx",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/utils/ui/index.ts"
+    ],
+    "src/components/ui/select.tsx": [
+      "src/components/proposal/revisions/VersionSelector.tsx",
+      "src/pages/settings.tsx"
+    ],
+    "src/components/ui/checkbox.tsx": [
+      "src/components/proposal/revisions/VersionSelector.tsx"
+    ],
+    "src/components/ui/tooltip.tsx": [
+      "src/components/proposal/screening/ScreeningBadge.tsx"
+    ],
+    "src/lib/auth/auth-utils.ts": [
+      "src/components/providers/auth-provider.tsx",
+      "tests/unit/auth-utils.test.ts"
+    ],
+    "src/constants/services.ts": [
+      "src/config/services.ts",
+      "src/server/agent/validation.ts",
+      "src/server/plugins/discourse.ts"
+    ],
+    "src/constants/ui.ts": [
+      "src/constants/index.ts"
+    ],
+    "src/hooks/useProposalSummaries.ts": [
+      "src/hooks/index.ts",
+      "src/pages/proposals/[id].tsx"
+    ],
+    "src/hooks/useProposalDetail.ts": [
+      "src/hooks/index.ts",
+      "src/pages/proposals/[id].tsx",
+      "tests/unit/hooks/proposal-detail.test.ts",
+      "tests/unit/hooks/useProposalDetail.test.ts",
+      "tests/unit/utils/revision-content.test.ts"
+    ],
+    "src/types/analytics.ts": [
+      "src/lib/analytics.ts",
+      "src/utils/errors/screening-errors.ts",
+      "tests/unit/lib/analytics.test.ts"
+    ],
+    "src/lib/auth/index.ts": [
+      "src/lib/context.ts",
+      "src/pages/api/auth/[...all].ts",
+      "tests/unit/api/auth-all.test.ts"
+    ],
+    "src/lib/db/queries.ts": [
+      "src/lib/db/revision-utils.ts"
+    ],
+    "src/lib/near-ai/errors.ts": [
+      "src/lib/near-ai/client.ts",
+      "src/lib/near-ai/index.ts"
+    ],
+    "src/lib/near-ai/types.ts": [
+      "src/lib/near-ai/client.ts",
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts"
+    ],
+    "src/lib/near-ai/verification/index.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts"
+    ],
+    "src/lib/near-ai/stream.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts"
+    ],
+    "src/lib/near-ai/client.ts": [
+      "src/lib/near-ai/index.ts",
+      "src/lib/near-ai/stream.ts"
+    ],
+    "src/lib/near-ai/verification/signature.ts": [
+      "src/lib/near-ai/verification/__tests__/verification.test.ts",
+      "src/lib/near-ai/verification/index.ts",
+      "src/lib/near-ai/verification/verify.ts",
+      "tests/unit/lib/near-ai/verification.test.ts"
+    ],
+    "src/lib/near-ai/verification/hash.ts": [
+      "src/lib/near-ai/verification/__tests__/verification.test.ts",
+      "src/lib/near-ai/verification/index.ts",
+      "src/lib/near-ai/verification/verify.ts"
+    ],
+    "src/lib/near-ai/verification/verify.ts": [
+      "src/lib/near-ai/verification/__tests__/verification.test.ts",
+      "src/lib/near-ai/verification/index.ts"
+    ],
+    "src/lib/near-ai/verification/nvidia.ts": [
+      "src/lib/near-ai/verification/__tests__/verification.test.ts",
+      "src/lib/near-ai/verification/attestation.ts",
+      "src/lib/near-ai/verification/index.ts"
+    ],
+    "src/lib/near-ai/verification/attestation.ts": [
+      "src/lib/near-ai/verification/__tests__/verification.test.ts",
+      "src/lib/near-ai/verification/index.ts",
+      "src/lib/near-ai/verification/verify.ts",
+      "tests/unit/lib/near-ai/verification.test.ts"
+    ],
+    "src/lib/near-ai/verification/types.ts": [
+      "src/lib/near-ai/verification/attestation.ts",
+      "src/lib/near-ai/verification/index.ts",
+      "src/lib/near-ai/verification/signature.ts",
+      "src/lib/near-ai/verification/verify.ts",
+      "tests/unit/lib/near-ai/verification.test.ts"
+    ],
+    "src/lib/near-ai/verification/hash-utils.ts": [
+      "src/lib/near-ai/verification/hashes.ts"
+    ],
+    "src/lib/router.ts": [
+      "src/lib/orpc.ts",
+      "src/pages/api/rpc/[[...rest]].ts"
+    ],
+    "src/lib/context.ts": [
+      "src/lib/procedures.ts",
+      "src/lib/router.ts",
+      "src/pages/api/rpc/[[...rest]].ts",
+      "tests/unit/context.test.ts"
+    ],
+    "src/lib/prompts/summarizeReply.ts": [
+      "src/lib/prompts/index.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts"
+    ],
+    "src/lib/prompts/summarizeProposal.ts": [
+      "src/lib/prompts/index.ts",
+      "src/pages/api/proposals/[id]/summarize.ts"
+    ],
+    "src/lib/prompts/summarizeRevisions.ts": [
+      "src/lib/prompts/index.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts"
+    ],
+    "src/lib/prompts/summarizeDiscussion.ts": [
+      "src/lib/prompts/index.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts"
+    ],
+    "src/lib/prompts/screenProposal.ts": [
+      "src/lib/prompts/index.ts",
+      "src/server/screening.ts"
+    ],
+    "src/lib/procedures.ts": [
+      "src/lib/router.ts"
+    ],
+    "src/server/plugins/discourse.ts": [
+      "src/lib/router.ts",
+      "src/server/plugins/discourse-client.ts",
+      "tests/unit/server/plugins/discourse.integration.test.ts"
+    ],
+    "src/components/nav/navigation.tsx": [
+      "src/pages/_app.tsx"
+    ],
+    "src/styles/globals.css": [
+      "src/pages/_app.tsx"
+    ],
+    "src/components/ui/sonner.tsx": [
+      "src/pages/_app.tsx"
+    ],
+    "src/server/agent/verification-flow.ts": [
+      "src/pages/api/agent.ts"
+    ],
+    "src/server/agent/types.ts": [
+      "src/pages/api/agent.ts",
+      "src/server/agent/completion.ts",
+      "src/server/agent/sse.ts",
+      "src/server/agent/streaming.ts",
+      "src/server/agent/tool-args.ts",
+      "src/server/agent/tools.ts",
+      "src/server/agent/validation.ts"
+    ],
+    "src/server/agent/completion.ts": [
+      "src/pages/api/agent.ts"
+    ],
+    "src/lib/telemetry.ts": [
+      "src/pages/api/agent.ts",
+      "src/server/agent/sse.ts",
+      "src/server/agent/tools.ts"
+    ],
+    "src/server/agent/validation.ts": [
+      "src/pages/api/agent.ts",
+      "tests/unit/agent/validation.test.ts"
+    ],
+    "src/lib/near-ai/index.ts": [
+      "src/pages/api/agent.ts",
+      "src/pages/api/chat/completions.ts",
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/server/agent/completion.ts",
+      "src/server/screening.ts",
+      "src/server/summaryVerification.ts",
+      "src/server/tools/proposals.ts",
+      "src/types/agui-events.ts",
+      "src/types/summaries.ts",
+      "tests/unit/api/auth-all.test.ts",
+      "tests/unit/api/chat-completions.test.ts",
+      "tests/unit/lib/near-ai/verification.test.ts",
+      "tests/unit/near-ai-client.test.ts"
+    ],
+    "src/server/agent/tools.ts": [
+      "src/pages/api/agent.ts"
+    ],
+    "src/server/agent/sse.ts": [
+      "src/pages/api/agent.ts"
+    ],
+    "src/server/tools/index.ts": [
+      "src/pages/api/agent.ts",
+      "tests/unit/server/tools-index.test.ts"
+    ],
+    "src/server/plugins/discourse-client.ts": [
+      "src/pages/api/discourse/categories.ts",
+      "src/pages/api/discourse/categories/[id].ts",
+      "src/pages/api/discourse/latest.ts",
+      "src/pages/api/discourse/posts.ts",
+      "src/pages/api/discourse/posts/[id]/index.ts",
+      "src/pages/api/discourse/posts/[id]/replies.ts",
+      "src/pages/api/discourse/search.ts",
+      "src/pages/api/discourse/tags.ts",
+      "src/pages/api/discourse/topics/[id]/index.ts",
+      "src/server/tools/discourse.ts",
+      "tests/unit/api/discourse-handlers.test.ts",
+      "tests/unit/server/discourse-client.test.ts",
+      "tests/unit/server/plugins/discourse.integration.test.ts",
+      "tests/unit/server/tools-handlers.test.ts"
+    ],
+    "src/server/rateLimiter.ts": [
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/evaluateDraft.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/pages/api/screen.ts",
+      "tests/unit/server/rateLimiter.test.ts"
+    ],
+    "src/types/api.ts": [
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts"
+    ],
+    "src/server/summaryVerification.ts": [
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts"
+    ],
+    "src/config/rateLimit.ts": [
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/evaluateDraft.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/pages/api/screen.ts",
+      "tests/unit/config/rateLimit.test.ts"
+    ],
+    "src/utils/cache-utils.ts": [
+      "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/discourse/topics/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/revisions/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "tests/unit/utils/cache-utils.test.ts"
+    ],
+    "src/utils/model-utils.ts": [
+      "src/pages/api/discourse/replies/[id]/summarize.ts",
+      "src/pages/api/proposals/[id]/summarize.ts",
+      "src/server/screening.ts",
+      "tests/unit/utils/model-utils.test.ts"
+    ],
+    "src/server/screening.ts": [
+      "src/pages/api/evaluateDraft.ts",
+      "src/pages/api/saveAnalysis/[topicId].ts",
+      "src/pages/api/screen.ts",
+      "src/server/tools/proposals.ts"
+    ],
+    "src/lib/db/revision-utils.ts": [
+      "src/pages/api/saveAnalysis/[topicId].ts"
+    ],
+    "src/components/chat/Chatbot.tsx": [
+      "src/pages/chat.tsx"
+    ],
+    "src/components/chat/Chat.tsx": [
+      "src/pages/index.tsx",
+      "tests/unit/chatPersistence.test.tsx",
+      "tests/unit/chatState.test.tsx",
+      "tests/unit/components/chat/Chat.test.tsx"
+    ],
+    "src/components/auth/sign-in-form.tsx": [
+      "src/pages/login.tsx",
+      "tests/unit/components/SignInForm.test.tsx"
+    ],
+    "src/components/proposal/ProposalScreener.tsx": [
+      "src/pages/playwright/screening.tsx"
+    ],
+    "src/components/profile/WalletStatus.tsx": [
+      "src/pages/profile.tsx"
+    ],
+    "src/components/profile/DiscourseConnect.tsx": [
+      "src/pages/profile.tsx",
+      "tests/unit/components/DiscourseConnect.test.tsx"
+    ],
+    "src/components/proposal/ProposalContent.tsx": [
+      "src/pages/proposals/[id].tsx"
+    ],
+    "src/components/proposal/screening/ScreeningButton.tsx": [
+      "src/pages/proposals/[id].tsx"
+    ],
+    "src/components/proposal/ProposalChatbot.tsx": [
+      "src/pages/proposals/[id].tsx"
+    ],
+    "src/components/proposal/DiscussionSection.tsx": [
+      "src/pages/proposals/[id].tsx",
+      "tests/unit/components/proposal/DiscussionSection.test.tsx"
+    ],
+    "src/lib/prompts/index.ts": [
+      "src/pages/settings.tsx"
+    ],
+    "src/server/agent/streaming.ts": [
+      "src/server/agent/completion.ts"
+    ],
+    "src/server/agent/ids.ts": [
+      "src/server/agent/streaming.ts",
+      "src/server/agent/tools.ts",
+      "src/server/agent/validation.ts"
+    ],
+    "src/server/tools/docs.ts": [
+      "src/server/agent/tools.ts",
+      "src/server/tools/index.ts",
+      "tests/unit/server/tools-handlers.test.ts",
+      "tests/unit/server/tools-index.test.ts"
+    ],
+    "src/server/tools/proposals.ts": [
+      "src/server/agent/tools.ts",
+      "src/server/tools/index.ts",
+      "tests/unit/server/tools-index.test.ts"
+    ],
+    "src/server/tools/discourse.ts": [
+      "src/server/agent/tools.ts",
+      "src/server/tools/index.ts",
+      "tests/unit/server/tools-handlers.test.ts",
+      "tests/unit/server/tools-index.test.ts"
+    ],
+    "src/server/agent/tool-args.ts": [
+      "src/server/agent/tools.ts",
+      "tests/unit/agent/tools.test.ts"
+    ],
+    "src/lib/near-ai/verification/hashes.ts": [
+      "src/server/agent/verification-flow.ts"
+    ],
+    "src/server/plugins/discourse-schemas.ts": [
+      "src/server/plugins/discourse-client.ts",
+      "src/server/tools/discourse.ts"
+    ],
+    "src/utils/discourse/storage.ts": [
+      "src/utils/discourse/index.ts",
+      "tests/unit/utils/discourse-storage.test.ts"
+    ],
+    "src/utils/json.ts": [
+      "src/utils/screening/screen-proposal.ts"
+    ],
+    "tests/e2e/helpers/playwright-mocks.ts": [
+      "tests/e2e/agent.spec.ts",
+      "tests/e2e/auth.spec.ts",
+      "tests/e2e/chat.spec.ts",
+      "tests/e2e/draft.spec.ts",
+      "tests/e2e/helpers/auth-mocks.ts",
+      "tests/e2e/playwright.spec.ts",
+      "tests/e2e/profile.spec.ts",
+      "tests/e2e/proposal.spec.ts",
+      "tests/e2e/proposals.spec.ts",
+      "tests/e2e/seed.spec.ts",
+      "tests/e2e/settings.spec.ts"
+    ],
+    "tests/e2e/helpers/playwright-guard.ts": [
+      "tests/e2e/agent.spec.ts",
+      "tests/e2e/auth.spec.ts",
+      "tests/e2e/chat.spec.ts",
+      "tests/e2e/draft.spec.ts",
+      "tests/e2e/playwright.spec.ts",
+      "tests/e2e/profile.spec.ts",
+      "tests/e2e/proposal.spec.ts",
+      "tests/e2e/proposals.spec.ts",
+      "tests/e2e/seed.spec.ts",
+      "tests/e2e/settings.spec.ts"
+    ],
+    "tests/e2e/helpers/auth-mocks.ts": [
+      "tests/e2e/auth.spec.ts",
+      "tests/e2e/draft.spec.ts",
+      "tests/e2e/helpers/setup.ts",
+      "tests/e2e/proposal.spec.ts"
+    ],
+    "tests/fixtures/playwright/screening-response.json": [
+      "tests/e2e/draft.spec.ts",
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/fixtures/playwright/proposal-revisions.json": [
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/fixtures/playwright/proposals-latest.json": [
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/e2e/helpers/setup.ts"
+    ],
+    "tests/fixtures/playwright/discourse-reply-summary.json": [
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/e2e/helpers/setup.ts"
+    ],
+    "tests/fixtures/playwright/proposal-revision-summary.json": [
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/fixtures/playwright/proposal-detail.json": [
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/e2e/helpers/setup.ts",
+      "tests/e2e/proposal.spec.ts",
+      "tests/e2e/settings.spec.ts"
+    ],
+    "tests/fixtures/playwright/discourse-topic-summary.json": [
+      "tests/e2e/helpers/playwright-mocks.ts",
+      "tests/e2e/helpers/setup.ts"
+    ],
+    "tests/fixtures/playwright/revision-analyses.json": [
+      "tests/e2e/helpers/playwright-mocks.ts"
+    ],
+    "tests/e2e/helpers/setup.ts": [
+      "tests/e2e/playwright.spec.ts",
+      "tests/e2e/profile.spec.ts"
+    ],
+    "tests/e2e/utils/mock-wallet.ts": [
+      "tests/e2e/profile.spec.ts"
+    ],
+    "tests/fixtures/verificationMocks.ts": [
+      "tests/fixtures/verification.ts"
+    ],
+    "src/config/verification.ts": [
+      "tests/fixtures/verificationMocks.ts"
+    ],
+    "src/pages/api/auth/[...all].ts": [
+      "tests/unit/api/auth-all.test.ts"
+    ],
+    "tests/unit/mocks/near-ai-client.ts": [
+      "tests/unit/api/chat-completions.test.ts"
+    ],
+    "src/pages/api/chat/completions.ts": [
+      "tests/unit/api/chat-completions.test.ts"
+    ],
+    "src/pages/api/discourse/latest.ts": [
+      "tests/unit/api/discourse-handlers.test.ts"
+    ],
+    "src/pages/api/discourse/search.ts": [
+      "tests/unit/api/discourse-handlers.test.ts"
+    ],
+    "tests/vi-compat.ts": [
+      "tests/unit/components/DiscourseConnect.test.tsx",
+      "tests/unit/components/ProposalCard.test.tsx",
+      "tests/unit/components/SignInForm.test.tsx",
+      "tests/unit/components/proposal/DiscussionSection.test.tsx",
+      "tests/unit/components/proposal/VersionHistory.test.tsx",
+      "tests/unit/hooks/useNear.test.ts",
+      "tests/unit/hooks/useProposalDetail.test.ts",
+      "tests/unit/hooks/useProposalPublishing.test.ts",
+      "tests/unit/providers/AuthProvider.test.tsx",
+      "tests/unit/server/discourse-client.test.ts",
+      "tests/unit/server/tools-handlers.test.ts",
+      "tests/unit/server/tools-index.test.ts",
+      "tests/unit/vi-compat.test.ts",
+      "vi-compat.ts"
+    ],
+    "src/components/proposal/revisions/VersionHistory.tsx": [
+      "tests/unit/components/proposal/VersionHistory.test.tsx"
+    ],
+    "tests/fixtures/context.ts": [
+      "tests/unit/context.test.ts"
+    ],
+    "src/server/crypto.ts": [
+      "tests/unit/crypto.test.ts",
+      "tests/unit/server/crypto.test.ts"
+    ]
+  },
+  "category_report": {
+    "src/constants/agent.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/chat/AgentChatPanel.tsx",
+        "src/constants/index.ts",
+        "src/pages/api/agent.ts",
+        "src/server/agent/sse.ts",
+        "src/server/agent/streaming.ts",
+        "src/server/tools/index.ts"
+      ],
+      "import_count": 6
+    },
+    "src/constants/auth.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/constants/index.ts"
+      ],
+      "import_count": 2
+    },
+    "src/constants/index.ts": {
+      "imports": [
+        "src/constants/agent.ts",
+        "src/constants/auth.ts",
+        "src/constants/near.ts",
+        "src/constants/ui.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/constants/near.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/config/near.ts",
+        "src/constants/index.ts",
+        "src/utils/screening/screen-proposal.ts"
+      ],
+      "import_count": 6
+    },
+    "src/constants/services.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/config/services.ts",
+        "src/server/agent/validation.ts",
+        "src/server/plugins/discourse.ts"
+      ],
+      "import_count": 3
+    },
+    "src/constants/signing-messages.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/utils/screening/screen-proposal.ts",
+        "tests/unit/components/proposal/DiscussionSection.test.tsx",
+        "tests/unit/hooks/useProposalPublishing.test.ts"
+      ],
+      "import_count": 6
+    },
+    "src/constants/ui.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/constants/index.ts"
+      ],
+      "import_count": 1
+    },
+    "src/hooks/index.ts": {
+      "imports": [
+        "src/hooks/useNear.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/hooks/useProposalSummaries.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/hooks/useNear.tsx": {
+      "imports": [
+        "src/config/siwn.ts",
+        "src/lib/auth/auth-client.ts",
+        "src/lib/auth/retry.ts",
+        "src/lib/logger.ts"
+      ],
+      "imported_by": [
+        "src/components/editor/ProposalEditor.tsx",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/proposal/screening/ScreeningButton.tsx",
+        "src/components/providers/auth-provider.tsx",
+        "src/hooks/index.ts",
+        "src/pages/proposals/[id].tsx",
+        "tests/unit/hooks/useNear.test.ts"
+      ],
+      "import_count": 9
+    },
+    "src/hooks/useProposalDetail.ts": {
+      "imports": [
+        "src/lib/analytics.ts",
+        "src/lib/logger.ts",
+        "src/types/agui-events.ts",
+        "src/types/discourse.ts",
+        "src/types/evaluation.ts",
+        "src/types/proposals.ts",
+        "src/utils/ui/revision-content.ts"
+      ],
+      "imported_by": [
+        "src/hooks/index.ts",
+        "src/pages/proposals/[id].tsx",
+        "tests/unit/hooks/proposal-detail.test.ts",
+        "tests/unit/hooks/useProposalDetail.test.ts",
+        "tests/unit/utils/revision-content.test.ts"
+      ],
+      "import_count": 5
+    },
+    "src/hooks/useProposalSummaries.ts": {
+      "imports": [
+        "src/lib/analytics.ts",
+        "src/types/summaries.ts",
+        "src/utils/rateLimitHelpers.ts"
+      ],
+      "imported_by": [
+        "src/hooks/index.ts",
+        "src/pages/proposals/[id].tsx"
+      ],
+      "import_count": 2
+    },
+    "src/lib/analytics.ts": {
+      "imports": [
+        "src/types/analytics.ts"
+      ],
+      "imported_by": [
+        "src/components/chat/AgentChatPanel.tsx",
+        "src/components/editor/ProposalEditor.tsx",
+        "src/components/editor/useDraftEvaluation.ts",
+        "src/components/editor/useProposalFlowState.ts",
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/nav/navigation.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/components/proposal/ProposalChatbot.tsx",
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/proposal/screening/ScreeningButton.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/hooks/useProposalSummaries.ts",
+        "src/pages/proposals/[id].tsx",
+        "src/pages/proposals/index.tsx",
+        "tests/unit/lib/analytics.test.ts"
+      ],
+      "import_count": 15
+    },
+    "src/lib/auth/auth-client.ts": {
+      "imports": [
+        "src/config/siwn.ts",
+        "src/lib/logger.ts"
+      ],
+      "imported_by": [
+        "src/components/nav/navigation.tsx",
+        "src/components/providers/auth-provider.tsx",
+        "src/hooks/useNear.tsx"
+      ],
+      "import_count": 3
+    },
+    "src/lib/auth/auth-utils.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/providers/auth-provider.tsx",
+        "tests/unit/auth-utils.test.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/auth/index.ts": {
+      "imports": [
+        "src/config/siwn.ts",
+        "src/lib/db/index.ts",
+        "src/lib/db/schema.ts"
+      ],
+      "imported_by": [
+        "src/lib/context.ts",
+        "src/pages/api/auth/[...all].ts",
+        "tests/unit/api/auth-all.test.ts"
+      ],
+      "import_count": 3
+    },
+    "src/lib/auth/retry.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/auth/sign-in-form.tsx",
+        "src/components/nav/navigation.tsx",
+        "src/hooks/useNear.tsx",
+        "tests/unit/lib/retry.test.ts"
+      ],
+      "import_count": 4
+    },
+    "src/lib/context.ts": {
+      "imports": [
+        "src/lib/auth/index.ts"
+      ],
+      "imported_by": [
+        "src/lib/procedures.ts",
+        "src/lib/router.ts",
+        "src/pages/api/rpc/[[...rest]].ts",
+        "tests/unit/context.test.ts"
+      ],
+      "import_count": 4
+    },
+    "src/lib/db/index.ts": {
+      "imports": [
+        "src/config/postgres.ts",
+        "src/lib/db/schema.ts"
+      ],
+      "imported_by": [
+        "scripts/test-db.ts",
+        "src/lib/auth/index.ts",
+        "src/lib/db/queries.ts",
+        "src/lib/router.ts",
+        "src/pages/api/getAnalysis/[topicId].ts",
+        "src/pages/api/saveAnalysis/[topicId].ts"
+      ],
+      "import_count": 6
+    },
+    "src/lib/db/queries.ts": {
+      "imports": [
+        "src/lib/db/index.ts",
+        "src/lib/db/schema.ts"
+      ],
+      "imported_by": [
+        "src/lib/db/revision-utils.ts"
+      ],
+      "import_count": 1
+    },
+    "src/lib/db/revision-utils.ts": {
+      "imports": [
+        "src/lib/db/queries.ts",
+        "src/lib/db/schema.ts",
+        "src/lib/logger.ts",
+        "src/types/discourse.ts",
+        "src/types/evaluation.ts"
+      ],
+      "imported_by": [
+        "src/pages/api/saveAnalysis/[topicId].ts"
+      ],
+      "import_count": 1
+    },
+    "src/lib/db/schema.ts": {
+      "imports": [
+        "src/types/evaluation.ts"
+      ],
+      "imported_by": [
+        "scripts/test-db.ts",
+        "src/lib/auth/index.ts",
+        "src/lib/db/index.ts",
+        "src/lib/db/queries.ts",
+        "src/lib/db/revision-utils.ts",
+        "src/lib/router.ts",
+        "src/pages/api/getAnalysis/[topicId].ts",
+        "src/pages/api/saveAnalysis/[topicId].ts"
+      ],
+      "import_count": 8
+    },
+    "src/lib/logger.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/auth/sign-in-form.tsx",
+        "src/components/chat/AgentChatPanel.tsx",
+        "src/components/chat/ChatMessages.tsx",
+        "src/components/chat/ChatWidget.tsx",
+        "src/components/editor/EvaluationSummary.tsx",
+        "src/components/editor/ProposalEditorContext.tsx",
+        "src/components/editor/useDraftEvaluation.ts",
+        "src/components/editor/useProposalChat.ts",
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/nav/navigation.tsx",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/components/proposal/ProposalChatbot.tsx",
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/providers/auth-provider.tsx",
+        "src/config/near.ts",
+        "src/config/services.ts",
+        "src/hooks/useNear.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/lib/auth/auth-client.ts",
+        "src/lib/db/revision-utils.ts",
+        "src/lib/router.ts",
+        "src/lib/telemetry.ts",
+        "src/pages/api/agent.ts",
+        "src/pages/api/chat/completions.ts",
+        "src/pages/api/discourse/posts/[id]/revisions/index.ts",
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts",
+        "src/pages/api/discourse/user/[username].ts",
+        "src/pages/api/evaluateDraft.ts",
+        "src/pages/api/getAnalysis/[topicId].ts",
+        "src/pages/api/proposals/[id]/index.ts",
+        "src/pages/api/proposals/[id]/revisions/index.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/pages/api/proposals/[id]/summarize.ts",
+        "src/pages/api/rpc/[[...rest]].ts",
+        "src/pages/api/saveAnalysis/[topicId].ts",
+        "src/pages/api/screen.ts",
+        "src/pages/profile.tsx",
+        "src/pages/settings.tsx",
+        "src/server/agent/sse.ts",
+        "src/server/agent/streaming.ts",
+        "src/server/agent/tools.ts",
+        "src/server/agent/validation.ts",
+        "src/server/plugins/discourse-client.ts",
+        "src/server/plugins/discourse.ts",
+        "src/server/screening.ts",
+        "src/server/summaryVerification.ts",
+        "src/server/tools/docs.ts",
+        "src/utils/cache-utils.ts",
+        "src/utils/errors/near-errors.ts",
+        "src/utils/ui/revision-content.ts"
+      ],
+      "import_count": 53
+    },
+    "src/lib/near-ai/client.ts": {
+      "imports": [
+        "src/lib/near-ai/errors.ts",
+        "src/lib/near-ai/types.ts"
+      ],
+      "imported_by": [
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/near-ai/errors.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/near-ai/client.ts",
+        "src/lib/near-ai/index.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/near-ai/index.ts": {
+      "imports": [
+        "src/lib/near-ai/client.ts",
+        "src/lib/near-ai/errors.ts",
+        "src/lib/near-ai/stream.ts",
+        "src/lib/near-ai/types.ts",
+        "src/lib/near-ai/verification/index.ts"
+      ],
+      "imported_by": [
+        "src/pages/api/agent.ts",
+        "src/pages/api/chat/completions.ts",
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/pages/api/proposals/[id]/summarize.ts",
+        "src/server/agent/completion.ts",
+        "src/server/screening.ts",
+        "src/server/summaryVerification.ts",
+        "src/server/tools/proposals.ts",
+        "src/types/agui-events.ts",
+        "src/types/summaries.ts",
+        "tests/unit/api/auth-all.test.ts",
+        "tests/unit/api/chat-completions.test.ts",
+        "tests/unit/lib/near-ai/verification.test.ts",
+        "tests/unit/near-ai-client.test.ts"
+      ],
+      "import_count": 17
+    },
+    "src/lib/near-ai/stream.ts": {
+      "imports": [
+        "src/lib/near-ai/client.ts",
+        "src/lib/near-ai/types.ts",
+        "src/lib/near-ai/verification/index.ts"
+      ],
+      "imported_by": [
+        "src/lib/near-ai/index.ts",
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/pages/api/proposals/[id]/summarize.ts"
+      ],
+      "import_count": 6
+    },
+    "src/lib/near-ai/types.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/near-ai/client.ts",
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts"
+      ],
+      "import_count": 3
+    },
+    "src/lib/near-ai/verification/__tests__/verification.test.ts": {
+      "imports": [
+        "src/lib/near-ai/verification/attestation.ts",
+        "src/lib/near-ai/verification/hash.ts",
+        "src/lib/near-ai/verification/nvidia.ts",
+        "src/lib/near-ai/verification/signature.ts",
+        "src/lib/near-ai/verification/verify.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/lib/near-ai/verification/attestation.ts": {
+      "imports": [
+        "src/lib/near-ai/verification/nvidia.ts",
+        "src/lib/near-ai/verification/types.ts"
+      ],
+      "imported_by": [
+        "src/lib/near-ai/verification/__tests__/verification.test.ts",
+        "src/lib/near-ai/verification/index.ts",
+        "src/lib/near-ai/verification/verify.ts",
+        "tests/unit/lib/near-ai/verification.test.ts"
+      ],
+      "import_count": 4
+    },
+    "src/lib/near-ai/verification/hash-utils.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/near-ai/verification/hashes.ts"
+      ],
+      "import_count": 1
+    },
+    "src/lib/near-ai/verification/hash.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/near-ai/verification/__tests__/verification.test.ts",
+        "src/lib/near-ai/verification/index.ts",
+        "src/lib/near-ai/verification/verify.ts"
+      ],
+      "import_count": 3
+    },
+    "src/lib/near-ai/verification/hashes.ts": {
+      "imports": [
+        "src/lib/near-ai/verification/hash-utils.ts"
+      ],
+      "imported_by": [
+        "src/server/agent/verification-flow.ts"
+      ],
+      "import_count": 1
+    },
+    "src/lib/near-ai/verification/index.ts": {
+      "imports": [
+        "src/lib/near-ai/verification/attestation.ts",
+        "src/lib/near-ai/verification/hash.ts",
+        "src/lib/near-ai/verification/nvidia.ts",
+        "src/lib/near-ai/verification/signature.ts",
+        "src/lib/near-ai/verification/types.ts",
+        "src/lib/near-ai/verification/verify.ts"
+      ],
+      "imported_by": [
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/near-ai/verification/nvidia.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/near-ai/verification/__tests__/verification.test.ts",
+        "src/lib/near-ai/verification/attestation.ts",
+        "src/lib/near-ai/verification/index.ts"
+      ],
+      "import_count": 3
+    },
+    "src/lib/near-ai/verification/signature.ts": {
+      "imports": [
+        "src/lib/near-ai/verification/types.ts"
+      ],
+      "imported_by": [
+        "src/lib/near-ai/verification/__tests__/verification.test.ts",
+        "src/lib/near-ai/verification/index.ts",
+        "src/lib/near-ai/verification/verify.ts",
+        "tests/unit/lib/near-ai/verification.test.ts"
+      ],
+      "import_count": 4
+    },
+    "src/lib/near-ai/verification/types.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/near-ai/verification/attestation.ts",
+        "src/lib/near-ai/verification/index.ts",
+        "src/lib/near-ai/verification/signature.ts",
+        "src/lib/near-ai/verification/verify.ts",
+        "tests/unit/lib/near-ai/verification.test.ts"
+      ],
+      "import_count": 5
+    },
+    "src/lib/near-ai/verification/verify.ts": {
+      "imports": [
+        "src/lib/near-ai/verification/attestation.ts",
+        "src/lib/near-ai/verification/hash.ts",
+        "src/lib/near-ai/verification/signature.ts",
+        "src/lib/near-ai/verification/types.ts"
+      ],
+      "imported_by": [
+        "src/lib/near-ai/verification/__tests__/verification.test.ts",
+        "src/lib/near-ai/verification/index.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/orpc.ts": {
+      "imports": [
+        "src/lib/router.ts"
+      ],
+      "imported_by": [
+        "src/components/editor/useProposalFlowState.ts",
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/nav/navigation.tsx",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/pages/profile.tsx",
+        "tests/unit/hooks/useProposalPublishing.test.ts"
+      ],
+      "import_count": 7
+    },
+    "src/lib/procedures.ts": {
+      "imports": [
+        "src/lib/context.ts"
+      ],
+      "imported_by": [
+        "src/lib/router.ts"
+      ],
+      "import_count": 1
+    },
+    "src/lib/prompts/index.ts": {
+      "imports": [
+        "src/lib/prompts/screenProposal.ts",
+        "src/lib/prompts/summarizeDiscussion.ts",
+        "src/lib/prompts/summarizeProposal.ts",
+        "src/lib/prompts/summarizeReply.ts",
+        "src/lib/prompts/summarizeRevisions.ts"
+      ],
+      "imported_by": [
+        "src/pages/settings.tsx"
+      ],
+      "import_count": 1
+    },
+    "src/lib/prompts/screenProposal.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/prompts/index.ts",
+        "src/server/screening.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/prompts/summarizeDiscussion.ts": {
+      "imports": [
+        "src/types/discourse.ts"
+      ],
+      "imported_by": [
+        "src/lib/prompts/index.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/prompts/summarizeProposal.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/prompts/index.ts",
+        "src/pages/api/proposals/[id]/summarize.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/prompts/summarizeReply.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/prompts/index.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/prompts/summarizeRevisions.ts": {
+      "imports": [
+        "src/types/proposals.ts"
+      ],
+      "imported_by": [
+        "src/lib/prompts/index.ts",
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts"
+      ],
+      "import_count": 3
+    },
+    "src/lib/rate-limit.ts": {
+      "imports": null,
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/lib/router.ts": {
+      "imports": [
+        "src/lib/context.ts",
+        "src/lib/db/index.ts",
+        "src/lib/db/schema.ts",
+        "src/lib/logger.ts",
+        "src/lib/procedures.ts",
+        "src/server/plugins/discourse.ts",
+        "src/types/discourse-linkage.ts"
+      ],
+      "imported_by": [
+        "src/lib/orpc.ts",
+        "src/pages/api/rpc/[[...rest]].ts"
+      ],
+      "import_count": 2
+    },
+    "src/lib/telemetry.ts": {
+      "imports": [
+        "src/lib/logger.ts"
+      ],
+      "imported_by": [
+        "src/pages/api/agent.ts",
+        "src/server/agent/sse.ts",
+        "src/server/agent/tools.ts"
+      ],
+      "import_count": 3
+    },
+    "src/pages/api/agent.ts": {
+      "imports": [
+        "src/constants/agent.ts",
+        "src/lib/logger.ts",
+        "src/lib/near-ai/index.ts",
+        "src/lib/telemetry.ts",
+        "src/server/agent/completion.ts",
+        "src/server/agent/sse.ts",
+        "src/server/agent/tools.ts",
+        "src/server/agent/types.ts",
+        "src/server/agent/validation.ts",
+        "src/server/agent/verification-flow.ts",
+        "src/server/tools/index.ts",
+        "src/types/agui-events.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/auth/[...all].ts": {
+      "imports": [
+        "src/lib/auth/index.ts"
+      ],
+      "imported_by": [
+        "tests/unit/api/auth-all.test.ts"
+      ],
+      "import_count": 1
+    },
+    "src/pages/api/chat/completions.ts": {
+      "imports": [
+        "src/lib/logger.ts",
+        "src/lib/near-ai/index.ts"
+      ],
+      "imported_by": [
+        "tests/unit/api/chat-completions.test.ts"
+      ],
+      "import_count": 1
+    },
+    "src/pages/api/discourse/categories.ts": {
+      "imports": [
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/categories/[id].ts": {
+      "imports": [
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/latest.ts": {
+      "imports": [
+        "src/config/discourse.ts",
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": [
+        "tests/unit/api/discourse-handlers.test.ts"
+      ],
+      "import_count": 1
+    },
+    "src/pages/api/discourse/posts.ts": {
+      "imports": [
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/posts/[id]/index.ts": {
+      "imports": [
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/posts/[id]/replies.ts": {
+      "imports": [
+        "src/config/discourse.ts",
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/posts/[id]/revisions/index.ts": {
+      "imports": [
+        "src/config/services.ts",
+        "src/lib/logger.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/posts/[id]/revisions/summarize.ts": {
+      "imports": [
+        "src/config/rateLimit.ts",
+        "src/config/services.ts",
+        "src/lib/logger.ts",
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts",
+        "src/lib/prompts/summarizeRevisions.ts",
+        "src/server/rateLimiter.ts",
+        "src/server/summaryVerification.ts",
+        "src/types/api.ts",
+        "src/types/discourse.ts",
+        "src/types/summaries.ts",
+        "src/utils/cache-utils.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/replies/[id]/summarize.ts": {
+      "imports": [
+        "src/config/rateLimit.ts",
+        "src/config/services.ts",
+        "src/lib/logger.ts",
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts",
+        "src/lib/prompts/summarizeReply.ts",
+        "src/server/rateLimiter.ts",
+        "src/server/summaryVerification.ts",
+        "src/types/api.ts",
+        "src/types/discourse.ts",
+        "src/types/summaries.ts",
+        "src/utils/cache-utils.ts",
+        "src/utils/model-utils.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/search.ts": {
+      "imports": [
+        "src/config/discourse.ts",
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": [
+        "tests/unit/api/discourse-handlers.test.ts"
+      ],
+      "import_count": 1
+    },
+    "src/pages/api/discourse/tags.ts": {
+      "imports": [
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/topics/[id]/index.ts": {
+      "imports": [
+        "src/config/discourse.ts",
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/topics/[id]/summarize.ts": {
+      "imports": [
+        "src/config/rateLimit.ts",
+        "src/config/services.ts",
+        "src/lib/logger.ts",
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts",
+        "src/lib/prompts/summarizeDiscussion.ts",
+        "src/server/rateLimiter.ts",
+        "src/server/summaryVerification.ts",
+        "src/types/api.ts",
+        "src/types/discourse.ts",
+        "src/types/summaries.ts",
+        "src/utils/cache-utils.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/discourse/user/[username].ts": {
+      "imports": [
+        "src/config/services.ts",
+        "src/lib/logger.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/evaluateDraft.ts": {
+      "imports": [
+        "src/config/rateLimit.ts",
+        "src/lib/logger.ts",
+        "src/server/rateLimiter.ts",
+        "src/server/screening.ts",
+        "src/types/evaluation.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/getAnalysis/[topicId].ts": {
+      "imports": [
+        "src/lib/db/index.ts",
+        "src/lib/db/schema.ts",
+        "src/lib/logger.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/proposals/[id]/index.ts": {
+      "imports": [
+        "src/config/services.ts",
+        "src/lib/logger.ts",
+        "src/types/discourse.ts",
+        "src/types/proposals.ts",
+        "src/utils/metadata.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/proposals/[id]/revisions/index.ts": {
+      "imports": [
+        "src/config/services.ts",
+        "src/lib/logger.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/proposals/[id]/revisions/summarize.ts": {
+      "imports": [
+        "src/config/rateLimit.ts",
+        "src/config/services.ts",
+        "src/lib/logger.ts",
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts",
+        "src/lib/prompts/summarizeRevisions.ts",
+        "src/server/rateLimiter.ts",
+        "src/server/summaryVerification.ts",
+        "src/types/api.ts",
+        "src/types/discourse.ts",
+        "src/types/summaries.ts",
+        "src/utils/cache-utils.ts",
+        "src/utils/ui/html.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/proposals/[id]/summarize.ts": {
+      "imports": [
+        "src/config/rateLimit.ts",
+        "src/config/services.ts",
+        "src/lib/logger.ts",
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/stream.ts",
+        "src/lib/prompts/summarizeProposal.ts",
+        "src/server/rateLimiter.ts",
+        "src/server/summaryVerification.ts",
+        "src/types/api.ts",
+        "src/types/summaries.ts",
+        "src/utils/cache-utils.ts",
+        "src/utils/metadata.ts",
+        "src/utils/model-utils.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/rpc/[[...rest]].ts": {
+      "imports": [
+        "src/lib/context.ts",
+        "src/lib/logger.ts",
+        "src/lib/router.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/saveAnalysis/[topicId].ts": {
+      "imports": [
+        "src/lib/db/index.ts",
+        "src/lib/db/revision-utils.ts",
+        "src/lib/db/schema.ts",
+        "src/lib/logger.ts",
+        "src/server/screening.ts",
+        "src/types/evaluation.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/pages/api/screen.ts": {
+      "imports": [
+        "src/config/rateLimit.ts",
+        "src/lib/logger.ts",
+        "src/server/rateLimiter.ts",
+        "src/server/screening.ts",
+        "src/types/evaluation.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/types/agent-ui.ts": {
+      "imports": [
+        "src/types/agui-events.ts"
+      ],
+      "imported_by": [
+        "src/components/chat/AgentChatPanel.tsx",
+        "src/components/chat/ChatMessages.tsx",
+        "src/components/chat/Message.tsx",
+        "src/components/chat/ToolHistoryCard.tsx",
+        "tests/unit/chatPersistence.test.tsx",
+        "tests/unit/chatState.test.tsx",
+        "tests/unit/types/agent-ui.test.ts"
+      ],
+      "import_count": 7
+    },
+    "src/types/agui-events.ts": {
+      "imports": [
+        "src/lib/near-ai/index.ts",
+        "src/types/evaluation.ts"
+      ],
+      "imported_by": [
+        "src/components/chat/AgentChatPanel.tsx",
+        "src/components/chat/Message.tsx",
+        "src/components/editor/ProposalEditor.tsx",
+        "src/components/editor/ProposalEditorContext.tsx",
+        "src/components/editor/SidebarChat.tsx",
+        "src/components/editor/useDraftEvaluation.ts",
+        "src/components/editor/useProposalChat.ts",
+        "src/components/editor/useProposalChatAdapter.ts",
+        "src/components/editor/useProposalChatController.ts",
+        "src/components/editor/useProposalFlowState.ts",
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/pages/api/agent.ts",
+        "src/server/agent/completion.ts",
+        "src/server/agent/sse.ts",
+        "src/server/agent/streaming.ts",
+        "src/server/agent/tools.ts",
+        "src/server/agent/types.ts",
+        "src/server/agent/validation.ts",
+        "src/server/agent/verification-flow.ts",
+        "src/server/tools/index.ts",
+        "src/server/tools/proposals.ts",
+        "src/types/agent-ui.ts",
+        "src/types/summaries.ts",
+        "tests/e2e/chat.spec.ts",
+        "tests/e2e/helpers/playwright-mocks.ts",
+        "tests/unit/components/chat/Chat.test.tsx",
+        "tests/unit/types/agent-ui.test.ts"
+      ],
+      "import_count": 28
+    },
+    "src/types/analytics.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/lib/analytics.ts",
+        "src/utils/errors/screening-errors.ts",
+        "tests/unit/lib/analytics.test.ts"
+      ],
+      "import_count": 3
+    },
+    "src/types/api.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/pages/api/proposals/[id]/summarize.ts"
+      ],
+      "import_count": 5
+    },
+    "src/types/better-near-auth.d.ts": {
+      "imports": null,
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/types/discourse-linkage.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/lib/router.ts",
+        "src/pages/profile.tsx"
+      ],
+      "import_count": 5
+    },
+    "src/types/discourse.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/lib/db/revision-utils.ts",
+        "src/lib/prompts/summarizeDiscussion.ts",
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts",
+        "src/pages/api/proposals/[id]/index.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/pages/proposals/index.tsx",
+        "src/pages/settings.tsx",
+        "src/types/proposals.ts",
+        "tests/unit/components/proposal/VersionHistory.test.tsx",
+        "tests/unit/hooks/useProposalDetail.test.ts"
+      ],
+      "import_count": 14
+    },
+    "src/types/evaluation.ts": {
+      "imports": null,
+      "imported_by": [
+        "scripts/test-db.ts",
+        "src/components/editor/ConfirmModal.tsx",
+        "src/components/editor/EvaluationPanel.tsx",
+        "src/components/editor/EvaluationSummary.tsx",
+        "src/components/editor/ProposalEditorContext.tsx",
+        "src/components/editor/useDraftEvaluation.ts",
+        "src/components/editor/useProposalChat.ts",
+        "src/components/proposal/ProposalScreener.tsx",
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/proposal/screening/ScreeningBadge.tsx",
+        "src/components/proposal/screening/ScreeningButton.tsx",
+        "src/components/proposal/screening/ScreeningResults.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/lib/db/revision-utils.ts",
+        "src/lib/db/schema.ts",
+        "src/pages/api/evaluateDraft.ts",
+        "src/pages/api/saveAnalysis/[topicId].ts",
+        "src/pages/api/screen.ts",
+        "src/server/screening.ts",
+        "src/server/tools/proposals.ts",
+        "src/types/agui-events.ts",
+        "tests/unit/components/proposal/VersionHistory.test.tsx",
+        "tests/unit/hooks/useProposalDetail.test.ts"
+      ],
+      "import_count": 23
+    },
+    "src/types/every-plugin.d.ts": {
+      "imports": null,
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/types/global.d.ts": {
+      "imports": null,
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/types/jsdom.d.ts": {
+      "imports": null,
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/types/modules.d.ts": {
+      "imports": null,
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/types/proposals.ts": {
+      "imports": [
+        "src/types/discourse.ts",
+        "src/utils/metadata.ts"
+      ],
+      "imported_by": [
+        "src/components/chat/ChatMessages.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/components/proposal/ProposalChatbot.tsx",
+        "src/components/proposal/ProposalContent.tsx",
+        "src/components/proposal/ReplyCard.tsx",
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/proposal/revisions/VersionSelector.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/lib/prompts/summarizeRevisions.ts",
+        "src/pages/api/proposals/[id]/index.ts",
+        "src/pages/settings.tsx",
+        "tests/unit/hooks/proposal-detail.test.ts",
+        "tests/unit/hooks/useProposalDetail.test.ts",
+        "tests/unit/utils/revision-content.test.ts"
+      ],
+      "import_count": 14
+    },
+    "src/types/summaries.ts": {
+      "imports": [
+        "src/lib/near-ai/index.ts",
+        "src/types/agui-events.ts"
+      ],
+      "imported_by": [
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/components/proposal/ProposalChatbot.tsx",
+        "src/components/proposal/ProposalContent.tsx",
+        "src/components/proposal/ReplyCard.tsx",
+        "src/components/proposal/revisions/VersionSelector.tsx",
+        "src/hooks/useProposalSummaries.ts",
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/pages/api/proposals/[id]/summarize.ts",
+        "src/pages/playwright/summaries.tsx",
+        "src/server/summaryVerification.ts"
+      ],
+      "import_count": 13
+    },
+    "src/utils/cache-utils.ts": {
+      "imports": [
+        "src/lib/logger.ts"
+      ],
+      "imported_by": [
+        "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/discourse/topics/[id]/summarize.ts",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/pages/api/proposals/[id]/summarize.ts",
+        "tests/unit/utils/cache-utils.test.ts"
+      ],
+      "import_count": 6
+    },
+    "src/utils/discourse/index.ts": {
+      "imports": [
+        "src/utils/discourse/storage.ts"
+      ],
+      "imported_by": [
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/pages/profile.tsx",
+        "src/pages/proposals/index.tsx",
+        "tests/unit/hooks/useProposalPublishing.test.ts"
+      ],
+      "import_count": 6
+    },
+    "src/utils/discourse/storage.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/utils/discourse/index.ts",
+        "tests/unit/utils/discourse-storage.test.ts"
+      ],
+      "import_count": 2
+    },
+    "src/utils/errors/near-errors.ts": {
+      "imports": [
+        "src/lib/logger.ts"
+      ],
+      "imported_by": [
+        "src/components/editor/PublishBar.tsx",
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/proposal/screening/ScreeningButton.tsx",
+        "src/components/ui/NearErrorAlert.tsx",
+        "src/utils/errors/screening-errors.ts"
+      ],
+      "import_count": 8
+    },
+    "src/utils/errors/screening-errors.ts": {
+      "imports": [
+        "src/types/analytics.ts",
+        "src/utils/errors/near-errors.ts"
+      ],
+      "imported_by": [
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/proposal/screening/ScreeningButton.tsx"
+      ],
+      "import_count": 2
+    },
+    "src/utils/json.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/utils/screening/screen-proposal.ts"
+      ],
+      "import_count": 1
+    },
+    "src/utils/metadata.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/proposal/ProposalContent.tsx",
+        "src/pages/api/proposals/[id]/index.ts",
+        "src/pages/api/proposals/[id]/summarize.ts",
+        "src/types/proposals.ts",
+        "tests/unit/utils/metadata.test.ts"
+      ],
+      "import_count": 5
+    },
+    "src/utils/model-utils.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/pages/api/discourse/replies/[id]/summarize.ts",
+        "src/pages/api/proposals/[id]/summarize.ts",
+        "src/server/screening.ts",
+        "tests/unit/utils/model-utils.test.ts"
+      ],
+      "import_count": 4
+    },
+    "src/utils/rateLimitHelpers.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/editor/useDraftEvaluation.ts",
+        "src/hooks/useProposalSummaries.ts"
+      ],
+      "import_count": 2
+    },
+    "src/utils/screening/screen-proposal.ts": {
+      "imports": [
+        "src/constants/near.ts",
+        "src/constants/signing-messages.ts",
+        "src/utils/json.ts",
+        "src/utils/wallet/guards.ts"
+      ],
+      "imported_by": [
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/components/proposal/screening/ScreeningButton.tsx"
+      ],
+      "import_count": 2
+    },
+    "src/utils/tailwind.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/chat/ChatWidget.tsx",
+        "src/components/editor/EvaluationSummary.tsx",
+        "src/components/proposal/Markdown.tsx",
+        "src/components/ui/alert.tsx",
+        "src/components/ui/avatar.tsx",
+        "src/components/ui/badge.tsx",
+        "src/components/ui/button.tsx",
+        "src/components/ui/card.tsx",
+        "src/components/ui/checkbox.tsx",
+        "src/components/ui/command.tsx",
+        "src/components/ui/dialog.tsx",
+        "src/components/ui/dropdown-menu.tsx",
+        "src/components/ui/input.tsx",
+        "src/components/ui/label.tsx",
+        "src/components/ui/popover.tsx",
+        "src/components/ui/scroll-area.tsx",
+        "src/components/ui/select.tsx",
+        "src/components/ui/separator.tsx",
+        "src/components/ui/skeleton.tsx",
+        "src/components/ui/switch.tsx",
+        "src/components/ui/tabs.tsx",
+        "src/components/ui/textarea.tsx",
+        "src/components/ui/tooltip.tsx"
+      ],
+      "import_count": 23
+    },
+    "src/utils/ui/diff.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/editor/ConfirmModal.tsx",
+        "src/components/editor/useProposalChat.ts",
+        "src/utils/ui/index.ts"
+      ],
+      "import_count": 3
+    },
+    "src/utils/ui/html.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/pages/api/proposals/[id]/revisions/summarize.ts",
+        "src/utils/ui/index.ts"
+      ],
+      "import_count": 3
+    },
+    "src/utils/ui/index.ts": {
+      "imports": [
+        "src/utils/ui/diff.ts",
+        "src/utils/ui/html.ts",
+        "src/utils/ui/revision-content.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "src/utils/ui/revision-content.ts": {
+      "imports": [
+        "src/lib/logger.ts"
+      ],
+      "imported_by": [
+        "src/components/proposal/revisions/VersionHistory.tsx",
+        "src/hooks/useProposalDetail.ts",
+        "src/utils/ui/index.ts",
+        "tests/unit/hooks/proposal-detail.test.ts",
+        "tests/unit/utils/revision-content.test.ts"
+      ],
+      "import_count": 5
+    },
+    "src/utils/wallet/guards.ts": {
+      "imports": null,
+      "imported_by": [
+        "src/components/editor/useProposalPublishing.ts",
+        "src/components/profile/DiscourseConnect.tsx",
+        "src/components/proposal/DiscussionSection.tsx",
+        "src/utils/screening/screen-proposal.ts"
+      ],
+      "import_count": 4
+    },
+    "tests/e2e/helpers/auth-mocks.ts": {
+      "imports": [
+        "tests/e2e/helpers/playwright-mocks.ts"
+      ],
+      "imported_by": [
+        "tests/e2e/auth.spec.ts",
+        "tests/e2e/draft.spec.ts",
+        "tests/e2e/helpers/setup.ts",
+        "tests/e2e/proposal.spec.ts"
+      ],
+      "import_count": 4
+    },
+    "tests/e2e/helpers/playwright-guard.ts": {
+      "imports": null,
+      "imported_by": [
+        "tests/e2e/agent.spec.ts",
+        "tests/e2e/auth.spec.ts",
+        "tests/e2e/chat.spec.ts",
+        "tests/e2e/draft.spec.ts",
+        "tests/e2e/playwright.spec.ts",
+        "tests/e2e/profile.spec.ts",
+        "tests/e2e/proposal.spec.ts",
+        "tests/e2e/proposals.spec.ts",
+        "tests/e2e/seed.spec.ts",
+        "tests/e2e/settings.spec.ts"
+      ],
+      "import_count": 10
+    },
+    "tests/e2e/helpers/playwright-mocks.ts": {
+      "imports": [
+        "src/types/agui-events.ts",
+        "tests/fixtures/playwright/discourse-reply-summary.json",
+        "tests/fixtures/playwright/discourse-topic-summary.json",
+        "tests/fixtures/playwright/proposal-detail.json",
+        "tests/fixtures/playwright/proposal-revision-summary.json",
+        "tests/fixtures/playwright/proposal-revisions.json",
+        "tests/fixtures/playwright/proposals-latest.json",
+        "tests/fixtures/playwright/revision-analyses.json",
+        "tests/fixtures/playwright/screening-response.json"
+      ],
+      "imported_by": [
+        "tests/e2e/agent.spec.ts",
+        "tests/e2e/auth.spec.ts",
+        "tests/e2e/chat.spec.ts",
+        "tests/e2e/draft.spec.ts",
+        "tests/e2e/helpers/auth-mocks.ts",
+        "tests/e2e/playwright.spec.ts",
+        "tests/e2e/profile.spec.ts",
+        "tests/e2e/proposal.spec.ts",
+        "tests/e2e/proposals.spec.ts",
+        "tests/e2e/seed.spec.ts",
+        "tests/e2e/settings.spec.ts"
+      ],
+      "import_count": 11
+    },
+    "tests/e2e/helpers/setup.ts": {
+      "imports": [
+        "tests/e2e/helpers/auth-mocks.ts",
+        "tests/fixtures/playwright/discourse-reply-summary.json",
+        "tests/fixtures/playwright/discourse-topic-summary.json",
+        "tests/fixtures/playwright/proposal-detail.json",
+        "tests/fixtures/playwright/proposals-latest.json"
+      ],
+      "imported_by": [
+        "tests/e2e/playwright.spec.ts",
+        "tests/e2e/profile.spec.ts"
+      ],
+      "import_count": 2
+    },
+    "tests/e2e/utils/mock-wallet.ts": {
+      "imports": null,
+      "imported_by": [
+        "tests/e2e/profile.spec.ts"
+      ],
+      "import_count": 1
+    },
+    "tests/types/vi-mocks.d.ts": {
+      "imports": null,
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/api/auth-all.test.ts": {
+      "imports": [
+        "src/lib/auth/index.ts",
+        "src/lib/near-ai/index.ts",
+        "src/pages/api/auth/[...all].ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/api/chat-completions.test.ts": {
+      "imports": [
+        "src/lib/near-ai/index.ts",
+        "src/pages/api/chat/completions.ts",
+        "tests/unit/mocks/near-ai-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/api/discourse-handlers.test.ts": {
+      "imports": [
+        "src/config/discourse.ts",
+        "src/pages/api/discourse/latest.ts",
+        "src/pages/api/discourse/search.ts",
+        "src/server/plugins/discourse-client.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/hooks/proposal-detail.test.ts": {
+      "imports": [
+        "src/hooks/useProposalDetail.ts",
+        "src/types/proposals.ts",
+        "src/utils/ui/revision-content.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/hooks/useNear.test.ts": {
+      "imports": [
+        "src/hooks/useNear.tsx",
+        "tests/vi-compat.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/hooks/useProposalDetail.test.ts": {
+      "imports": [
+        "src/hooks/useProposalDetail.ts",
+        "src/types/discourse.ts",
+        "src/types/evaluation.ts",
+        "src/types/proposals.ts",
+        "tests/vi-compat.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/hooks/useProposalPublishing.test.ts": {
+      "imports": [
+        "src/components/editor/useProposalPublishing.ts",
+        "src/constants/signing-messages.ts",
+        "src/lib/orpc.ts",
+        "src/utils/discourse/index.ts",
+        "tests/vi-compat.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/lib/analytics.test.ts": {
+      "imports": [
+        "src/lib/analytics.ts",
+        "src/types/analytics.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/lib/near-ai/verification.test.ts": {
+      "imports": [
+        "src/lib/near-ai/index.ts",
+        "src/lib/near-ai/verification/attestation.ts",
+        "src/lib/near-ai/verification/signature.ts",
+        "src/lib/near-ai/verification/types.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/lib/retry.test.ts": {
+      "imports": [
+        "src/lib/auth/retry.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/types/agent-ui.test.ts": {
+      "imports": [
+        "src/types/agent-ui.ts",
+        "src/types/agui-events.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/utils/cache-utils.test.ts": {
+      "imports": [
+        "src/utils/cache-utils.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/utils/discourse-storage.test.ts": {
+      "imports": [
+        "src/utils/discourse/storage.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/utils/metadata.test.ts": {
+      "imports": [
+        "src/utils/metadata.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/utils/model-utils.test.ts": {
+      "imports": [
+        "src/utils/model-utils.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    },
+    "tests/unit/utils/revision-content.test.ts": {
+      "imports": [
+        "src/hooks/useProposalDetail.ts",
+        "src/types/proposals.ts",
+        "src/utils/ui/revision-content.ts"
+      ],
+      "imported_by": null,
+      "import_count": 0
+    }
+  },
+  "category_files": [
+    "src/constants/agent.ts",
+    "src/constants/auth.ts",
+    "src/constants/index.ts",
+    "src/constants/near.ts",
+    "src/constants/services.ts",
+    "src/constants/signing-messages.ts",
+    "src/constants/ui.ts",
+    "src/hooks/index.ts",
+    "src/hooks/useNear.tsx",
+    "src/hooks/useProposalDetail.ts",
+    "src/hooks/useProposalSummaries.ts",
+    "src/lib/analytics.ts",
+    "src/lib/auth/auth-client.ts",
+    "src/lib/auth/auth-utils.ts",
+    "src/lib/auth/index.ts",
+    "src/lib/auth/retry.ts",
+    "src/lib/context.ts",
+    "src/lib/db/index.ts",
+    "src/lib/db/queries.ts",
+    "src/lib/db/revision-utils.ts",
+    "src/lib/db/schema.ts",
+    "src/lib/logger.ts",
+    "src/lib/near-ai/client.ts",
+    "src/lib/near-ai/errors.ts",
+    "src/lib/near-ai/index.ts",
+    "src/lib/near-ai/stream.ts",
+    "src/lib/near-ai/types.ts",
+    "src/lib/near-ai/verification/__tests__/verification.test.ts",
+    "src/lib/near-ai/verification/attestation.ts",
+    "src/lib/near-ai/verification/hash-utils.ts",
+    "src/lib/near-ai/verification/hash.ts",
+    "src/lib/near-ai/verification/hashes.ts",
+    "src/lib/near-ai/verification/index.ts",
+    "src/lib/near-ai/verification/nvidia.ts",
+    "src/lib/near-ai/verification/signature.ts",
+    "src/lib/near-ai/verification/types.ts",
+    "src/lib/near-ai/verification/verify.ts",
+    "src/lib/orpc.ts",
+    "src/lib/procedures.ts",
+    "src/lib/prompts/index.ts",
+    "src/lib/prompts/screenProposal.ts",
+    "src/lib/prompts/summarizeDiscussion.ts",
+    "src/lib/prompts/summarizeProposal.ts",
+    "src/lib/prompts/summarizeReply.ts",
+    "src/lib/prompts/summarizeRevisions.ts",
+    "src/lib/rate-limit.ts",
+    "src/lib/router.ts",
+    "src/lib/telemetry.ts",
+    "src/pages/api/agent.ts",
+    "src/pages/api/auth/[...all].ts",
+    "src/pages/api/chat/completions.ts",
+    "src/pages/api/discourse/categories.ts",
+    "src/pages/api/discourse/categories/[id].ts",
+    "src/pages/api/discourse/latest.ts",
+    "src/pages/api/discourse/posts.ts",
+    "src/pages/api/discourse/posts/[id]/index.ts",
+    "src/pages/api/discourse/posts/[id]/replies.ts",
+    "src/pages/api/discourse/posts/[id]/revisions/index.ts",
+    "src/pages/api/discourse/posts/[id]/revisions/summarize.ts",
+    "src/pages/api/discourse/replies/[id]/summarize.ts",
+    "src/pages/api/discourse/search.ts",
+    "src/pages/api/discourse/tags.ts",
+    "src/pages/api/discourse/topics/[id]/index.ts",
+    "src/pages/api/discourse/topics/[id]/summarize.ts",
+    "src/pages/api/discourse/user/[username].ts",
+    "src/pages/api/evaluateDraft.ts",
+    "src/pages/api/getAnalysis/[topicId].ts",
+    "src/pages/api/proposals/[id]/index.ts",
+    "src/pages/api/proposals/[id]/revisions/index.ts",
+    "src/pages/api/proposals/[id]/revisions/summarize.ts",
+    "src/pages/api/proposals/[id]/summarize.ts",
+    "src/pages/api/rpc/[[...rest]].ts",
+    "src/pages/api/saveAnalysis/[topicId].ts",
+    "src/pages/api/screen.ts",
+    "src/types/agent-ui.ts",
+    "src/types/agui-events.ts",
+    "src/types/analytics.ts",
+    "src/types/api.ts",
+    "src/types/better-near-auth.d.ts",
+    "src/types/discourse-linkage.ts",
+    "src/types/discourse.ts",
+    "src/types/evaluation.ts",
+    "src/types/every-plugin.d.ts",
+    "src/types/global.d.ts",
+    "src/types/jsdom.d.ts",
+    "src/types/modules.d.ts",
+    "src/types/proposals.ts",
+    "src/types/summaries.ts",
+    "src/utils/cache-utils.ts",
+    "src/utils/discourse/index.ts",
+    "src/utils/discourse/storage.ts",
+    "src/utils/errors/near-errors.ts",
+    "src/utils/errors/screening-errors.ts",
+    "src/utils/json.ts",
+    "src/utils/metadata.ts",
+    "src/utils/model-utils.ts",
+    "src/utils/rateLimitHelpers.ts",
+    "src/utils/screening/screen-proposal.ts",
+    "src/utils/tailwind.ts",
+    "src/utils/ui/diff.ts",
+    "src/utils/ui/html.ts",
+    "src/utils/ui/index.ts",
+    "src/utils/ui/revision-content.ts",
+    "src/utils/wallet/guards.ts",
+    "tests/e2e/helpers/auth-mocks.ts",
+    "tests/e2e/helpers/playwright-guard.ts",
+    "tests/e2e/helpers/playwright-mocks.ts",
+    "tests/e2e/helpers/setup.ts",
+    "tests/e2e/utils/mock-wallet.ts",
+    "tests/types/vi-mocks.d.ts",
+    "tests/unit/api/auth-all.test.ts",
+    "tests/unit/api/chat-completions.test.ts",
+    "tests/unit/api/discourse-handlers.test.ts",
+    "tests/unit/hooks/proposal-detail.test.ts",
+    "tests/unit/hooks/useNear.test.ts",
+    "tests/unit/hooks/useProposalDetail.test.ts",
+    "tests/unit/hooks/useProposalPublishing.test.ts",
+    "tests/unit/lib/analytics.test.ts",
+    "tests/unit/lib/near-ai/verification.test.ts",
+    "tests/unit/lib/retry.test.ts",
+    "tests/unit/types/agent-ui.test.ts",
+    "tests/unit/utils/cache-utils.test.ts",
+    "tests/unit/utils/discourse-storage.test.ts",
+    "tests/unit/utils/metadata.test.ts",
+    "tests/unit/utils/model-utils.test.ts",
+    "tests/unit/utils/revision-content.test.ts"
+  ]
+}

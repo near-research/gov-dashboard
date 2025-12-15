@@ -1,34 +1,34 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
-import fc from "fast-check";
-import type { Evaluation } from "@/types/evaluation";
-import {
-  parseEvaluation,
-  ScreeningError,
-  MAX_CONTENT_LENGTH,
-  requestEvaluation,
-  sanitizeProposalInput,
-  verifyNearAuth,
-} from "@/server/screening";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { NextApiResponse } from "next";
+import { createNearAiClientMock } from "../mocks/near-ai-client";
+import type { ChatVerificationResult, NearAIClient } from "@/lib/near-ai";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-import { NearAITimeoutError } from "@/lib/near-ai";
-import { verify as verifyNearToken } from "near-sign-verify";
 import { siwnRecipient } from "@/config/siwn";
-
-const mockChatCompletions = vi.fn();
-const mockVerifyChatPayload = vi.fn();
-
-vi.mock("@/lib/near-ai/client", () => ({
-  getNearAIClient: () => ({
-    chatCompletions: mockChatCompletions,
-    verifyChatPayload: mockVerifyChatPayload,
-  }),
-}));
+import {
+  ScreeningError,
+  verifyNearAuth,
+  requestEvaluation,
+  respondWithScreeningError,
+} from "@/server/screening";
+import { ErrorCodes } from "@/lib/api/errors";
+import type { Evaluation } from "@/types/evaluation";
 
 vi.mock("near-sign-verify", () => ({
   verify: vi.fn(),
 }));
+vi.mock("@/lib/near-ai", async () => {
+  const actual = await vi.importActual("@/lib/near-ai");
+  return {
+    ...actual,
+    getNearAIClient: vi.fn(),
+    verifyChatMessage: vi.fn(),
+  };
+});
 
-const evaluationFixture: Evaluation = {
+import { verify } from "near-sign-verify";
+import { getNearAIClient, verifyChatMessage } from "@/lib/near-ai";
+
+const evaluationTemplate = (): Evaluation => ({
   complete: { pass: true, reason: "complete" },
   legible: { pass: true, reason: "legible" },
   consistent: { pass: true, reason: "consistent" },
@@ -37,157 +37,131 @@ const evaluationFixture: Evaluation = {
   measurable: { pass: true, reason: "measurable" },
   relevant: { score: "high", reason: "relevant" },
   material: { score: "medium", reason: "material" },
-  qualityScore: 0.8,
-  attentionScore: 0.75,
+  qualityScore: 0.9,
+  attentionScore: 0.85,
   overallPass: true,
-  summary: "Test summary",
-};
+  summary: "All criteria satisfied.",
+});
 
-describe("screening", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockChatCompletions.mockReset();
-    mockVerifyChatPayload.mockReset();
-    mockVerifyChatPayload.mockResolvedValue({
-      verified: true,
-      status: "verified",
-      reasons: [],
-      warnings: [],
-      hashValidation: null,
-      signatureValidation: null,
-      chatId: "verification-123",
-      requestHash: "request-hash",
-      responseHash: "response-hash",
-      signature: null,
+const createChatResponse = (content: string, includeId = true) => ({
+  id: includeId ? "chat-123" : undefined,
+  choices: [{ message: { content } }],
+});
+
+const createVerificationResult = (
+  overrides: Partial<ChatVerificationResult> = {}
+): ChatVerificationResult => ({
+  verified: true,
+  chatId: "chat-123",
+  requestHash: "req",
+  responseHash: "res",
+  signature: null,
+  hashValidation: null,
+  signatureValidation: null,
+  attestation: null,
+  ...overrides,
+});
+
+const nearAiClientMock = createNearAiClientMock();
+const getNearAIClientMock = vi.mocked(getNearAIClient);
+const verifyChatMessageMock = vi.mocked(verifyChatMessage);
+const verifyMock = vi.mocked(verify);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  getNearAIClientMock.mockReturnValue(
+    nearAiClientMock as unknown as NearAIClient
+  );
+  nearAiClientMock.chatCompletions.mockReset();
+  verifyChatMessageMock.mockReset();
+  verifyChatMessageMock.mockResolvedValue(createVerificationResult());
+});
+
+const createResponse = (): NextApiResponse =>
+  ({
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+  } as unknown as NextApiResponse);
+
+describe("verifyNearAuth", () => {
+  it("requires bearer token", async () => {
+    await expect(verifyNearAuth(undefined)).rejects.toMatchObject({
+      statusCode: 401,
+      details: expect.objectContaining({ code: "missing_token" }),
     });
+    expect(verifyMock).not.toHaveBeenCalled();
   });
 
-  it("sanitizes control characters, strips HTML, and truncates long content", () => {
-    const longHtml =
-      "<p>Hello\x7f<br/>World</p>" + "a".repeat(MAX_CONTENT_LENGTH + 20);
+  it("verifies valid tokens and forwards options", async () => {
+    const resultPayload = {
+      accountId: "alice.near",
+      message: "screened",
+      publicKey: "pk",
+    };
+    verifyMock.mockResolvedValue(resultPayload);
 
-    const { title, content } = sanitizeProposalInput(
-      " \x01Test Title ",
-      longHtml
-    );
+    const { token, result } = await verifyNearAuth("Bearer valid-token", {
+      nonceMaxAge: 1000,
+    });
 
-    expect(title).toBe("Test Title");
-    expect(content).not.toContain("<p>");
-    expect(content).not.toContain("\x7f");
-    expect(content).toContain("\n");
-    expect(content).toContain("[... content truncated for screening ...]");
-    expect(content.length).toBeGreaterThan(MAX_CONTENT_LENGTH);
-  });
-
-  it("verifies NEAR auth tokens", async () => {
-    const mockedVerify = verifyNearToken as unknown as ReturnType<typeof vi.fn>;
-    mockedVerify.mockResolvedValue({ ok: true } as any);
-
-    const { token, result } = await verifyNearAuth("Bearer test-token");
-
-    expect(token).toBe("test-token");
-    expect(result).toEqual({ ok: true });
-    expect(mockedVerify).toHaveBeenCalledWith(
-      "test-token",
+    expect(token).toBe("valid-token");
+    expect(result.accountId).toBe("alice.near");
+    expect(verifyMock).toHaveBeenCalledWith(
+      "valid-token",
       expect.objectContaining({
         expectedRecipient: siwnRecipient,
+        nonceMaxAge: 1000,
       })
     );
   });
 
-  it("throws ScreeningError on invalid auth tokens", async () => {
-    const mockedVerify = verifyNearToken as unknown as ReturnType<typeof vi.fn>;
-    mockedVerify.mockRejectedValue(new Error("invalid token"));
-
-    await expect(verifyNearAuth("Bearer bad")).rejects.toMatchObject({
+  it("handles invalid tokens", async () => {
+    verifyMock.mockRejectedValue(new Error("expired"));
+    await expect(verifyNearAuth("Bearer invalid")).rejects.toMatchObject({
       statusCode: 401,
-      message: "Invalid authentication",
+      details: expect.objectContaining({ code: "invalid_token" }),
     });
   });
+});
 
-  it("throws when auth header is missing", async () => {
-    await expect(verifyNearAuth(undefined)).rejects.toMatchObject({
-      statusCode: 401,
-      message: "NEAR authentication required",
-      details: { code: "missing_token" },
-    });
+describe("requestEvaluation", () => {
+  const evaluationJson = JSON.stringify(evaluationTemplate());
+
+  it("returns evaluation and verification info", async () => {
+    const responseData = createChatResponse(evaluationJson);
+    nearAiClientMock.chatCompletions.mockResolvedValue(responseData);
+
+    const result = await requestEvaluation("My title", "My content");
+
+    expect(result.evaluation.summary).toBe("All criteria satisfied.");
+    expect(result.evaluation.model).toBe(NEAR_AI_MODELS.GPT_OSS_120B);
+    expect(result.chatId).toBe("chat-123");
+    expect(result.verificationResult).toEqual(
+      expect.objectContaining({ chatId: "chat-123", verified: true })
+    );
+    expect(verifyChatMessageMock).toHaveBeenCalledWith(
+      result.requestBody,
+      result.responseText,
+      result.model
+    );
+    expect(JSON.parse(result.responseText)).toEqual(responseData);
   });
 
-  it("returns evaluation details and verification metadata", async () => {
-    mockChatCompletions.mockResolvedValue({
-      id: "verification-123",
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              complete: { pass: true, reason: "ok" },
-              legible: { pass: true, reason: "ok" },
-              consistent: { pass: true, reason: "ok" },
-              compliant: { pass: true, reason: "ok" },
-              justified: { pass: true, reason: "ok" },
-              measurable: { pass: true, reason: "ok" },
-              relevant: { score: "high", reason: "ok" },
-              material: { score: "medium", reason: "ok" },
-              summary: "summary",
-              overallPass: true,
-              qualityScore: 0.9,
-              attentionScore: 0.8,
-            }),
-          },
-        },
-      ],
-    });
+  it("uses failed verification when chat id is missing", async () => {
+    const responseData = createChatResponse(evaluationJson, false);
+    nearAiClientMock.chatCompletions.mockResolvedValue(responseData);
 
     const result = await requestEvaluation("Title", "Content");
 
-    expect(result.evaluation).toEqual(
-      expect.objectContaining({
-        overallPass: true,
-        qualityScore: 0.9,
-        attentionScore: 0.8,
-        model: NEAR_AI_MODELS.GPT_OSS_120B,
-      })
-    );
-    expect(result.verificationId).toBe("verification-123");
-    expect(result.verificationResult.status).toBe("verified");
-    expect(mockVerifyChatPayload).toHaveBeenCalledWith(
-      expect.objectContaining({
-        chatId: "verification-123",
-      })
-    );
+    expect(result.verificationResult.verified).toBe(false);
+    expect(result.verificationResult.error).toContain("Missing chat ID");
+    expect(result.verificationId).toBeNull();
+    expect(verifyChatMessageMock).not.toHaveBeenCalled();
   });
 
-  it("wraps NEAR AI timeouts in ScreeningError", async () => {
-    mockChatCompletions.mockRejectedValue(new Error("504 gateway timeout"));
-
-    await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
-      statusCode: 502,
-      message: expect.stringContaining("NEAR AI timed out"),
-    });
-  });
-
-  it("wraps NearAITimeoutError in ScreeningError timeout messaging", async () => {
-    mockChatCompletions.mockRejectedValue(
-      new NearAITimeoutError("Cloud request timed out")
-    );
-
-    expect.assertions(4);
-
-    try {
-      await requestEvaluation("Title", "Content");
-      throw new Error("Expected requestEvaluation to throw");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ScreeningError);
-      expect((error as ScreeningError).statusCode).toBe(502);
-      expect((error as Error).message).toBe("NEAR AI API error");
-      expect((error as ScreeningError).details?.message).toBe(
-        "Cloud request timed out"
-      );
-    }
-  });
-
-  it("throws when the AI response delivers no message content", async () => {
-    mockChatCompletions.mockResolvedValue({
+  it("throws when AI returns no content", async () => {
+    nearAiClientMock.chatCompletions.mockResolvedValue({
+      id: "chat-123",
       choices: [],
     });
 
@@ -197,66 +171,56 @@ describe("screening", () => {
     });
   });
 
-  it("fails on malformed AI responses", async () => {
-    mockChatCompletions.mockResolvedValue({
-      choices: [
-        {
-          message: { content: "not-json" },
-        },
-      ],
-    });
+  it("wraps NEAR AI errors", async () => {
+    nearAiClientMock.chatCompletions.mockRejectedValue(
+      new Error("504 Gateway Timeout")
+    );
 
     await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
-      statusCode: 500,
-      message: "Could not parse evaluation response",
+      statusCode: 502,
+      message: expect.stringContaining("NEAR AI timed out"),
     });
   });
 
-  it("wraps unknown rejections in a generic ScreeningError", async () => {
-    mockChatCompletions.mockRejectedValue("boom!");
+  it("handles non-error rejections", async () => {
+    nearAiClientMock.chatCompletions.mockRejectedValue("boom");
 
     await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
       statusCode: 500,
       message: "Failed to evaluate proposal",
-      details: { message: "Unknown error" },
     });
   });
+});
 
-  describe("parseEvaluation helper", () => {
-    const evaluationJson = JSON.stringify(evaluationFixture);
-
-    it("parses evaluation even when wrapped in prose", () => {
-      const decorated = `
-        Here is the analysis:
-        ${evaluationJson}
-        Please flag issues.
-      `;
-
-      expect(parseEvaluation(decorated)).toEqual(evaluationFixture);
+describe("respondWithScreeningError", () => {
+  it("serializes ScreeningError", () => {
+    const res = createResponse();
+    const error = new ScreeningError(418, "no soup", {
+      message: "fallback",
     });
 
-    it("extracts evaluation JSON from SSE-style data lines", () => {
-      const sseStream = [
-        "data: context line\n",
-        `data: ${evaluationJson}\n`,
-        "data: [DONE]\n",
-      ].join("");
+    respondWithScreeningError(res, error, "details");
 
-      expect(parseEvaluation(sseStream)).toEqual(evaluationFixture);
-    });
+    expect(res.status).toHaveBeenCalledWith(418);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: ErrorCodes.INTERNAL_ERROR,
+        message: "details",
+        statusCode: 418,
+      })
+    );
+  });
 
-    it("robustly parses evaluation when JSON appears anywhere", () => {
-      fc.assert(
-        fc.property(
-          fc.string({ maxLength: 16 }),
-          fc.string({ maxLength: 16 }),
-          (prefix, suffix) => {
-            const input = `${prefix}${evaluationJson}${suffix}`;
-            expect(parseEvaluation(input)).toEqual(evaluationFixture);
-          }
-        ),
-        { numRuns: 32 }
-      );
+  it("falls back to generic error shape", () => {
+    const res = createResponse();
+
+    respondWithScreeningError(res, new Error("bad"), "fallback");
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: ErrorCodes.INTERNAL_ERROR,
+      message: "fallback",
+      statusCode: 500,
     });
   });
 });

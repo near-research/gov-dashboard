@@ -29,61 +29,6 @@
   "proof": {
     "requestHash": "req-hash",
     "responseHash": "res-hash",
-    "nonce": "nonce-456",
-    "arch": "x86_64",
-    "deviceCertHash": "device-hash",
-    "rimHash": "rim-hash",
-    "ueid": "ueid-123",
-    "measurements": [
-      "sha256:abcd"
-    ]
-  },
-  "remoteProof": {
-    "results": {
-      "verified": true,
-      "reasons": [
-        "Mock verification returned success"
-      ]
-    },
-    "requestHash": "req-hash",
-    "responseHash": "res-hash",
-    "nonceCheck": {
-      "valid": true
-    },
-    "nras": {
-      "verified": true,
-      "jwt": "mock-jwt",
-      "claims": {
-        "x-nvidia-overall-att-result": true,
-        "hwmodel": "NVIDIA Mock GPU",
-        "x-nvidia-gpu-driver-version": "520.45",
-        "x-nvidia-gpu-vbios-version": "VBIOS-MOCK",
-        "eat_nonce": "nonce-456",
-        "secboot": true,
-        "dbgstat": "OK"
-      },
-      "gpus": {
-        "gpu0": "mock-gpu-jwt"
-      }
-    },
-    "attestation": {
-      "gateway_attestation": {
-        "nvidia_payload": "{\"hwmodel\":\"NVIDIA Mock GPU\",\"x-nvidia-gpu-driver-version\":\"520.45\",\"x-nvidia-gpu-vbios-version\":\"VBIOS-MOCK\",\"secboot\":true,\"dbgstat\":\"OK\",\"eat_nonce\":\"nonce-456\",\"arch\":\"x86_64\",\"deviceCertHash\":\"device-hash\",\"rimHash\":\"rim-hash\",\"ueid\":\"ueid-123\",\"measurements\":[\"sha256:abcd\"]}"
-      },
-      "model_attestations": [
-        {
-          "nvidia_payload": "{\"arch\":\"x86_64\",\"nonce\":\"nonce-456\",\"measurements\":[\"sha256:abcd\"]}",
-          "intel_quote": "mock-intel-quote"
-        }
-      ],
-      "signature": {
-        "text": "mock-signed-text",
-        "signing_address": "0xabcdef"
-      }
-    },
-    "signature": {
-      "text": "mock-signed-text",
-      "signing_address": "0xabcdef"
-    }
+    "nonce": "nonce-456"
   }
 }

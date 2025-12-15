@@ -26,10 +26,12 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import {
   clearDiscourseUserApiKey,
   saveDiscourseUserApiKey,
 } from "@/utils/discourse";
+import type { DiscourseLinkage } from "@/types/discourse-linkage";
 
 type DiscourseUserResponse = {
   user_badges: Array<{
@@ -45,6 +47,42 @@ type DiscourseUserResponse = {
     time_read?: number;
     last_seen_at?: string | null;
     created_at?: string | null;
+  };
+};
+
+type LinkData = {
+  discourseUsername: string;
+  discourseUserId?: number;
+  nearAccount?: string;
+  userApiKey?: string;
+};
+
+const toLinkData = (value: unknown): LinkData | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.discourseUsername !== "string") {
+    return null;
+  }
+  const rawId = record.discourseUserId;
+  const numericId =
+    typeof rawId === "number"
+      ? rawId
+      : typeof rawId === "string" && rawId.trim().length
+      ? Number(rawId)
+      : undefined;
+
+  return {
+    discourseUsername: record.discourseUsername,
+    discourseUserId:
+      typeof numericId === "number" && Number.isFinite(numericId)
+        ? numericId
+        : undefined,
+    nearAccount:
+      typeof record.nearAccount === "string" ? record.nearAccount : undefined,
+    userApiKey:
+      typeof record.userApiKey === "string" ? record.userApiKey : undefined,
   };
 };
 
@@ -81,7 +119,7 @@ export default function Profile() {
     walletLoading,
     nearClient,
   } = useAuth();
-  const [discourseLink, setDiscourseLink] = useState<any>(null);
+  const [discourseLink, setDiscourseLink] = useState<LinkData | null>(null);
   const [discourseCheckFailed, setDiscourseCheckFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [nearBalance, setNearBalance] = useState<string | null>(null);
@@ -110,16 +148,17 @@ export default function Profile() {
     }
 
     try {
-      const linkData = await client.discourse.getLinkage(
+      const rawLinkData = await client.discourse.getLinkage(
         nearAccountId ? { nearAccount: nearAccountId } : {}
       );
-      setDiscourseLink(linkData);
-      if ((linkData as any)?.userApiKey) {
-        saveDiscourseUserApiKey((linkData as any).userApiKey);
+      const normalized = toLinkData(rawLinkData);
+      setDiscourseLink(normalized);
+      if (normalized?.userApiKey) {
+        saveDiscourseUserApiKey(normalized.userApiKey);
       }
       setDiscourseCheckFailed(false);
     } catch (error) {
-      console.log("Discourse plugin server not available");
+      logger.debug("Discourse plugin server not available");
       setDiscourseCheckFailed(true);
     }
   }, [nearAccountId, user?.id]);
@@ -140,7 +179,7 @@ export default function Profile() {
         }
       } catch (error) {
         if (!cancelled) {
-          console.error("Failed to fetch NEAR balance:", error);
+          logger.error("Failed to fetch NEAR balance:", error);
           setNearBalance(null);
         }
       }
@@ -155,7 +194,8 @@ export default function Profile() {
   }, [nearClient, nearAccountId]);
 
   useEffect(() => {
-    if (!discourseLink?.discourseUsername) {
+    const username = discourseLink?.discourseUsername;
+    if (!username) {
       setBadges([]);
       setBadgesError("");
       setDiscourseProfile(null);
@@ -168,9 +208,7 @@ export default function Profile() {
       setBadgesError("");
       try {
         const response = await fetch(
-          `/api/discourse/user/${encodeURIComponent(
-            discourseLink.discourseUsername
-          )}`,
+          `/api/discourse/user/${encodeURIComponent(username)}`,
           { signal: controller.signal }
         );
         if (!response.ok) {
@@ -202,7 +240,7 @@ export default function Profile() {
         });
       } catch (error) {
         if (!controller.signal.aborted) {
-          console.error("Failed to load badges:", error);
+          logger.error("Failed to load badges:", error);
           setBadgesError("Unable to load badges right now.");
           setDiscourseProfile(null);
         }
@@ -237,7 +275,7 @@ export default function Profile() {
       clearDiscourseUserApiKey();
       toast.success("Discourse account unlinked");
     } catch (error) {
-      console.error("Failed to unlink Discourse:", error);
+      logger.error("Failed to unlink Discourse:", error);
       toast.error(
         error instanceof Error
           ? error.message
@@ -406,7 +444,7 @@ export default function Profile() {
               setDiscourseLink(result);
             }}
             onError={(error) => {
-              console.error("Discourse linking error:", error);
+              logger.error("Discourse linking error:", error);
             }}
           />
         )}

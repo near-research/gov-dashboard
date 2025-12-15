@@ -77,12 +77,32 @@ cp .env.example .env
 
 ### Environment Variables
 
-Create `.env` file with:
+Create a `.env` based on `.env.example` and keep sensitive values out of source control. The dashboard relies on all of the following:
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/neargov
-NEAR_AI_CLOUD_API_KEY=your_api_key_here
-```
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql://user:password@localhost:5432/neargov` | Postgres connection string for storing screening results and running migrations. |
+| `NEAR_AI_CLOUD_API_KEY` | `your_api_key_here` | NEAR AI Cloud key required for all evaluation/verification calls. Rotate when you rotate the API key. |
+| `APP_BASE_URL` | `https://gov.near.org` | Trusted base URL used by server-side jobs, verification prefetch, and the plugin runtime. |
+| `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | Client-side origin used by hooks and Playwright/Vitest tests; update for non-default hosts. |
+| `NEXT_PUBLIC_NEAR_DOMAIN` | `gov.near.org` | Domain shown to users during SIWN; must match the wallet domain being used. |
+| `NEXT_PUBLIC_NEAR_NETWORK` | `mainnet` | NEAR network for wallet connections; swap to `testnet` when testing against NEAR testnet. |
+| `NEAR_RECIPIENT` | `gov.near` | SIWN recipient account; align with the domain/network above. |
+| `BETTER_AUTH_SECRET` | (empty) | Secret issued by Better Auth; configure in production and keep the token string secret. |
+| `BETTER_AUTH_URL` | `http://localhost:3000` | URL where Better Auth payloads are parsed; point to your deployment host. |
+| `DISCOURSE_URL` | `https://gov.near.org` | Root Discourse URL for fetching proposals/discussions. |
+| `DISCOURSE_API_KEY` | (empty) | API key for the Discourse plugin runtime; required for authenticated requests. |
+| `DISCOURSE_API_USERNAME` | (empty) | Discourse username tied to the above API key (often `system`). |
+| `DISCOURSE_CLIENT_ID` | (empty) | Optional client ID used when overriding the Discourse plugin with `DISCOURSE_PLUGIN_URL`. |
+| `DISCOURSE_PLUGIN_URL` | (empty) | Optional URL that points to a locally built plugin bundle for development or testing. |
+| `NEXT_PUBLIC_HARNESS_MODE` | `auto` | Internal harness mode that mirrors the test fixture setup; leave as `auto` unless you are customizing the testing harness. |
+| `VERIFY_USE_MOCKS` | `false` | Set to `true` to route verification/proof requests through fixtures instead of hitting live NEAR AI/verification services. |
+| `DEBUG` | `false` | Set to `true` to enable verbose Bun/Next logs in production when debugging issues. |
+| `TELEMETRY_ENABLED` | `true` | Enables telemetry collection; turn off in privacy-sensitive environments. |
+| `TELEMETRY_DEBUG` | `false` | Prints telemetry events to the console during local development. |
+| `VERIFICATION_SERVICE_TOKEN` | (empty) | Optional bearer-free token used by `/api/verification/proof` to skip wallet auth when prefetching. |
+| `INTEL_TDX_ATTESTATION_URL` | (empty) | Intel TDX verifier endpoint; set alongside `INTEL_TDX_API_KEY` to enable attestation flows. |
+| `INTEL_TDX_API_KEY` | (empty) | API key used to sign Intel TDX attestation requests. |
 
 ### Verification & Attestation
 

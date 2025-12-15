@@ -10,6 +10,7 @@ export default defineConfig({
       "tests/unit/**/*.{test,spec}.{ts,tsx}",
       "tests/verification/**/*.test.ts",
       "tests/services/**/*.test.ts",
+      "src/lib/near-ai/verification/__tests__/**/*.test.ts",
     ],
     alias: {
       "@": path.resolve(__dirname, "./src"),

@@ -55,7 +55,7 @@ describe("NearAIClient", () => {
     await expect(result).rejects.toBeInstanceOf(NearAIConfigurationError);
   });
 
-  it("attaches verification headers and parses successful responses", async () => {
+  it("sends authorization and request id headers", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -67,16 +67,12 @@ describe("NearAIClient", () => {
       baseUrl: "https://api",
     });
     await client.chatCompletions(requestPayload, {
-      verificationId: "ver-id",
-      verificationNonce: "nonce",
       requestId: "req-1",
     });
 
     const [, init] = fetchMock.mock.calls[0];
     const headers = (init as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer key-123");
-    expect(headers["X-Verification-Id"]).toBe("ver-id");
-    expect(headers["X-Nonce"]).toBe("nonce");
     expect(headers["X-Request-Id"]).toBe("req-1");
   });
 
@@ -202,13 +198,10 @@ describe("NearAIClient", () => {
     fetchMock.mockResolvedValue(mockResponse);
 
     const client = new NearAIClient({ apiKey: "stream-key" });
-    const response = await client.chatCompletionsStream(
-      { model: "stream-model", messages: [] },
-      {
-        verificationId: "ver",
-        verificationNonce: "nonce",
-      }
-    );
+    const response = await client.chatCompletionsStream({
+      model: "stream-model",
+      messages: [],
+    });
 
     expect(response).toBe(mockResponse);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -216,8 +209,7 @@ describe("NearAIClient", () => {
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer stream-key");
-    expect(headers["X-Verification-Id"]).toBe("ver");
-    expect(headers["X-Nonce"]).toBe("nonce");
+    expect(headers["X-Request-Id"]).toMatch(/[0-9a-f-]{8,}/i);
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe("stream-model");
     expect(body.stream).toBe(true);

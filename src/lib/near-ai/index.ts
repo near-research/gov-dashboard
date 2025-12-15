@@ -1,3 +1,4 @@
+// Client
 export {
   NearAIClient,
   getNearAIClient,
@@ -5,12 +6,17 @@ export {
   resetNearAIClient,
 } from "./client";
 
+// Errors
 export {
   NearAIError,
   NearAITimeoutError,
   NearAIConfigurationError,
 } from "./errors";
 
+// Verification
+export * from "./verification";
+
+// Types
 export type {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -18,14 +24,7 @@ export type {
   ChatMessage,
   ChatMessageRole,
   ToolChoice,
-} from "@/types/near-ai";
+} from "./types";
 
-export type {
-  VerificationSession,
-  VerificationResult,
-  NrasVerificationResult,
-  SignatureVerificationResult,
-  NonceCheck,
-  SignaturePayload,
-  NearAIVerificationOptions,
-} from "@/types/verification";
+// Streaming
+export { streamChatCompletion, type StreamChatResult } from "./stream";

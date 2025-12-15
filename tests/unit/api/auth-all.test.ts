@@ -145,16 +145,22 @@ describe("auth proxy", () => {
     expect(res.getBody()).toBe("boom");
   });
 
-  it("rejects when auth handler throws configuration errors", async () => {
+  it("returns an error response when auth handler throws configuration errors", async () => {
     (auth.handler as any).mockRejectedValue(new Error("Missing env"));
 
     const req = createReq();
     const res = createRes();
 
-    await expect(handler(req, res)).rejects.toThrow("Missing env");
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(502);
+    expect(res.getBody()).toEqual({
+      error: "Authentication proxy error",
+      message: "Missing env",
+    });
   });
 
-  it("propagates NearAI timeout errors for observability", async () => {
+  it("surfaces NearAI timeout failures from the auth handler", async () => {
     (auth.handler as any).mockRejectedValue(
       new NearAITimeoutError("Request timeout")
     );
@@ -162,7 +168,13 @@ describe("auth proxy", () => {
     const req = createReq();
     const res = createRes();
 
-    await expect(handler(req, res)).rejects.toBeInstanceOf(NearAITimeoutError);
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(504);
+    expect(res.getBody()).toEqual({
+      error: "Authentication proxy error",
+      message: "Request timeout",
+    });
   });
 
   it("serializes JSON payloads once and marks duplex", async () => {

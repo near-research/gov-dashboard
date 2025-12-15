@@ -21,16 +21,54 @@ import { isUserRejected, shouldRetryNonce } from "@/lib/auth/retry";
 import { Loader2, LogOut, User, Plus } from "lucide-react";
 import NearLogo from "/public/near-logo.svg";
 import { siwnRecipient } from "@/config/siwn";
+import { logger } from "@/lib/logger";
 
-const formatAuthError = (err: any) => {
-  const code = err?.code ?? err?.data?.code;
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getNestedRecord = (
+  record: Record<string, unknown> | null,
+  key: string
+): Record<string, unknown> | null => toRecord(record?.[key]);
+
+const getErrorCodeFromUnknown = (error: unknown): string | number | undefined => {
+  const record = toRecord(error);
+  if (!record) return undefined;
+  const code =
+    record.code ??
+    getNestedRecord(record, "data")?.code ??
+    getNestedRecord(record, "error")?.code;
+
+  if (typeof code === "string" || typeof code === "number") {
+    return code;
+  }
+  return undefined;
+};
+
+const getErrorMessageFromUnknown = (
+  error: unknown,
+  fallback = "Authentication failed"
+): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.length > 0) {
+    return error;
+  }
+  return fallback;
+};
+
+const formatAuthError = (err: unknown) => {
+  const code = getErrorCodeFromUnknown(err);
   if (code === "NETWORK_MISMATCH") {
     return "Connected wallet is on a different network.";
   }
   if (code === "NONCE_NOT_FOUND") {
     return "Session expired. Retrying…";
   }
-  return err?.message || "Authentication failed";
+  return getErrorMessageFromUnknown(err);
 };
 
 export const Navigation = () => {
@@ -76,7 +114,7 @@ export const Navigation = () => {
           nearAccount: displayAccountId,
         });
         setIsDiscourseLinked(!!data);
-      } catch (error: any) {
+      } catch (error: unknown) {
         setIsDiscourseLinked(false);
       } finally {
         setCheckingDiscourse(false);
@@ -110,14 +148,14 @@ export const Navigation = () => {
     try {
       await attemptSignIn();
       return;
-    } catch (initialError: any) {
-      let errorToReport = initialError;
+    } catch (initialError: unknown) {
+      let errorToReport: unknown = initialError;
       if (shouldRetryNonce(initialError) && !retriedNonce) {
         retriedNonce = true;
         try {
           await attemptSignIn();
           return;
-        } catch (retryError: any) {
+        } catch (retryError: unknown) {
           errorToReport = retryError;
         }
       }
@@ -126,12 +164,19 @@ export const Navigation = () => {
       if (isUserRejected(errorToReport)) {
         try {
           await walletSignOut();
-        } catch (resetError) {
-          console.error("Failed to reset wallet after rejection:", resetError);
+        } catch (resetError: unknown) {
+          logger.error(
+            "Failed to reset wallet after rejection:",
+            getErrorMessageFromUnknown(resetError),
+            resetError
+          );
         }
       } else {
         track("wallet_connect_failed", {
-          props: { message, code: errorToReport?.code },
+          props: {
+            message,
+            code: getErrorCodeFromUnknown(errorToReport),
+          },
         });
         toast.error(message);
       }
@@ -143,8 +188,12 @@ export const Navigation = () => {
     try {
       await walletSignOut();
       toast.success("Signed out");
-    } catch (error) {
-      console.error("Failed to sign out:", error);
+    } catch (error: unknown) {
+      logger.error(
+        "Failed to sign out:",
+        getErrorMessageFromUnknown(error),
+        error
+      );
       toast.error("Failed to sign out");
     }
   };

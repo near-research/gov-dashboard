@@ -5,6 +5,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "sonner";
 import { isUserRejected, shouldRetryNonce } from "@/lib/auth/retry";
+import { logger } from "@/lib/logger";
+
+const getErrorMessageFromUnknown = (
+  error: unknown,
+  fallback = "Failed to sign in"
+) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.length > 0) {
+    return error;
+  }
+  return fallback;
+};
 
 export function SignInForm() {
   const router = useRouter();
@@ -44,15 +58,15 @@ export function SignInForm() {
 
     try {
       await executeSignIn();
-    } catch (err: any) {
-      let errorToReport = err;
+    } catch (err: unknown) {
+      let errorToReport: unknown = err;
 
       if (shouldRetryNonce(err) && !retriedNonce) {
         retriedNonce = true;
         try {
           await executeSignIn();
           return;
-        } catch (retryErr: any) {
+        } catch (retryErr: unknown) {
           errorToReport = retryErr;
         }
       }
@@ -60,7 +74,7 @@ export function SignInForm() {
       const rejected = isUserRejected(errorToReport);
       const message = rejected
         ? "Sign in cancelled"
-        : errorToReport?.message || "Failed to sign in";
+        : getErrorMessageFromUnknown(errorToReport);
       setError(message);
       if (!rejected) {
         toast.error(message);
@@ -73,7 +87,7 @@ export function SignInForm() {
       await walletSignOut();
       toast.success("Disconnected");
     } catch (err) {
-      console.error("Disconnect error:", err);
+      logger.error("Disconnect error:", err);
     }
   };
 

@@ -13,7 +13,7 @@ describeSpec("Playwright regression flows", () => {
   }) => {
     registerPlaywrightMocks(page);
 
-    await page.goto("/playwright/screening", { waitUntil: "domcontentloaded" });
+    await page.goto("/test/playwright/screening", { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
     await dismissPopups(page);
     await expect(
@@ -33,7 +33,7 @@ describeSpec("Playwright regression flows", () => {
     await expect(page.getByText(/Mock screening result/)).toBeVisible();
     await expect(page.getByText(/AI Screened & Approved/)).toBeVisible();
 
-    await page.goto("/playwright/summaries", { waitUntil: "domcontentloaded" });
+    await page.goto("/test/playwright/summaries", { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
     await dismissPopups(page);
     await page.click("button:has-text('Summarize Discussion')");

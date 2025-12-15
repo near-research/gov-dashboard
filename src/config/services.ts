@@ -1,21 +1,34 @@
-const isProd = process.env.NODE_ENV === "production";
+import { logger } from "@/lib/logger";
+import { DISCOURSE_URLS, NEAR_AI_URLS } from "@/constants/services";
 
-const DEFAULT_PROD_DISCOURSE = "https://gov.near.org";
-const DEFAULT_NON_PROD_DISCOURSE = "https://discuss.near.vote";
+const isProd = process.env.NODE_ENV === "production";
 
 const resolvedDiscourse =
   process.env.NEXT_PUBLIC_DISCOURSE_URL ||
   process.env.DISCOURSE_URL ||
-  (isProd ? DEFAULT_PROD_DISCOURSE : DEFAULT_NON_PROD_DISCOURSE);
+  (isProd ? DISCOURSE_URLS.PRODUCTION : DISCOURSE_URLS.FORUM);
 
 if (!process.env.NEXT_PUBLIC_DISCOURSE_URL && !process.env.DISCOURSE_URL) {
-  console.warn(
+  logger.warn(
     `[Config] Using default Discourse endpoint (${
-      isProd ? DEFAULT_PROD_DISCOURSE : DEFAULT_NON_PROD_DISCOURSE
+      isProd ? DISCOURSE_URLS.PRODUCTION : DISCOURSE_URLS.FORUM
     }). Set NEXT_PUBLIC_DISCOURSE_URL or DISCOURSE_URL to point at your environment.`
   );
 }
 
-export const servicesConfig = {
+export type ServicesConfig = {
+  discourseBaseUrl: string;
+  nearAI?: {
+    baseUrl: string;
+  };
+};
+
+export const servicesConfig: ServicesConfig = {
   discourseBaseUrl: resolvedDiscourse.replace(/\/$/, ""),
+  nearAI: {
+    baseUrl: (process.env.NEAR_AI_URL || NEAR_AI_URLS.PRODUCTION).replace(
+      /\/$/,
+      ""
+    ),
+  },
 };

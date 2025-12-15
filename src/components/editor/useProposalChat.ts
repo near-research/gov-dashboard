@@ -11,8 +11,9 @@ import {
 } from "@/types/agui-events";
 import type { Evaluation } from "@/types/evaluation";
 import { diffPartialText } from "@/utils/ui/diff";
-import type { Message, ToolCallState } from "./ProposalEditor";
+import type { Message, ToolCallState } from "./types";
 import type { PendingDelta, ProposalState } from "./ProposalEditorContext";
+import { logger } from "@/lib/logger";
 
 type VerificationProof = {
   stage: "initial_reasoning" | "final_synthesis";
@@ -126,7 +127,7 @@ export const useProposalChat = ({
         parentRunId: parsed?.parentRunId,
       };
     } catch (error) {
-      console.warn("[useProposalChat] Failed to hydrate session:", error);
+      logger.warn("[useProposalChat] Failed to hydrate session:", error);
     }
   }, [sessionKey, setProposalState]);
 
@@ -146,7 +147,7 @@ export const useProposalChat = ({
         })
       );
     } catch (error) {
-      console.warn("[useProposalChat] Unable to persist session:", error);
+      logger.warn("[useProposalChat] Unable to persist session:", error);
     }
   }, [messages, proposalState, sessionKey, currentTurn]);
 
@@ -339,7 +340,7 @@ export const useProposalChat = ({
                   ? JSON.parse(event.content)
                   : event.content;
             } catch (e) {
-              console.error("Failed to parse screen_proposal result:", e);
+              logger.error("Failed to parse screen_proposal result:", e);
               result = event.content;
             }
             setProposalState((prev: ProposalState) => ({ ...prev, evaluation: result as Evaluation }));
@@ -384,7 +385,7 @@ export const useProposalChat = ({
                   return result.newDocument as ProposalState;
                 });
               } catch (patchError) {
-                console.error("[Chat] Failed to apply evaluation delta:", patchError);
+                logger.error("[Chat] Failed to apply evaluation delta:", patchError);
               }
             }
 
@@ -392,7 +393,7 @@ export const useProposalChat = ({
               return;
             }
 
-            console.warn("[Chat] STATE_DELTA conflicts with local edits, buffering for review");
+            logger.warn("[Chat] STATE_DELTA conflicts with local edits, buffering for review");
 
             let previewState: ProposalState | null = null;
             try {
@@ -400,7 +401,7 @@ export const useProposalChat = ({
               const previewResult = applyPatch(previewBase, operations, true, false);
               previewState = previewResult.newDocument as ProposalState;
             } catch (previewError) {
-              console.error("[Chat] Failed to generate delta preview:", previewError);
+              logger.error("[Chat] Failed to generate delta preview:", previewError);
             }
 
             addPendingDelta({
@@ -441,7 +442,7 @@ export const useProposalChat = ({
 
                 return newState;
               } catch (patchError) {
-                console.error("[Chat] Invalid STATE_DELTA patch:", {
+                logger.error("[Chat] Invalid STATE_DELTA patch:", {
                   error: patchError,
                   delta,
                   currentState: prev,
@@ -450,7 +451,7 @@ export const useProposalChat = ({
               }
             });
           } catch (error) {
-            console.error("Error applying STATE_DELTA:", error);
+            logger.error("Error applying STATE_DELTA:", error);
           }
           return;
         }
@@ -465,7 +466,7 @@ export const useProposalChat = ({
               responseHash?: string;
               messageId?: string;
             };
-            console.log("[Chat] Verification proof received:", {
+            logger.debug("[Chat] Verification proof received:", {
               stage: payload.stage,
               verificationId: payload.verificationId,
             });
@@ -622,7 +623,7 @@ export const useProposalChat = ({
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("Agent API Error:", response.status, errorText);
+          logger.error("Agent API Error:", response.status, errorText);
           throw new Error(`Agent request failed: ${response.status}`);
         }
 
@@ -656,7 +657,7 @@ export const useProposalChat = ({
               }
               await handleEvent(event);
             } catch (e) {
-              console.error("Error parsing event:", e, raw);
+              logger.error("Error parsing event:", e, raw);
             }
           }
         }
@@ -677,11 +678,11 @@ export const useProposalChat = ({
         }
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
-          console.log("[Chat] Request aborted by user or unmount");
+          logger.debug("[Chat] Request aborted by user or unmount");
           return;
         }
 
-        console.error("Send message error:", error);
+        logger.error("Send message error:", error);
         setMessages((prev) => [
           ...prev,
           {
@@ -693,7 +694,7 @@ export const useProposalChat = ({
       } finally {
         const wasAborted = abortControllerRef.current?.signal.aborted;
         if (!wasAborted && !receivedTerminalEvent) {
-          console.warn("[Chat] Stream ended without terminal event - cleaning up");
+          logger.warn("[Chat] Stream ended without terminal event - cleaning up");
           setCurrentMessage((prev) => {
             if (prev && !messageClosedRef.current) {
               setMessages((msgs) => [

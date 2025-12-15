@@ -3,10 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Markdown } from "@/components/proposal/Markdown";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import { extractExpectationsFromProposal } from "@/utils/attestation/expectations";
-import type { ProposalReply } from "@/types/proposals";
-import type { ReplySummaryResponse } from "@/types/summaries";
+import type { ProposalReply } from "@/components/proposal/types/proposals";
+import type { ReplySummaryResponse } from "@/components/proposal/types/summaries";
 
 interface ReplyCardProps {
   reply: ProposalReply;
@@ -220,44 +218,10 @@ export function ReplyCard({
                 </Button>
               </div>
               <Markdown content={summary.summary} className="text-xs" />
-              {(() => {
-                const expectations = extractExpectationsFromProposal(summary);
-                return (
-                  <VerificationProof
-                    verification={summary.verification ?? undefined}
-                    verificationId={summary.verificationId ?? undefined}
-                    model={summary.model ?? undefined}
-                    requestHash={summary.proof?.requestHash ?? undefined}
-                    responseHash={summary.proof?.responseHash ?? undefined}
-                    nonce={
-                      summary.proof?.nonce ?? expectations.nonce ?? undefined
-                    }
-                    expectedArch={
-                      summary.proof?.arch ?? expectations.arch ?? undefined
-                    }
-                    expectedDeviceCertHash={
-                      summary.proof?.deviceCertHash ??
-                      expectations.deviceCertHash ??
-                      undefined
-                    }
-                    expectedRimHash={
-                      summary.proof?.rimHash ??
-                      expectations.rimHash ??
-                      undefined
-                    }
-                    expectedUeid={
-                      summary.proof?.ueid ?? expectations.ueid ?? undefined
-                    }
-                    expectedMeasurements={
-                      summary.proof?.measurements ??
-                      expectations.measurements ??
-                      undefined
-                    }
-                    className="mt-2"
-                    prefetchedProof={summary.remoteProof ?? undefined}
-                  />
-                );
-              })()}
+              <p className="text-xs text-muted-foreground mt-2">
+                Summary generated. Verification details are no longer
+                available.
+              </p>
             </AlertDescription>
           </Alert>
         )}

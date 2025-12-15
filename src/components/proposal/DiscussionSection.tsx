@@ -7,13 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Markdown } from "@/components/proposal/Markdown";
 import { Textarea } from "@/components/ui/textarea";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import { extractExpectationsFromProposal } from "@/utils/attestation/expectations";
 import type {
   DiscussionSummaryResponse,
   ReplySummaryResponse,
-} from "@/types/summaries";
-import type { ProposalReply } from "@/types/proposals";
+} from "@/components/proposal/types/summaries";
+import type { ProposalReply } from "@/components/proposal/types/proposals";
 import type { DiscourseLinkage } from "@/types/discourse-linkage";
 import {
   AlertCircle,
@@ -31,6 +29,16 @@ import { useNear } from "@/hooks/useNear";
 import { client } from "@/lib/orpc";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 import { getDiscourseUserApiKey } from "@/utils/discourse";
+import { SIGNING_MESSAGES } from "@/constants/signing-messages";
+import { assertSigningReady } from "@/utils/wallet/guards";
+import { NearErrorAlert } from "@/components/ui/NearErrorAlert";
+import {
+  createNearOperationError,
+  logNearError,
+  type NearOperationError,
+} from "@/utils/errors/near-errors";
+import { SIWN_RECIPIENT } from "@/constants/near";
+import { logger } from "@/lib/logger";
 
 interface DiscussionSectionProps {
   discourseBaseUrl: string;
@@ -69,11 +77,11 @@ export function DiscussionSection({
   topicId,
   onReplyPosted,
 }: DiscussionSectionProps) {
-  const { signedAccountId, walletSigner } = useNear();
+  const { signedAccountId, walletSigner, signIn } = useNear();
   const track = useGovernanceAnalytics();
   const [replyContent, setReplyContent] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
-  const [replyError, setReplyError] = useState("");
+  const [replyError, setReplyError] = useState<NearOperationError | null>(null);
   const [checkingLinkage, setCheckingLinkage] = useState(false);
   const [linkage, setLinkage] = useState<DiscourseLinkage | null>(null);
 
@@ -95,7 +103,7 @@ export function DiscussionSection({
         }
         setLinkage(data);
       } catch (err) {
-        console.error("[discussion] failed to check linkage:", err);
+        logger.error("[discussion] failed to check linkage:", err);
         setLinkage(null);
       } finally {
         setCheckingLinkage(false);
@@ -113,33 +121,35 @@ export function DiscussionSection({
 
   const handleReplySubmit = async () => {
     if (!replyContent.trim()) {
-      setReplyError("Add a reply before submitting.");
+      setReplyError(
+        createNearOperationError(new Error("Add a reply before submitting."))
+      );
       return;
     }
-    if (!signedAccountId) {
-      setReplyError("Connect your NEAR wallet before replying.");
-      return;
-    }
-    if (!walletSigner) {
-      setReplyError("Connect your NEAR wallet before replying.");
-      return;
-    }
+    assertSigningReady(walletSigner, signedAccountId);
     if (!isLinked) {
-      setReplyError("Link your Discourse account before replying.");
+      setReplyError(
+        createNearOperationError(
+          new Error("Link your Discourse account before replying.")
+        )
+      );
       return;
     }
 
     setReplyLoading(true);
-    setReplyError("");
+    setReplyError(null);
     track("discussion_reply_started", {
       props: { topic_id: topicId },
     });
 
     try {
-      const authToken = await sign(`Reply to proposal ${topicId}`, {
-        signer: walletSigner,
-        recipient: "social.near",
-      });
+      const authToken = await sign(
+        SIGNING_MESSAGES.replyToProposal(topicId),
+        {
+          signer: walletSigner,
+          recipient: SIWN_RECIPIENT,
+        }
+      );
 
       const payloadForLog = {
         topicId,
@@ -147,7 +157,7 @@ export function DiscussionSection({
         username: linkage?.discourseUsername ?? undefined,
         nearAccount: signedAccountId,
       };
-      console.debug("[discussion] createPost payload", payloadForLog);
+      logger.debug("[discussion] createPost payload", payloadForLog);
       const userApiKey =
         linkage?.userApiKey ?? getDiscourseUserApiKey() ?? undefined;
 
@@ -168,14 +178,15 @@ export function DiscussionSection({
       });
       onReplyPosted?.();
     } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Failed to post reply. Please try again.";
-      setReplyError(message);
-      console.error("[discussion] reply failed:", {
-        error: err,
-        rpcData: err && typeof err === "object" ? (err as Record<string, unknown>).data : undefined,
+      const nearError = createNearOperationError(err);
+      logNearError("DiscussionSection.handleReplySubmit", nearError);
+      setReplyError(nearError);
+      logger.error("[discussion] reply failed:", {
+        error: nearError.originalError,
+        rpcData:
+          err && typeof err === "object"
+            ? (err as Record<string, unknown>).data
+            : undefined,
         rpcName: err instanceof Error ? err.name : undefined,
         linkage,
         payload: {
@@ -185,7 +196,10 @@ export function DiscussionSection({
         },
       });
       track("discussion_reply_failed", {
-        props: { topic_id: topicId, message: message.slice(0, 120) },
+        props: {
+          topic_id: topicId,
+          message: nearError.message.slice(0, 120),
+        },
       });
     } finally {
       setReplyLoading(false);
@@ -276,58 +290,6 @@ export function DiscussionSection({
                 content={discussionSummary.summary}
                 className="text-sm leading-relaxed"
               />
-              {(() => {
-                const expectations =
-                  extractExpectationsFromProposal(discussionSummary);
-                return (
-                  <VerificationProof
-                    verification={discussionSummary.verification ?? undefined}
-                    verificationId={
-                      discussionSummary.verificationId ?? undefined
-                    }
-                    model={discussionSummary.model ?? undefined}
-                    requestHash={
-                      discussionSummary.proof?.requestHash ?? undefined
-                    }
-                    responseHash={
-                      discussionSummary.proof?.responseHash ?? undefined
-                    }
-                    nonce={
-                      discussionSummary.proof?.nonce ??
-                      expectations.nonce ??
-                      undefined
-                    }
-                    expectedArch={
-                      discussionSummary.proof?.arch ??
-                      expectations.arch ??
-                      undefined
-                    }
-                    expectedDeviceCertHash={
-                      discussionSummary.proof?.deviceCertHash ??
-                      expectations.deviceCertHash ??
-                      undefined
-                    }
-                    expectedRimHash={
-                      discussionSummary.proof?.rimHash ??
-                      expectations.rimHash ??
-                      undefined
-                    }
-                    expectedUeid={
-                      discussionSummary.proof?.ueid ??
-                      expectations.ueid ??
-                      undefined
-                    }
-                    expectedMeasurements={
-                      discussionSummary.proof?.measurements ??
-                      expectations.measurements ??
-                      undefined
-                    }
-                    prefetchedProof={
-                      discussionSummary.remoteProof ?? undefined
-                    }
-                  />
-                );
-              })()}
             </AlertDescription>
           </Alert>
         )}
@@ -339,18 +301,26 @@ export function DiscussionSection({
               onChange={(event) => {
                 setReplyContent(event.currentTarget.value);
                 if (replyError) {
-                  setReplyError("");
+                  setReplyError(null);
                 }
               }}
               placeholder="Write a reply to the discussion..."
               rows={4}
               className="min-h-[120px]"
             />
-            {replyError && (
-              <Alert variant="destructive" className="p-3">
-                <AlertDescription>{replyError}</AlertDescription>
-              </Alert>
-            )}
+            <NearErrorAlert
+              error={replyError}
+              onRetry={() => {
+                setReplyError(null);
+                void handleReplySubmit();
+              }}
+              onReconnect={() => {
+                setReplyError(null);
+                void signIn();
+              }}
+              onDismiss={() => setReplyError(null)}
+              className="p-3"
+            />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="text-sm text-muted-foreground flex-1 space-y-1">
                 <p>

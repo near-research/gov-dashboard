@@ -12,7 +12,7 @@ import {
   latestInputSchema,
   searchInputSchema,
 } from "@/server/plugins/discourse-schemas";
-import { z } from "zod";
+import { type ZodIssue, z } from "zod";
 
 // ============================================================================
 // Configuration
@@ -21,6 +21,18 @@ import { z } from "zod";
 const PROPOSALS_CATEGORY_ID = Number(
   process.env.DISCOURSE_PROPOSALS_CATEGORY_ID || 168
 );
+
+const extractUnknownKeys = (issue: ZodIssue): string[] => {
+  if (issue.code !== "unrecognized_keys") {
+    return [];
+  }
+  const params = (issue as { params?: { keys?: unknown[] } }).params;
+  const keys = params?.keys;
+  if (!Array.isArray(keys)) {
+    return [];
+  }
+  return keys.filter((key): key is string => typeof key === "string");
+};
 
 // ============================================================================
 // Tool Definitions
@@ -350,9 +362,7 @@ export async function handleSearchDiscourse(args: {
   const parsed = SearchArgsSchema.safeParse(args);
 
   if (!parsed.success) {
-    const unknownKeys = parsed.error.issues
-      .filter((issue) => issue.code === "unrecognized_keys")
-      .flatMap((issue) => (issue as any).keys || []);
+    const unknownKeys = parsed.error.issues.flatMap(extractUnknownKeys);
     if (unknownKeys.length) {
       return validationError(
         `Unsupported parameter(s): ${unknownKeys.join(", ")}`
@@ -528,9 +538,7 @@ export async function handleGetLatestTopics(
 ): Promise<{ result: LatestTopicsResult | DiscourseErrorResult }> {
   const parsed = LatestArgsSchema.safeParse(args);
   if (!parsed.success) {
-    const unknownKeys = parsed.error.issues
-      .filter((issue) => issue.code === "unrecognized_keys")
-      .flatMap((issue) => (issue as any).keys || []);
+    const unknownKeys = parsed.error.issues.flatMap(extractUnknownKeys);
     if (unknownKeys.length) {
       return validationError(
         `Unsupported parameter(s): ${unknownKeys.join(", ")}`

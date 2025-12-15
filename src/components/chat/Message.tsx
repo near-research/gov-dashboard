@@ -1,11 +1,9 @@
 // components/chat/Message.tsx
 import React from "react";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import type { VerificationMetadata, MessageRole } from "@/types/agui-events";
-import type { DisplayRole, MessageProof } from "@/types/agent-ui";
+import type { MessageRole } from "@/types/agui-events";
+import type { DisplayRole } from "@/types/agent-ui";
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
-import type { RemoteProof } from "@/types/verification";
 
 interface MessageProps {
   role: DisplayRole;
@@ -14,11 +12,6 @@ interface MessageProps {
   content: string;
   displayContent?: string;
   timestamp: Date;
-  messageId?: string;
-  verification?: VerificationMetadata;
-  proof?: MessageProof;
-  remoteProof?: RemoteProof | null;
-  model?: string;
   markdown: MarkdownIt;
 }
 
@@ -36,11 +29,6 @@ export const Message = ({
   content,
   displayContent,
   timestamp,
-  messageId,
-  verification,
-  proof,
-  remoteProof,
-  model,
   markdown,
 }: MessageProps) => {
   const normalizedRole = role;
@@ -76,22 +64,11 @@ export const Message = ({
       ? "text-white/80"
       : "text-muted-foreground text-xs";
 
-  const showProof =
-    normalizedRole === "assistant" && Boolean(verification || proof || remoteProof);
-
-  const proofTriggerLabel =
-    proof?.stage === "final_synthesis"
-      ? "Verify recommendation"
-      : proof?.stage === "initial_reasoning"
-      ? "Verify reasoning"
-      : undefined;
-
   return (
     <div className={`flex ${alignment}`}>
       <div
         className={`max-w-[80%] min-w-[140px] sm:min-w-[200px] rounded-2xl px-4 py-2 ${
-          showProof ? "pb-4" : ""
-        } ${bubbleClasses}`}
+          bubbleClasses}`}
       >
         <div className="flex items-center justify-between mb-2">
           <p
@@ -113,24 +90,6 @@ export const Message = ({
             displayContent ?? content
           )}
         />
-        {showProof && (
-          <VerificationProof
-            verification={verification}
-            verificationId={proof?.verificationId ?? messageId}
-            model={model}
-            requestHash={proof?.requestHash}
-            responseHash={proof?.responseHash}
-            nonce={proof?.nonce ?? undefined}
-            expectedArch={proof?.arch ?? undefined}
-            expectedDeviceCertHash={proof?.deviceCertHash ?? undefined}
-            expectedRimHash={proof?.rimHash ?? undefined}
-            expectedUeid={proof?.ueid ?? undefined}
-            expectedMeasurements={proof?.measurements ?? undefined}
-            prefetchedProof={remoteProof}
-            triggerLabel={proofTriggerLabel}
-            className="mt-3"
-          />
-        )}
       </div>
     </div>
   );

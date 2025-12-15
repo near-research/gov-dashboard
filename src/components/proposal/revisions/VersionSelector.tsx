@@ -1,5 +1,4 @@
 import { Markdown } from "@/components/proposal/Markdown";
-import { VerificationProof } from "@/components/verification/VerificationProof";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +13,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, User, Calendar, X } from "lucide-react";
-import type { ProposalRevision } from "@/types/proposals";
-import type { ProposalRevisionSummaryResponse } from "@/types/summaries";
+import type { ProposalRevision } from "@/components/proposal/types/proposals";
+import type { ProposalRevisionSummaryResponse } from "@/components/proposal/types/summaries";
 
 interface VersionSelectorProps {
   currentRevision: number;
@@ -184,27 +183,6 @@ export default function VersionSelector({
                 <Markdown
                   content={revisionSummary.summary}
                   className="text-sm"
-                />
-                <VerificationProof
-                  verification={revisionSummary.verification ?? undefined}
-                  verificationId={revisionSummary.verificationId ?? undefined}
-                  model={revisionSummary.model ?? undefined}
-                  requestHash={revisionSummary.proof?.requestHash ?? undefined}
-                  responseHash={
-                    revisionSummary.proof?.responseHash ?? undefined
-                  }
-                  nonce={revisionSummary.proof?.nonce ?? undefined}
-                  expectedArch={revisionSummary.proof?.arch ?? undefined}
-                  expectedDeviceCertHash={
-                    revisionSummary.proof?.deviceCertHash ?? undefined
-                  }
-                  expectedRimHash={revisionSummary.proof?.rimHash ?? undefined}
-                  expectedUeid={revisionSummary.proof?.ueid ?? undefined}
-                  expectedMeasurements={
-                    revisionSummary.proof?.measurements ?? undefined
-                  }
-                  prefetchedProof={revisionSummary.remoteProof ?? undefined}
-                  className="mt-3"
                 />
               </AlertDescription>
             </Alert>

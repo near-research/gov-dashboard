@@ -1,12 +1,16 @@
 import { useState } from "react";
 import type { Evaluation } from "@/types/evaluation";
-import type { VerificationMetadata } from "@/types/agui-events";
-import { sign } from "near-sign-verify";
 import { Button } from "@/components/ui/button";
+import { NearErrorAlert } from "@/components/ui/NearErrorAlert";
 import { useNear } from "@/hooks/useNear";
 import { useGovernanceAnalytics } from "@/lib/analytics";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import { siwnRecipient } from "@/config/siwn";
+import {
+  createNearOperationError,
+  logNearError,
+  type NearOperationError,
+} from "@/utils/errors/near-errors";
+import { handleScreeningResponse } from "@/utils/errors/screening-errors";
+import { screenProposalRevision } from "@/utils/screening/screen-proposal";
 
 interface ScreeningButtonProps {
   topicId: string;
@@ -23,16 +27,12 @@ export function ScreeningButton({
   revisionNumber,
   onScreeningComplete,
 }: ScreeningButtonProps) {
-  const { signedAccountId, walletSigner, loading } = useNear();
+  const { signedAccountId, walletSigner, loading, signIn } = useNear();
   const track = useGovernanceAnalytics();
 
   const [screening, setScreening] = useState(false);
   const [result, setResult] = useState<Evaluation | null>(null);
-  const [error, setError] = useState("");
-  const [verificationMeta, setVerificationMeta] =
-    useState<VerificationMetadata | null>(null);
-  const [verificationId, setVerificationId] = useState<string | null>(null);
-  const [model, setModel] = useState<string | null>(null);
+  const [error, setError] = useState<NearOperationError | null>(null);
 
   const prepareContent = (html: string): string => {
     const normalized = html;
@@ -51,124 +51,58 @@ export function ScreeningButton({
 
   const handleScreen = async () => {
     setScreening(true);
-    setError("");
+    setError(null);
     setResult(null);
-    setVerificationMeta(null);
-    setVerificationId(null);
-    setModel(null);
 
     track("proposal_screening_started", {
       props: { topic_id: topicId, revision: revisionNumber },
     });
 
     try {
-      if (!walletSigner)
-        throw new Error(
-          "Wallet not connected. Please connect your NEAR wallet."
-        );
-      if (!signedAccountId)
-        throw new Error("NEAR account not found. Please connect your wallet.");
-
-      const authToken = await sign(`Screen proposal ${topicId}`, {
-        signer: walletSigner,
-        recipient: siwnRecipient,
-      });
-
-      const saveResponse = await fetch(`/api/saveAnalysis/${topicId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
+      const { response: saveResponse, payload: parsedPayload } =
+        await screenProposalRevision({
+          proposalId: topicId,
           title,
           content: prepareContent(content),
           revisionNumber,
-        }),
-      });
+          walletSigner,
+          signedAccountId,
+        });
 
-      const saveData: unknown = await saveResponse.json();
-      if (!saveResponse.ok) {
-        const message =
-          typeof saveData === "object" && saveData !== null
-            ? (saveData as { message?: string }).message
-            : undefined;
+      const screeningResult = handleScreeningResponse(
+        saveResponse,
+        {
+          topicId,
+          revisionNumber,
+          accountId: signedAccountId!,
+        },
+        parsedPayload
+      );
 
-        if (saveResponse.status === 401) {
-          const errorMsg = "Authentication failed. Please try signing again.";
-          setError(errorMsg);
-          track("proposal_screening_failed", {
-            props: {
-              topic_id: topicId,
-              revision: revisionNumber,
-              message: errorMsg,
-            },
+      if (!screeningResult.success) {
+        if (screeningResult.shouldTrack) {
+          track(screeningResult.shouldTrack.event, {
+            props: screeningResult.shouldTrack.props,
           });
-        } else if (saveResponse.status === 409) {
-          const errorMsg =
-            message || "This proposal revision has already been evaluated.";
-          setError(errorMsg);
-          track("proposal_screening_failed", {
-            props: {
-              topic_id: topicId,
-              revision: revisionNumber,
-              message: errorMsg,
-            },
-          });
-        } else if (saveResponse.status === 429) {
-          const errorMsg =
-            message || "Rate limit exceeded. Please try again later.";
-          setError(errorMsg);
-          track("proposal_screening_failed", {
-            props: {
-              topic_id: topicId,
-              revision: revisionNumber,
-              message: errorMsg,
-            },
-          });
-        } else {
-          throw new Error(
-            (typeof saveData === "object" && saveData !== null
-              ? (saveData as { error?: string }).error
-              : undefined) || `Failed to save screening: ${saveResponse.status}`
-          );
         }
+        const nearError =
+          screeningResult.error ??
+          createNearOperationError(new Error("Screening failed."));
+        logNearError("ScreeningButton.handleScreen", nearError);
+        setError(nearError);
         return;
       }
 
-      const evaluation =
-        typeof saveData === "object" &&
-        saveData !== null &&
-        "evaluation" in saveData
-          ? (saveData as { evaluation: Evaluation }).evaluation
-          : null;
-      const verification =
-        typeof saveData === "object" &&
-        saveData !== null &&
-        "verification" in saveData
-          ? (saveData as { verification?: VerificationMetadata | null })
-              .verification ?? null
-          : null;
-      const proofVerificationId =
-        typeof saveData === "object" &&
-        saveData !== null &&
-        "verificationId" in saveData
-          ? (saveData as { verificationId?: string | null }).verificationId ??
-            null
-          : null;
+      const saveData = (parsedPayload ?? {}) as {
+        evaluation?: Evaluation;
+      };
+      const evaluation = saveData.evaluation ?? null;
 
       if (!evaluation) {
         throw new Error("Missing evaluation data in response");
       }
 
       setResult(evaluation);
-      setVerificationMeta(verification);
-      setVerificationId(proofVerificationId ?? verification?.messageId ?? null);
-      const responseModel =
-        typeof saveData === "object" && saveData !== null && "model" in saveData
-          ? (saveData as { model?: string | null }).model ?? null
-          : null;
-      setModel(responseModel ?? evaluation.model ?? null);
 
       track("proposal_screening_succeeded", {
         props: {
@@ -180,11 +114,15 @@ export function ScreeningButton({
 
       onScreeningComplete?.();
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to screen proposal";
-      setError(message);
+      const nearError = createNearOperationError(err);
+      logNearError("ScreeningButton.handleScreen", nearError);
+      setError(nearError);
       track("proposal_screening_failed", {
-        props: { topic_id: topicId, revision: revisionNumber, message },
+        props: {
+          topic_id: topicId,
+          revision: revisionNumber,
+          message: nearError.message,
+        },
       });
     } finally {
       setScreening(false);
@@ -230,15 +168,6 @@ export function ScreeningButton({
         <p className="text-sm text-muted-foreground">
           ✓ Results saved! Screening status has been updated.
         </p>
-        {(verificationMeta || verificationId) && (
-          <div className="mt-4">
-            <VerificationProof
-              verification={verificationMeta ?? undefined}
-              verificationId={verificationId ?? undefined}
-              model={model ?? result?.model ?? undefined}
-            />
-          </div>
-        )}
       </div>
     );
   }
@@ -264,11 +193,19 @@ export function ScreeningButton({
           </span>
         )}
       </p>
-      {error && (
-        <div className="text-red-600 text-sm border border-red-300 bg-red-50 p-2 rounded mb-3">
-          ⚠ {error}
-        </div>
-      )}
+      <NearErrorAlert
+        error={error}
+        onRetry={() => {
+          setError(null);
+          void handleScreen();
+        }}
+        onReconnect={() => {
+          setError(null);
+          void signIn();
+        }}
+        onDismiss={() => setError(null)}
+        className="mb-3"
+      />
       <Button
         onClick={handleScreen}
         disabled={screening || !signedAccountId}

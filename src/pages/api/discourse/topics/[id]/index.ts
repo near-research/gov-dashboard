@@ -1,6 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { DISCOURSE_RENDER_LIMIT } from "@/config/discourse";
-import { discourseTopic } from "@/server/plugins/discourse-client";
+import { servicesConfig } from "@/config/services";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { logger } from "@/lib/logger";
+import { DiscourseTopicDetailSchema } from "@/server/plugins/discourse-schemas";
 
 const parseId = (value: string | string[] | undefined): number | null => {
   if (value === undefined) return null;
@@ -10,44 +13,81 @@ const parseId = (value: string | string[] | undefined): number | null => {
   return parsed;
 };
 
-const cloneData = <T>(data: T): T => {
-  try {
-    return structuredClone(data);
-  } catch {
-    return JSON.parse(JSON.stringify(data));
-  }
-};
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<any>
 ) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  try {
+    if (req.method !== "GET") {
+      res.setHeader("Allow", ["GET"]);
+      return respondWithError(
+        res,
+        new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+      );
+    }
 
-  const topicId = parseId(req.query.id);
-  if (!topicId) {
-    return res.status(400).json({ error: "Invalid topic id" });
-  }
+    const topicId = parseId(req.query.id);
+    if (!topicId) {
+      return respondWithError(
+        res,
+        new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid topic id", 400)
+      );
+    }
 
-  const { data, error, status } = await discourseTopic({ topicId });
-  if (error || !data) {
-    return res
-      .status(status ?? 500)
-      .json({ error: error ?? "Failed to fetch topic" });
-  }
+    const topicResponse = await fetch(
+      `${servicesConfig.discourseBaseUrl}/t/${topicId}.json`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
 
-  const responseData = cloneData(data) as any;
-  if (Array.isArray(responseData.posts)) {
-    responseData.posts = responseData.posts.slice(0, DISCOURSE_RENDER_LIMIT);
-  }
-  if (Array.isArray(responseData.post_stream?.posts)) {
-    responseData.post_stream = {
-      ...responseData.post_stream,
-      posts: responseData.post_stream.posts.slice(0, DISCOURSE_RENDER_LIMIT),
+    if (!topicResponse.ok) {
+      throw new ApiError(
+        ErrorCodes.UPSTREAM_ERROR,
+        "Failed to fetch topic",
+        topicResponse.status
+      );
+    }
+
+    const remoteData = await topicResponse.json();
+    const parsed = DiscourseTopicDetailSchema.safeParse(remoteData);
+    if (!parsed.success) {
+      throw new ApiError(
+        ErrorCodes.UPSTREAM_ERROR,
+        "Invalid Discourse topic response",
+        502,
+        {
+          issues: parsed.error.issues,
+          topicId,
+        }
+      );
+    }
+
+    const topicData = parsed.data;
+    const limitedPostStream = {
+      ...topicData.post_stream,
+      posts: topicData.post_stream.posts.slice(0, DISCOURSE_RENDER_LIMIT),
     };
-  }
 
-  return res.status(200).json(responseData);
+    return res.status(200).json({
+      ...topicData,
+      post_stream: limitedPostStream,
+    });
+  } catch (error) {
+    logger.error("Failed to proxy Discourse topic:", error);
+    if (error instanceof Error) {
+      return respondWithError(res, error);
+    }
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to proxy Discourse topic",
+        500,
+        typeof error === "string" ? error : undefined
+      )
+    );
+  }
 }

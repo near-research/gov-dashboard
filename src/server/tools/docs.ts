@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Docs Tool - Search & Fetch
  */
@@ -8,19 +9,24 @@
 
 const DOCS_BASE = "https://houseofstake.org/docs";
 const docsToolDebugEnabled = process.env.DOCS_TOOL_DEBUG === "true";
-const docsLog = (...args: any[]) => {
-  if (docsToolDebugEnabled) {
-    console.log(...args);
+const formatLogMessage = (value: unknown) =>
+  typeof value === "string" ? value : String(value);
+const docsLog = (...args: unknown[]) => {
+  if (docsToolDebugEnabled && args.length) {
+    const [message, ...meta] = args;
+    logger.debug(formatLogMessage(message), ...meta);
   }
 };
-const docsWarn = (...args: any[]) => {
-  if (docsToolDebugEnabled) {
-    console.warn(...args);
+const docsWarn = (...args: unknown[]) => {
+  if (docsToolDebugEnabled && args.length) {
+    const [message, ...meta] = args;
+    logger.warn(formatLogMessage(message), ...meta);
   }
 };
-const docsError = (...args: any[]) => {
-  if (docsToolDebugEnabled) {
-    console.error(...args);
+const docsError = (...args: unknown[]) => {
+  if (docsToolDebugEnabled && args.length) {
+    const [message, ...meta] = args;
+    logger.error(formatLogMessage(message), ...meta);
   }
 };
 

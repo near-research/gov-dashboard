@@ -68,7 +68,7 @@ describe("server tools handlers", () => {
         // @ts-expect-error unsupported
         foo: "bar",
       });
-      expect(result).toEqual({ error: "Unsupported parameter(s): foo" });
+      expect(result).toEqual({ error: 'Unrecognized key: "foo"' });
     });
 
     it("returns error when search API fails", async () => {
@@ -268,7 +268,7 @@ describe("server tools handlers", () => {
         runtimeBaseUrl
       );
       expect(unsupported.result).toEqual({
-        error: "Unsupported parameter(s): extra",
+        error: 'Unrecognized key: "extra"',
       });
 
       mockDiscourseLatestTopics.mockResolvedValueOnce({

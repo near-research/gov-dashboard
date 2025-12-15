@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { Evaluation } from "@/types/evaluation";
-import type { VerificationMetadata } from "@/types/agui-events";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Collapsible,
@@ -14,8 +13,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChevronDown, CheckCircle2, XCircle, Info } from "lucide-react";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import type { RemoteProof } from "@/types/verification";
 import { Markdown } from "@/components/proposal/Markdown";
 
 interface ScreeningBadgeProps {
@@ -29,16 +26,6 @@ interface ScreeningBadgeProps {
     attentionScore: number;
     model?: string;
   };
-  verification?: VerificationMetadata;
-  verificationId?: string;
-  nonce?: string;
-  expectedArch?: string | null;
-  expectedDeviceCertHash?: string | null;
-  expectedRimHash?: string | null;
-  expectedUeid?: string | null;
-  expectedMeasurements?: string[] | null;
-  prefetchedProof?: RemoteProof | null;
-  autoFetchProof?: boolean;
 }
 
 const QUALITY_CRITERIA = [
@@ -93,19 +80,7 @@ const ATTENTION_CRITERIA = [
   },
 ];
 
-export function ScreeningBadge({
-  screening,
-  verification,
-  verificationId,
-  nonce,
-  expectedArch,
-  expectedDeviceCertHash,
-  expectedRimHash,
-  expectedUeid,
-  expectedMeasurements,
-  prefetchedProof,
-  autoFetchProof = false,
-}: ScreeningBadgeProps) {
+export function ScreeningBadge({ screening }: ScreeningBadgeProps) {
   const [expandedQualityCriteria, setExpandedQualityCriteria] = useState<
     Set<string>
   >(new Set());
@@ -424,24 +399,6 @@ export function ScreeningBadge({
               </div>
             </div>
 
-            {(verification || verificationId) && (
-              <VerificationProof
-                verification={verification}
-                verificationId={verificationId}
-                model={
-                  screening.model ?? screening.evaluation.model ?? undefined
-                }
-                nonce={nonce}
-                expectedArch={expectedArch}
-                expectedDeviceCertHash={expectedDeviceCertHash}
-                expectedRimHash={expectedRimHash}
-                expectedUeid={expectedUeid}
-                expectedMeasurements={expectedMeasurements}
-                prefetchedProof={prefetchedProof ?? undefined}
-                autoFetch={autoFetchProof}
-                className="mt-4"
-              />
-            )}
           </CardContent>
         )}
       </Card>

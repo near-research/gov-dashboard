@@ -293,7 +293,12 @@ export const registerPlaywrightMocks = (
       >;
     const payload = screenings[key] ?? revisionAnalysesFixture.screenings.latest;
     if (payload) {
-      respondWithJson(route, payload);
+      respondWithJson(route, {
+        topicId: revisionAnalysesFixture.topicId,
+        results: [payload],
+        screenings: [payload],
+        hasMore: false,
+      });
       return;
     }
     route.fulfill({

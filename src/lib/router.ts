@@ -11,6 +11,9 @@ import { DiscourseRouter, discourseRouter } from "@/server/plugins/discourse";
 import { protectedProcedure, publicProcedure } from "./procedures";
 import type { Context } from "@/lib/context";
 import type { DiscourseCompleteLinkResult } from "@/types/discourse-linkage";
+import { logger } from "@/lib/logger";
+
+type ErrorWithCause = Error & { cause?: unknown };
 
 const proxyPublic = (
   fn: (args: { input: unknown; context: Context | undefined }) => Promise<unknown>
@@ -146,16 +149,12 @@ const logRouterShape = () => {
   }
   globalAny.__discourseRouterKeysLogged = true;
 
-  console.log(
-    "discourseRouter keys",
-    Object.keys(discourseRouter).sort().join(", ")
-  );
-  console.log(
-    "authRoutes keys",
-    Object.keys((discourseRouter as Record<string, unknown>)?.authRoutes ?? {})
-      .sort()
-      .join(", ")
-  );
+  logger.debug("discourseRouter keys", {
+    keys: Object.keys(discourseRouter).sort(),
+  });
+  logger.debug("authRoutes keys", {
+    keys: Object.keys((discourseRouter as Record<string, unknown>)?.authRoutes ?? {}).sort(),
+  });
 };
 
 const deleteDiscourseAccountForNearAccount = async (nearAccount: string) => {
@@ -213,34 +212,17 @@ const invokeOrpcProcedure = async (
     }) => Promise<unknown>;
 
     try {
-      console.log(
-        `[discourse] Invoking ${procedureName} handler with input:`,
-        JSON.stringify(args.input, null, 2)
-      );
+      logger.debug(`[discourse] Invoking ${procedureName} handler`);
       const result = await handler({
         input: args.input,
         context: args.context,
         errors: orpcInternal.errorMap ?? {},
       });
-      console.log(
-        `[discourse] ${procedureName} handler returned:`,
-        JSON.stringify(result, null, 2)
-      );
       return result;
     } catch (error) {
-      console.error(`[discourse] ${procedureName} handler threw error:`, error);
-      console.error(
-        `[discourse] Error type:`,
-        Object.prototype.toString.call(error)
-      );
-      console.error(
-        `[discourse] Error constructor:`,
-        (error as any)?.constructor?.name
-      );
-      if (error instanceof Error) {
-        const stackLines = error.stack?.split("\n") ?? [];
-        stackLines.forEach((line, i) => console.error(`[stack ${i}]`, line));
-      }
+      logger.error(`[discourse] ${procedureName} handler threw error`, {
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
       throw error;
     }
   }
@@ -254,24 +236,19 @@ const invokeOrpcProcedure = async (
     }) => Promise<unknown>;
 
     try {
-      console.log(
-        `[discourse] Invoking ${procedureName} direct handler with input:`,
-        JSON.stringify(args.input, null, 2)
-      );
+      logger.debug(`[discourse] Invoking ${procedureName} direct handler`);
       const result = await handler.call(proc, {
         input: args.input,
         context: args.context,
         errors: proc.errors ?? {},
       });
-      console.log(
-        `[discourse] ${procedureName} direct handler returned:`,
-        JSON.stringify(result, null, 2)
-      );
       return result;
     } catch (error) {
-      console.error(
-        `[discourse] ${procedureName} direct handler threw error:`,
-        error
+      logger.error(
+        `[discourse] ${procedureName} direct handler threw error`,
+        {
+          message: error instanceof Error ? error.message : "Unknown error",
+        }
       );
       throw error;
     }
@@ -288,11 +265,7 @@ const callAuthRoute = async (
 
   const direct = (discourseRouter as Record<string, unknown>)[name];
 
-  console.trace(
-    "[discourse] direct candidate",
-    name,
-    direct ? "B" : "NOT_FOUND"
-  );
+  logger.debug("[discourse] direct candidate", { route: name, found: Boolean(direct) });
 
   // Try to invoke the direct procedure
   if (direct) {
@@ -306,7 +279,9 @@ const callAuthRoute = async (
       if (error instanceof ORPCError) {
         throw error;
       }
-      console.error(`[discourse] Error invoking ${name}:`, error);
+      logger.error(`[discourse] Error invoking ${name}`, {
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
       throw new ORPCError("INTERNAL_SERVER_ERROR", {
         message:
           error instanceof Error
@@ -351,9 +326,11 @@ const callAuthRoute = async (
       if (error instanceof ORPCError) {
         throw error;
       }
-      console.error(
-        `[discourse] Error invoking procedure at path ${path.join(".")}:`,
-        error
+      logger.error(
+        `[discourse] Error invoking procedure at path ${path.join(".")}`,
+        {
+          message: error instanceof Error ? error.message : "Unknown error",
+        }
       );
       throw new ORPCError("INTERNAL_SERVER_ERROR", {
         message:
@@ -387,7 +364,7 @@ export const router = publicProcedure.router({
         input && typeof input === "object"
           ? Object.keys(input as Record<string, unknown>)
           : [];
-      console.log("[completeLink] Starting with input keys:", inputKeys);
+      logger.debug("[completeLink] Starting", { inputKeys });
       try {
         const result =
           (await callAuthRoute("completeLink", { input, context })) as
@@ -397,17 +374,18 @@ export const router = publicProcedure.router({
           result,
           context?.session?.user?.id ?? null
         );
-        console.log("[completeLink] Success");
+        logger.debug("[completeLink] Success");
         return result;
-      } catch (error) {
-        const e = error as Error;
-        process.stdout.write("\n========== RAW ERROR ==========\n");
-        process.stdout.write(`Name: ${e?.name}\n`);
-        process.stdout.write(`Message: ${e?.message}\n`);
-        process.stdout.write(`Cause: ${JSON.stringify((e as any)?.cause)}\n`);
-        process.stdout.write("===============================\n");
-        throw error;
-      }
+        } catch (error) {
+          const typedError =
+            error instanceof Error ? (error as ErrorWithCause) : undefined;
+          logger.error("[completeLink] Error details", {
+            name: typedError?.name,
+            message: typedError?.message ?? "Unknown error",
+            cause: typedError?.cause,
+          });
+          throw error;
+        }
     }),
     getLinkage: publicProcedure.handler(async ({ input, context }) => {
       const nearAccount = parseNearAccountInput(input);
@@ -443,16 +421,16 @@ export const router = publicProcedure.router({
           message: "Discourse createPost procedure returned no handler",
         });
       } catch (error) {
-      const errorName = error instanceof Error ? error.name : undefined;
-      const errorMessage = error instanceof Error ? error.message : undefined;
-      console.error("[discourse] createPost failed", {
-        payload,
-        sessionUserId,
-        errorName,
-        errorMessage,
-      });
-      throw error;
-    }
+        const errorName = error instanceof Error ? error.name : undefined;
+        const errorMessage = error instanceof Error ? error.message : undefined;
+        logger.error("[discourse] createPost failed", {
+          payload,
+          sessionUserId,
+          errorName,
+          errorMessage,
+        });
+        throw error;
+      }
     }),
     unlink: protectedProcedure.handler(async ({ input }) => {
       const nearAccount =
@@ -476,7 +454,7 @@ export const router = publicProcedure.router({
           nearAccount as string
         );
       } else {
-        console.warn(
+        logger.warn(
           "[discourse] Plugin does not expose linkageStore.unlink; skipping cleanup."
         );
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeParseToolArgs } from "@/server/agent/tool-args";
+import { safeParseToolArgs } from "@/pages/api/agent/server/tool-args";
 
 describe("safeParseToolArgs", () => {
   it("parses valid JSON arguments", () => {

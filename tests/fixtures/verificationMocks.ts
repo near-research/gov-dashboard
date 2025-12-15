@@ -1,5 +1,4 @@
 import { createHash } from "crypto";
-import type { VerificationProofResponse } from "@/types/verification";
 import { verificationConfig } from "@/config/verification";
 
 export const mockNonce = "a".repeat(64);
@@ -43,7 +42,7 @@ const buildBaseNrasClaims = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-export const verifiedProofMock: VerificationProofResponse = {
+export const verifiedProofMock = {
   attestation: {
     request_nonce: mockNonce,
     gateway_attestation: {
@@ -116,7 +115,7 @@ export const verifiedProofMock: VerificationProofResponse = {
   ],
 };
 
-export const failedProofMock: VerificationProofResponse = {
+export const failedProofMock = {
   attestation: { gateway_attestation: { signing_address: mockAddress } },
   signature: {
     text: "bad:req:res",
@@ -162,7 +161,7 @@ export const officialNearAIExampleAlt = {
   signingAddress: "0xc51268C9b46140619CBC066A34441a6ca51F85f9",
 };
 
-export const partialProofMock: VerificationProofResponse = {
+export const partialProofMock = {
   attestation: { gateway_attestation: { signing_address: "0x123" } },
   signature: null,
   nras: null,
@@ -170,7 +169,7 @@ export const partialProofMock: VerificationProofResponse = {
   intel: null,
 };
 
-export const invalidSignatureMock: VerificationProofResponse = {
+export const invalidSignatureMock = {
   ...verifiedProofMock,
   signature: {
     text: verifiedProofMock.signature!.text,
@@ -181,7 +180,7 @@ export const invalidSignatureMock: VerificationProofResponse = {
   },
 };
 
-export const nonceReplayAttackMock: VerificationProofResponse = {
+export const nonceReplayAttackMock = {
   ...verifiedProofMock,
   nonceCheck: {
     expected: mockNonce,
@@ -201,7 +200,7 @@ export const expiredJwtMock = {
   },
 };
 
-export const intelRequiredProofMock: VerificationProofResponse = {
+export const intelRequiredProofMock = {
   ...verifiedProofMock,
   attestation: {
     ...verifiedProofMock.attestation,
@@ -210,7 +209,7 @@ export const intelRequiredProofMock: VerificationProofResponse = {
   intel: { verified: true, raw: { nonce: mockNonce } },
 };
 
-export const multiGpuProofMock: VerificationProofResponse = {
+export const multiGpuProofMock = {
   ...verifiedProofMock,
   attestation: {
     ...verifiedProofMock.attestation,

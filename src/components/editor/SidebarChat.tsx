@@ -1,22 +1,17 @@
 import React from "react";
-import type { MessageRole, VerificationMetadata } from "@/types/agui-events";
+import type { MessageRole } from "@/types/agui-events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Send, Wrench } from "lucide-react";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import type { RemoteProof } from "@/types/verification";
 
 interface Message {
   id: string;
   role: MessageRole;
   content: string;
-  verification?: VerificationMetadata;
-  remoteProof?: RemoteProof | null;
   remoteId?: string;
-  model?: string;
 }
 
 interface ToolCallState {
@@ -24,10 +19,7 @@ interface ToolCallState {
   name: string;
   args: string;
   status: "in_progress" | "completed";
-  verification?: VerificationMetadata;
-  model?: string;
 }
-
 export function SidebarChat({
   currentStep,
   messages,
@@ -45,10 +37,7 @@ export function SidebarChat({
   currentMessage: {
     id: string;
     content: string;
-    verification?: VerificationMetadata;
-    remoteProof?: RemoteProof | null;
     remoteId?: string;
-    model?: string;
   } | null;
   activeToolCalls: Map<string, ToolCallState>;
   isRunning: boolean;
@@ -112,15 +101,6 @@ export function SidebarChat({
                     <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                       {msg.content}
                     </div>
-                    {msg.role === "assistant" && (
-                      <VerificationProof
-                        verification={msg.verification}
-                        verificationId={msg.remoteId}
-                        prefetchedProof={msg.remoteProof}
-                        model={msg.model ?? undefined}
-                        className="mt-3"
-                      />
-                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -134,13 +114,6 @@ export function SidebarChat({
                     <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                       {currentMessage.content}
                     </div>
-                  <VerificationProof
-                    verification={currentMessage.verification}
-                    prefetchedProof={currentMessage.remoteProof}
-                    verificationId={currentMessage.remoteId}
-                    model={currentMessage.model ?? undefined}
-                    className="mt-3"
-                  />
                   </CardContent>
                 </Card>
               )}
@@ -168,11 +141,6 @@ export function SidebarChat({
                         ? "⏳ In progress"
                         : "✓ Completed"}
                     </Badge>
-                    <VerificationProof
-                      verification={tc.verification}
-                      model={tc.model ?? undefined}
-                      className="mt-3"
-                    />
                   </CardContent>
                 </Card>
               ))}

@@ -6,9 +6,10 @@ import {
   requestEvaluation,
   respondWithScreeningError,
 } from "@/server/screening";
-import { getModelExpectations } from "@/server/attestation-cache";
 import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
 import { rateLimitConfig } from "@/config/rateLimit";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/evaluateDraft
@@ -26,7 +27,10 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   // Check if user is authenticated (optional for this endpoint)
@@ -42,7 +46,7 @@ export default async function handler(
     } catch (error) {
       // Authentication failed, treat as anonymous
       // Don't return error - allow anonymous usage with rate limit
-      console.log(
+      logger.debug(
         "[EvaluateDraft] Auth verification failed, treating as anonymous"
       );
     }
@@ -66,18 +70,19 @@ export default async function handler(
     const retryAfter =
       secondsUntilReset || rateLimitConfig.evaluateDraft.windowMs / 1000;
     res.setHeader("Retry-After", retryAfter.toString());
-    return res.status(429).json({
-      error: "Rate limit exceeded",
-      message: `You've reached the limit of ${
-        rateLimitConfig.evaluateDraft.maxRequests
-      } evaluations in ${Math.round(
-        rateLimitConfig.evaluateDraft.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(
-        retryAfter / 60
-      )} minutes and try again.`,
-      retryAfter,
-      scope: isAuthenticated ? "account" : "ip",
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.RATE_LIMITED,
+        `You've reached the limit of ${
+          rateLimitConfig.evaluateDraft.maxRequests
+        } evaluations in ${Math.round(
+          rateLimitConfig.evaluateDraft.windowMs / 60000
+        )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+        429,
+        { retryAfter, scope: isAuthenticated ? "account" : "ip" }
+      )
+    );
   }
 
   // Sanitize and validate input
@@ -98,23 +103,11 @@ export default async function handler(
     const { evaluation, verificationResult, verificationId, model } =
       await requestEvaluation(sanitizedTitle, sanitizedContent);
 
-    let expectations: Awaited<
-      ReturnType<typeof getModelExpectations>
-    > | null = null;
-    let expectationsFetchFailed = false;
-    try {
-      expectations = await getModelExpectations(model);
-    } catch (error) {
-      console.error("[EvaluateDraft] Failed to fetch expectations:", error);
-      expectations = null;
-      expectationsFetchFailed = true;
-    }
-
     const logPrefix = isAuthenticated
       ? `[EvaluateDraft] ${accountId}`
       : `[EvaluateDraft] Anonymous`;
 
-    console.log(
+    logger.debug(
       `${logPrefix} - Pass: ${evaluation.overallPass}, Quality: ${(
         evaluation.qualityScore * 100
       ).toFixed(0)}%, Attention: ${(evaluation.attentionScore * 100).toFixed(
@@ -128,8 +121,6 @@ export default async function handler(
       verificationResult,
       verificationId,
       model,
-      expectations,
-      expectationsFetchFailed,
     });
   } catch (error) {
     return respondWithScreeningError(res, error, "Failed to evaluate proposal");

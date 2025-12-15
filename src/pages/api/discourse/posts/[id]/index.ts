@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 import { discoursePost } from "@/server/plugins/discourse-client";
 
 const parseId = (value: string | string[] | undefined): number | null => {
@@ -22,17 +23,30 @@ export default async function handler(
   res: NextApiResponse<any>
 ) {
   if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const postId = parseId(req.query.id);
   if (!postId) {
-    return res.status(400).json({ error: "Invalid post id" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid post id", 400)
+    );
   }
 
   const includeRaw = parseBoolean(req.query.include_raw) ?? undefined;
   if (req.query.include_raw !== undefined && includeRaw === null) {
-    return res.status(400).json({ error: "Invalid `include_raw` parameter" });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.VALIDATION_ERROR,
+        "Invalid `include_raw` parameter",
+        400
+      )
+    );
   }
 
   const { data, error, status } = await discoursePost({
@@ -41,9 +55,14 @@ export default async function handler(
   });
 
   if (error || !data) {
-    return res
-      .status(status ?? 500)
-      .json({ error: error ?? "Failed to fetch post" });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.UPSTREAM_ERROR,
+        error ?? "Failed to fetch post",
+        status ?? 500
+      )
+    );
   }
 
   return res.status(200).json(data);

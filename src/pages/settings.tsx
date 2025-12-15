@@ -19,8 +19,9 @@ import type {
   ProposalDetailResponse,
   ProposalReply,
   ProposalRevision,
-} from "@/types/proposals";
+} from "@/components/proposal/types/proposals";
 import type { DiscourseRevisionResponse } from "@/types/discourse";
+import { logger } from "@/lib/logger";
 
 const stripHtml = (html: string) => {
   if (!html) return "";
@@ -253,13 +254,13 @@ export default function SettingsPage() {
               data.version = revisionsData.current_version;
             }
           } else {
-            console.warn(
+            logger.warn(
               "Failed to fetch revisions for timeline:",
               revisionsResponse.status
             );
           }
         } catch (timelineError) {
-          console.error("Timeline fetch error:", timelineError);
+          logger.error("Timeline fetch error:", timelineError);
         }
       }
 

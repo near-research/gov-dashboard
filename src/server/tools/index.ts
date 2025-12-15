@@ -14,7 +14,7 @@ import {
 import { DISCOURSE_TOOLS, buildDiscourseSystemPrompt } from "./discourse";
 
 import { DOCS_TOOLS, buildDocsSystemPrompt } from "./docs";
-import { AGENT_MODEL as AGENT_MODEL_BASE } from "@/agent/contract";
+import { AGENT_MODEL as AGENT_MODEL_BASE } from "@/constants/agent";
 
 // ============================================================================
 // Combined Tools

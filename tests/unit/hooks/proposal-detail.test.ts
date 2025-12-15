@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ProposalRevision } from "@/types/proposals";
-import { buildRevisionView } from "@/hooks/useProposalDetail";
+import type { ProposalRevision } from "@/components/proposal/types/proposals";
+import { buildRevisionView } from "@/components/proposal/hooks/useProposalDetail";
 import { reconstructRevisionContent } from "@/utils/ui/revision-content";
 
 vi.mock("@/utils/ui/revision-content", () => ({

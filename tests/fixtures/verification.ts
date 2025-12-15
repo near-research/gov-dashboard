@@ -1,3 +1,8 @@
+import {
+  SummaryRequestOptions,
+  prepareSummaryRequest,
+} from "@/lib/near-ai/summary";
+
 export const signatureResponse = {
   text: "reqhash:reshash",
   signature:
@@ -88,6 +93,14 @@ export const proofPayload = {
     verified: true,
     reasons: [],
   },
+};
+
+export const buildMockSummaryRequest = (options: SummaryRequestOptions) => {
+  const { serialized, hash } = prepareSummaryRequest(options);
+  return {
+    requestBody: serialized,
+    requestHash: hash,
+  };
 };
 
 // Re-export shared verification mocks used across tests

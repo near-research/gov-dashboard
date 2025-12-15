@@ -6,6 +6,7 @@ import("server-only").catch(() => {
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import { DISCOURSE_RENDER_LIMIT, clampRenderLimit } from "@/config/discourse";
+import { logger } from "@/lib/logger";
 import {
   CategorySchema,
   categoryInputSchema,
@@ -102,7 +103,7 @@ const friendlyMessageForCode: Record<string, string> = {
 function toClientError(error: unknown): ClientResult<never> {
   const defaultMessage = "Unexpected error—please try again.";
 
-  console.error("[discourse-client] Error:", error);
+  logger.error("[discourse-client] Error:", error);
 
   if (error instanceof ORPCError) {
     const status = statusForCode[error.code] ?? 500;
@@ -110,7 +111,7 @@ function toClientError(error: unknown): ClientResult<never> {
     const isTest = process.env.NODE_ENV === "test";
     const loggable = status >= 500 || !friendlyMessageForCode[error.code];
     if (!isTest && loggable) {
-      const log = status >= 500 ? console.error : console.warn;
+      const log = status >= 500 ? logger.error : logger.warn;
       log("[discourse] ORPCError", { code: error.code, status, error });
     }
     return {
@@ -123,16 +124,16 @@ function toClientError(error: unknown): ClientResult<never> {
     error instanceof TypeError &&
     error.message.includes("is not a function")
   ) {
-    console.error("[discourse-client] Method not found:", error.message);
+    logger.error("[discourse-client] Method not found:", error.message);
     return { error: "Service configuration error", status: 500 };
   }
 
   if (error instanceof Error) {
-    console.error("[discourse] Error", error);
+    logger.error("[discourse] Error", error);
     return { error: defaultMessage };
   }
 
-  console.error("[discourse] Unknown error", error);
+  logger.error("[discourse] Unknown error", error);
   return { error: defaultMessage };
 }
 
@@ -169,7 +170,7 @@ export const createDiscourseClientWrapper = (
 
       for (const method of requiredMethods) {
         if (typeof (client as Record<string, unknown>)[method] !== "function") {
-          console.error(`[discourse-client] Missing method: ${method}`);
+          logger.error(`[discourse-client] Missing method: ${method}`);
           throw new Error(`Discourse client missing method: ${method}`);
         }
       }

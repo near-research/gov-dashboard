@@ -1,7 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/lib/db";
-import { screeningResults } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import {
+  screeningResults,
+  type ScreeningResult,
+} from "@/lib/db/schema";
+import { eq, and, desc, lt } from "drizzle-orm";
+import { logger } from "@/lib/logger";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { z } from "zod";
 
 /**
  * GET /api/getAnalysis/[topicId]
@@ -28,11 +34,39 @@ import { eq, and, desc } from "drizzle-orm";
  * - 405: Method not allowed (non-GET requests)
  * - 500: Database error
  */
+const querySchema = z.object({
+  all: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().regex(/^\d+$/).optional(),
+  revisionNumber: z.coerce.number().int().min(1).optional(),
+});
+
+type ScreeningPageResult = {
+  revisionNumber: number;
+  evaluation: ScreeningResult["evaluation"];
+  qualityScore: number | null;
+  attentionScore: number | null;
+  title: string;
+  nearAccount: string;
+  timestamp: string;
+  model: string | null;
+};
+
+const formatScreeningRecord = (screening: ScreeningResult): ScreeningPageResult => ({
+  revisionNumber: screening.revisionNumber,
+  evaluation: screening.evaluation,
+  qualityScore: screening.qualityScore ?? null,
+  attentionScore: screening.attentionScore ?? null,
+  title: screening.title,
+  nearAccount: screening.nearAccount,
+  timestamp: screening.timestamp.toISOString(),
+  model: screening.evaluation.model ?? null,
+});
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Only allow GET requests
   if (req.method !== "GET") {
     return res.status(405).json({
       error: "Method not allowed",
@@ -40,64 +74,79 @@ export default async function handler(
     });
   }
 
-  // Extract topicId from URL parameter
-  const { topicId, revisionNumber, all } = req.query;
-
-  // Validate topicId
+  const { topicId } = req.query;
   if (!topicId || typeof topicId !== "string") {
     return res.status(400).json({ error: "Invalid topic ID" });
   }
 
+  const parsedQuery = querySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    return res.status(400).json({
+      error: "Invalid query parameters",
+      message: parsedQuery.error.issues.map((issue) => issue.message).join("; "),
+    });
+  }
+
+  const { all, limit, cursor, revisionNumber } = parsedQuery.data;
+
   try {
-    // Option 1: Return all revisions for this topic
     if (all === "true") {
-      const results = await db
+      const cursorValue = cursor ? Number(cursor) : undefined;
+      if (cursor && Number.isNaN(cursorValue)) {
+        return res.status(400).json({
+          error: "Invalid cursor value",
+          message: "Cursor must be a numeric revision number",
+        });
+      }
+
+      const pageLimit = limit + 1;
+      const baseCondition = eq(screeningResults.topicId, topicId);
+      const cursorCondition =
+        cursorValue !== undefined
+          ? and(
+              baseCondition,
+              lt(screeningResults.revisionNumber, cursorValue)
+            )
+          : baseCondition;
+
+      const rows = await db
         .select()
         .from(screeningResults)
-        .where(eq(screeningResults.topicId, topicId))
-        .orderBy(desc(screeningResults.revisionNumber));
+        .where(cursorCondition)
+        .orderBy(desc(screeningResults.revisionNumber))
+        .limit(pageLimit);
 
-      if (!results || results.length === 0) {
+      if (!rows || rows.length === 0) {
         return res.status(404).json({
           error: "No screening results found",
           message: `No screenings exist for topic ${topicId}`,
         });
       }
 
+      const hasMore = rows.length > limit;
+      const windowed = hasMore ? rows.slice(0, limit) : rows;
+      const results = windowed.map(formatScreeningRecord);
+      const nextCursor = hasMore
+        ? String(results[results.length - 1].revisionNumber)
+        : undefined;
+
       return res.status(200).json({
         topicId,
-        screenings: results.map((screening) => ({
-          revisionNumber: screening.revisionNumber,
-          evaluation: screening.evaluation,
-          qualityScore: screening.qualityScore,
-          attentionScore: screening.attentionScore,
-          title: screening.title,
-          nearAccount: screening.nearAccount,
-          model: (screening.evaluation as any)?.model ?? null,
-          timestamp: screening.timestamp.toISOString(),
-        })),
-        total: results.length,
+        results,
+        screenings: results,
+        hasMore,
+        nextCursor,
       });
     }
 
-    // Option 2: Get specific revision
     if (revisionNumber !== undefined) {
-      const revisionNum = parseInt(revisionNumber as string);
-
-      if (isNaN(revisionNum) || revisionNum < 1) {
-        return res.status(400).json({
-          error: "Invalid revision number",
-          message: "revisionNumber must be a positive integer",
-        });
-      }
-
       const result = await db
         .select()
         .from(screeningResults)
         .where(
           and(
             eq(screeningResults.topicId, topicId),
-            eq(screeningResults.revisionNumber, revisionNum)
+            eq(screeningResults.revisionNumber, revisionNumber)
           )
         )
         .limit(1);
@@ -105,60 +154,38 @@ export default async function handler(
       if (!result || result.length === 0) {
         return res.status(404).json({
           error: "No screening results found",
-          message: `No screening exists for topic ${topicId} revision ${revisionNum}`,
+          message: `No screening exists for topic ${topicId} revision ${revisionNumber}`,
         });
       }
 
-      const screening = result[0];
-
-      return res.status(200).json({
-        revisionNumber: screening.revisionNumber,
-        evaluation: screening.evaluation,
-        qualityScore: screening.qualityScore,
-        attentionScore: screening.attentionScore,
-        title: screening.title,
-        nearAccount: screening.nearAccount,
-        model: (screening.evaluation as any)?.model ?? null,
-        timestamp: screening.timestamp.toISOString(),
-      });
+      return res.status(200).json(formatScreeningRecord(result[0]));
     }
 
-    // Option 3: Get latest revision (default behavior)
-    const result = await db
+    const latest = await db
       .select()
       .from(screeningResults)
       .where(eq(screeningResults.topicId, topicId))
       .orderBy(desc(screeningResults.revisionNumber))
       .limit(1);
 
-    // Handle case where no screening exists
-    if (!result || result.length === 0) {
+    if (!latest || latest.length === 0) {
       return res.status(404).json({
         error: "No screening results found",
         message: `No screening exists for topic ${topicId}`,
       });
     }
 
-    const screening = result[0];
-
-    // Return screening data with revision number and computed scores
-    return res.status(200).json({
-      revisionNumber: screening.revisionNumber,
-      evaluation: screening.evaluation,
-      qualityScore: screening.qualityScore,
-      attentionScore: screening.attentionScore,
-      title: screening.title,
-      nearAccount: screening.nearAccount,
-      model: (screening.evaluation as any)?.model ?? null,
-      timestamp: screening.timestamp.toISOString(),
-    });
+    return res.status(200).json(formatScreeningRecord(latest[0]));
   } catch (error) {
-    console.error("[getAnalysis] Database error:", error);
-    return res.status(500).json({
-      error: "Internal server error",
-      message: "Failed to fetch screening results",
-      details:
-        process.env.NODE_ENV === "development" ? String(error) : undefined,
-    });
+    logger.error("[getAnalysis] Database error:", error);
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.UPSTREAM_ERROR,
+        "Failed to fetch screening results",
+        500,
+        process.env.NODE_ENV === "development" ? String(error) : undefined
+      )
+    );
   }
 }

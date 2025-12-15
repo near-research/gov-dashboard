@@ -212,3 +212,75 @@ export type Category = z.infer<typeof CategorySchema>;
 export type Tag = z.infer<typeof TagSchema>;
 export type SearchPost = z.infer<typeof SearchPostSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
+
+export const DiscourseActionSummarySchema = z.object({
+  id: z.number(),
+  count: z.number().optional(),
+});
+
+export const DiscourseUserRefSchema = z.object({
+  id: z.number(),
+  username: z.string(),
+});
+
+export const DiscoursePostSchema = z.object({
+  id: z.number(),
+  post_number: z.number(),
+  username: z.string(),
+  cooked: z.string(),
+  created_at: z.string(),
+  like_count: z.number().optional(),
+  actions_summary: z.array(DiscourseActionSummarySchema).optional(),
+  reply_count: z.number().optional(),
+  reply_to_post_number: z.number().nullable().optional(),
+  reply_to_user: DiscourseUserRefSchema.nullable().optional(),
+  avatar_template: z.string().nullable().optional(),
+  version: z.number().optional(),
+  topic_id: z.number().optional(),
+  topic_title: z.string().optional(),
+  topic_slug: z.string().optional(),
+  topic_posts_count: z.number().optional(),
+  topic_reply_count: z.number().optional(),
+  topic_views: z.number().optional(),
+  topic_bumped_at: z.string().optional(),
+});
+
+export const DiscoursePostStreamSchema = z.object({
+  posts: z.array(DiscoursePostSchema),
+});
+
+export const DiscourseTopicDetailSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  slug: z.string(),
+  posts_count: z.number().optional(),
+  views: z.number().optional(),
+  last_posted_at: z.string().nullable().optional(),
+  like_count: z.number().optional(),
+  actions_summary: z.array(DiscourseActionSummarySchema).optional(),
+  post_stream: DiscoursePostStreamSchema,
+  category_id: z.number().optional(),
+  participant_count: z.number().optional(),
+  url: z.string().optional(),
+  current_revision: z.number().optional(),
+  revisions: z
+    .array(
+      z.object({
+        version: z.number(),
+        created_at: z.string(),
+      })
+    )
+    .optional(),
+});
+
+export const DiscourseUserDetailSchema = z.object({
+  id: z.number(),
+  username: z.string(),
+  name: z.string().optional(),
+  avatar_template: z.string().optional(),
+});
+
+export type DiscoursePost = z.infer<typeof DiscoursePostSchema>;
+export type DiscoursePostStream = z.infer<typeof DiscoursePostStreamSchema>;
+export type DiscourseTopicDetail = z.infer<typeof DiscourseTopicDetailSchema>;
+export type DiscourseUserDetail = z.infer<typeof DiscourseUserDetailSchema>;

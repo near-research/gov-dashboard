@@ -1,6 +1,7 @@
 import { createAuthClient } from "better-auth/react";
 import { siwnClient } from "better-near-auth/client";
 import { siwnDomain } from "@/config/siwn";
+import { logger } from "@/lib/logger";
 
 export const authClient = createAuthClient({
   baseURL:
@@ -38,7 +39,7 @@ export const safeSignOut = async (): Promise<void> => {
   try {
     await disconnectNear();
   } catch (disconnectError) {
-    console.error("NEAR disconnect during sign-out failed:", disconnectError);
+    logger.error("NEAR disconnect during sign-out failed:", disconnectError);
   }
   await signOut();
 };

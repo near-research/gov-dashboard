@@ -9,6 +9,15 @@ import type {
 } from "@/types/discourse-linkage";
 import { DISCOURSE_PROPOSALS_CATEGORY_ID } from "@/config/discourse";
 import { getDiscourseUserApiKey } from "@/utils/discourse";
+import { SIGNING_MESSAGES } from "@/constants/signing-messages";
+import { assertSigningReady } from "@/utils/wallet/guards";
+import {
+  createNearOperationError,
+  logNearError,
+  type NearOperationError,
+} from "@/utils/errors/near-errors";
+import { logger } from "@/lib/logger";
+import { SIWN_RECIPIENT } from "@/constants/near";
 
 interface UseProposalPublishingParams {
   client: OrpcClient;
@@ -17,6 +26,7 @@ interface UseProposalPublishingParams {
   isPassing: boolean;
   title: string;
   content: string;
+  discourseLinked?: boolean;
   track: GovernanceTrackFn;
 }
 
@@ -28,18 +38,22 @@ export const useProposalPublishing = ({
   title,
   content,
   track,
+  discourseLinked: initialDiscourseLinked = false,
 }: UseProposalPublishingParams) => {
   const [publishLoading, setPublishLoading] = useState(false);
-  const [publishError, setPublishError] = useState("");
+  const [publishError, setPublishError] = useState<NearOperationError | null>(null);
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
-  const [discourseLinked, setDiscourseLinked] = useState(false);
+  const [discourseLinked, setDiscourseLinked] =
+    useState(initialDiscourseLinked);
   const [checkingLinkage, setCheckingLinkage] = useState(false);
   const [linkNonce, setLinkNonce] = useState<string>("");
   const [linkPayload, setLinkPayload] = useState<string>("");
   const [linking, setLinking] = useState(false);
-  const [linkError, setLinkError] = useState("");
+  const [linkError, setLinkError] = useState<NearOperationError | null>(null);
   const [discourseUsername, setDiscourseUsername] = useState("");
   const [discourseUserApiKey, setDiscourseUserApiKey] = useState("");
+  const clearPublishError = useCallback(() => setPublishError(null), []);
+  const clearLinkError = useCallback(() => setLinkError(null), []);
 
   const publishDisabled =
     publishLoading ||
@@ -69,7 +83,9 @@ export const useProposalPublishing = ({
           linkage?.userApiKey ?? getDiscourseUserApiKey() ?? ""
         );
       } catch (err) {
-        console.error("Failed to check Discourse linkage:", err);
+        logger.error("Failed to check Discourse linkage", {
+          message: err instanceof Error ? err.message : "Unknown error",
+        });
         setDiscourseLinked(false);
       } finally {
         setCheckingLinkage(false);
@@ -80,8 +96,8 @@ export const useProposalPublishing = ({
 
   const startDiscourseLink = useCallback(async () => {
     try {
-      setPublishError("");
-      setLinkError("");
+      setPublishError(null);
+      setLinkError(null);
       const data = (await client.discourse.initiateLink({
         clientId: "discourse-plugin",
         applicationName: "NEAR Gov",
@@ -91,29 +107,38 @@ export const useProposalPublishing = ({
         setLinkNonce(data.nonce);
       }
     } catch (err: unknown) {
-      console.error("Discourse auth link error:", err);
-      const message =
-        err instanceof Error ? err.message : "Failed to start Discourse linking";
-      setPublishError(message);
+      logger.error("Discourse auth link error", {
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+      const nearError = createNearOperationError(err);
+      logNearError("useProposalPublishing.startDiscourseLink", nearError);
+      setPublishError(nearError);
     }
   }, [client]);
 
   const completeDiscourseLink = useCallback(async () => {
     if (!linkNonce || !linkPayload.trim()) {
-      setLinkError("Paste the User API key from Discourse to continue.");
+      setLinkError(
+        createNearOperationError(
+          new Error("Paste the User API key from Discourse to continue.")
+        )
+      );
       return;
     }
     if (!signedAccountId || !walletSigner) {
-      setLinkError("Connect your NEAR wallet first.");
+      setLinkError(
+        createNearOperationError(new Error("Connect your NEAR wallet first."))
+      );
       return;
     }
     setLinking(true);
-    setLinkError("");
+    setLinkError(null);
     try {
+      assertSigningReady(walletSigner, signedAccountId);
       const { sign } = await import("near-sign-verify");
-      const authToken = await sign("Link my NEAR account to Discourse", {
+      const authToken = await sign(SIGNING_MESSAGES.DISCOURSE_LINK, {
         signer: walletSigner,
-        recipient: "social.near",
+        recipient: SIWN_RECIPIENT,
       });
       await client.discourse.completeLink({
         payload: linkPayload.trim(),
@@ -131,35 +156,45 @@ export const useProposalPublishing = ({
       setLinkPayload("");
       setLinkNonce("");
     } catch (err: unknown) {
-      console.error("Complete link error:", err);
-      const message =
-        err instanceof Error ? err.message : "Failed to complete Discourse link";
-      setLinkError(message);
+      logger.error("Complete link error", {
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+      const nearError = createNearOperationError(err);
+      logNearError("useProposalPublishing.completeDiscourseLink", nearError);
+      setLinkError(nearError);
     } finally {
       setLinking(false);
     }
   }, [client, linkNonce, linkPayload, signedAccountId, walletSigner]);
 
   const publishToDiscourse = useCallback(async () => {
+    const validationError = (message: string) =>
+      createNearOperationError(new Error(message));
     if (!isPassing) {
-      setPublishError("Screening must pass before publishing.");
+      setPublishError(validationError("Screening must pass before publishing."));
       return;
     }
     if (!title.trim() || !content.trim()) {
-      setPublishError("Add a title and proposal content first.");
+      setPublishError(
+        validationError("Add a title and proposal content first.")
+      );
       return;
     }
     if (!signedAccountId || !walletSigner) {
-      setPublishError("Connect your NEAR wallet to publish.");
+      setPublishError(
+        validationError("Connect your NEAR wallet to publish.")
+      );
       return;
     }
     if (!discourseLinked) {
-      setPublishError("Link your Discourse account before publishing.");
+      setPublishError(
+        validationError("Link your Discourse account before publishing.")
+      );
       return;
     }
 
     setPublishLoading(true);
-    setPublishError("");
+    setPublishError(null);
     setPublishSuccess(null);
     track("draft_publish_clicked");
 
@@ -170,13 +205,14 @@ export const useProposalPublishing = ({
       hasUsername: Boolean(discourseUsername),
       hasUserApiKey: Boolean(discourseUserApiKey),
     };
-    console.debug("[draft] createPost payload", payloadForLog);
+    logger.debug("[draft] createPost payload", payloadForLog);
 
     try {
+      assertSigningReady(walletSigner, signedAccountId);
       const { sign } = await import("near-sign-verify");
-      const authToken = await sign("Publish proposal draft to Discourse", {
+      const authToken = await sign(SIGNING_MESSAGES.DISCOURSE_PUBLISH, {
         signer: walletSigner,
-        recipient: "social.near",
+        recipient: SIWN_RECIPIENT,
       });
 
       const userApiKey =
@@ -198,8 +234,10 @@ export const useProposalPublishing = ({
         },
       });
     } catch (err: unknown) {
-      console.error("[draft] publish failed:", {
-        error: err,
+      const nearError = createNearOperationError(err);
+      logNearError("useProposalPublishing.publishToDiscourse", nearError);
+      logger.error("[draft] publish failed", {
+        error: nearError.originalError,
         rpcData:
           err && typeof err === "object"
             ? (err as Record<string, unknown>).data
@@ -207,12 +245,10 @@ export const useProposalPublishing = ({
         rpcName: err instanceof Error ? err.name : undefined,
         payload: payloadForLog,
       });
-      const message =
-        err instanceof Error ? err.message : "Failed to publish to Discourse";
-      setPublishError(message);
+      setPublishError(nearError);
       track("draft_publish_failed", {
         props: {
-          message: message.slice(0, 120),
+          message: nearError.message.slice(0, 120),
         },
       });
     } finally {
@@ -244,8 +280,12 @@ export const useProposalPublishing = ({
     publishDisabled,
     setLinkPayload,
     setLinkError,
+    clearPublishError,
+    clearLinkError,
     startDiscourseLink,
     completeDiscourseLink,
     publishToDiscourse,
+    discourseUsername,
+    discourseUserApiKey,
   };
 };

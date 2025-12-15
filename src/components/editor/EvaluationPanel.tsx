@@ -2,7 +2,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EvaluationSummary } from "@/components/editor/EvaluationSummary";
 import type { Evaluation } from "@/types/evaluation";
-import type { VerificationMetadata } from "@/types/agui-events";
 
 export type EvaluationPanelProps = {
   evaluationError: string;
@@ -13,8 +12,6 @@ export type EvaluationPanelProps = {
   onToggleEvalDetails: () => void;
   remainingEvaluations: number | null;
   rateLimitResetSeconds: number | null;
-  evaluationVerification?: VerificationMetadata;
-  evaluationChatId?: string;
 };
 
 export function EvaluationPanel({
@@ -26,8 +23,6 @@ export function EvaluationPanel({
   onToggleEvalDetails,
   remainingEvaluations,
   rateLimitResetSeconds,
-  evaluationVerification,
-  evaluationChatId,
 }: EvaluationPanelProps) {
   return (
     <div className="card" style={{ padding: "1.2rem" }}>
@@ -68,11 +63,7 @@ export function EvaluationPanel({
               marginTop: "0.5rem",
             }}
           >
-            <EvaluationSummary
-              evaluation={evaluation}
-              verification={evaluationVerification}
-              verificationId={evaluationChatId}
-            />
+            <EvaluationSummary evaluation={evaluation} />
           </div>
         )}
         {remainingEvaluations !== null && remainingEvaluations > 0 && (

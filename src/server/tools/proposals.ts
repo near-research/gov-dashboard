@@ -5,8 +5,7 @@
 import type { AgentState, ToolChoice } from "@/types/agui-events";
 import type { Evaluation } from "@/types/evaluation";
 import { requestEvaluation } from "@/server/screening";
-import { toVerificationStatus } from "@/verification/normalize";
-import type { VerificationMetadata } from "@/types/verification";
+import type { VerificationMetadata, VerificationStatus } from "@/lib/near-ai";
 
 // ============================================================================
 // Tool Definitions
@@ -242,18 +241,24 @@ export async function handleScreenProposal(args: {
 }): Promise<{ result: Evaluation; verification?: VerificationMetadata }> {
   const screeningResult = await requestEvaluation(args.title, args.content);
 
+  const verificationResult = screeningResult.verificationResult;
   let verification: VerificationMetadata | undefined;
-  if (screeningResult.verificationResult || screeningResult.chatId) {
+  if (verificationResult || screeningResult.chatId) {
+    const status: VerificationStatus = verificationResult
+      ? verificationResult.verified
+        ? "verified"
+        : "failed"
+      : "pending";
+
     verification = {
       source: "near-ai-cloud",
-      status: toVerificationStatus(screeningResult.verificationResult?.status),
+      status,
       messageId:
         screeningResult.chatId ||
-        screeningResult.verificationResult?.chatId ||
+        verificationResult?.chatId ||
         undefined,
-      requestHash: screeningResult.verificationResult?.requestHash ?? undefined,
-      responseHash:
-        screeningResult.verificationResult?.responseHash ?? undefined,
+      requestHash: verificationResult?.requestHash ?? undefined,
+      responseHash: verificationResult?.responseHash ?? undefined,
     };
   }
 

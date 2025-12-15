@@ -10,6 +10,7 @@ import React, {
 import { authClient, useSession } from "@/lib/auth/auth-client";
 import { useNear } from "@/hooks/useNear";
 import { getNearAccountId, hasNearLinked } from "@/lib/auth/auth-utils";
+import { logger } from "@/lib/logger";
 
 type LinkedAccount = {
   providerId: string;
@@ -103,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLinkedAccounts(accounts);
       setAccountsError(null);
     } catch (err) {
-      console.error("Failed to fetch linked accounts:", err);
+      logger.error("Failed to fetch linked accounts:", err);
       setAccountsError(
         err instanceof Error
           ? err

@@ -6,11 +6,13 @@ import { createRateLimiter, getClientIdentifier } from "@/server/rateLimiter";
 import { rateLimitConfig } from "@/config/rateLimit";
 import { servicesConfig } from "@/config/services";
 import type { ApiErrorResponse } from "@/types/api";
-import type { ProposalSummaryResponse } from "@/types/summaries";
+import type { ProposalSummaryResponse } from "@/components/proposal/types/summaries";
 import { getNearAIClient } from "@/lib/near-ai";
-import { streamChatCompletion } from "@/lib/near-ai/stream";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-import { finalizeSummaryVerification, createSummaryVerificationId } from "@/server/summaryVerification";
+import { runSummaryFlow } from "@/lib/near-ai/summarize";
+import { createSummaryVerificationId } from "@/server/summaryVerification";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { logger } from "@/lib/logger";
 
 const proposalSummarizeLimiter = createRateLimiter(
   rateLimitConfig.proposalSummary
@@ -34,13 +36,23 @@ export default async function handler(
   res: NextApiResponse<ProposalSummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.METHOD_NOT_ALLOWED,
+        "Method not allowed",
+        405
+      )
+    );
   }
 
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {
-    return res.status(400).json({ error: "Invalid proposal ID" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid proposal ID", 400)
+    );
   }
 
   const clientId = getClientIdentifier(req);
@@ -62,17 +74,19 @@ export default async function handler(
     const retryAfter =
       secondsUntilReset || rateLimitConfig.proposalSummary.windowMs / 1000;
     res.setHeader("Retry-After", retryAfter.toString());
-    return res.status(429).json({
-      error: "Rate limit exceeded",
-      message: `You've reached the limit of ${
-        rateLimitConfig.proposalSummary.maxRequests
-      } proposal summaries in ${Math.round(
-        rateLimitConfig.proposalSummary.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(
-        retryAfter / 60
-      )} minutes and try again.`,
-      retryAfter,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.RATE_LIMITED,
+        `You've reached the limit of ${
+          rateLimitConfig.proposalSummary.maxRequests
+        } proposal summaries in ${Math.round(
+          rateLimitConfig.proposalSummary.windowMs / 60000
+        )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+        429,
+        { retryAfter }
+      )
+    );
   }
 
   try {
@@ -102,7 +116,15 @@ export default async function handler(
     });
 
     if (!topicResponse.ok) {
-      return res.status(404).json({ error: "Proposal not found" });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Proposal not found",
+          404,
+          { upstreamStatus: topicResponse.status }
+        )
+      );
     }
 
     const topicData = await topicResponse.json();
@@ -110,7 +132,14 @@ export default async function handler(
     // Get the first post (the proposal)
     const proposalPost = topicData.post_stream?.posts?.[0];
     if (!proposalPost) {
-      return res.status(404).json({ error: "Proposal post not found" });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Proposal post not found",
+          404
+        )
+      );
     }
 
     // Fetch raw markdown content
@@ -128,7 +157,7 @@ export default async function handler(
         );
       }
     } catch (err) {
-      console.warn(`[Proposal Summary] Could not fetch raw content:`, err);
+      logger.warn(`[Proposal Summary] Could not fetch raw content:`, err);
     }
 
     // Use raw if available, fallback to cooked
@@ -150,7 +179,6 @@ export default async function handler(
     // ===================================================================
     const client = getNearAIClient();
     const verificationId = createSummaryVerificationId();
-    const session = client.createSession(verificationId);
 
     // Use the prompt builder function
     const prompt = buildProposalSummaryPrompt(
@@ -160,38 +188,19 @@ export default async function handler(
     );
 
     const model = NEAR_AI_MODELS.DEEPSEEK_V3_1;
-    const nearRequest = {
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
-      max_tokens: 800,
-      stream: true,
-    };
-    const requestBody = JSON.stringify(nearRequest);
-
-    const { summary, chatId, responseText } = await streamChatCompletion(
+    const { summary, verification: verificationData } = await runSummaryFlow({
       client,
-      nearRequest,
-      {
-        verificationId,
-        verificationNonce: session.nonce,
-      }
-    );
+      origin,
+      verificationId,
+      model,
+      userPrompt: prompt,
+      temperature: 0.5,
+      maxTokens: 800,
+    });
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
     }
-
-    const verificationData = await finalizeSummaryVerification({
-      client,
-      origin,
-      model,
-      verificationId,
-      sessionNonce: session.nonce,
-      requestBody,
-      responseText,
-      chatId,
-    });
 
     // ===================================================================
     // BUILD RESPONSE
@@ -214,20 +223,24 @@ export default async function handler(
       verificationResult: verificationData.verificationResult,
       verificationId,
       proof: verificationData.proof,
-      remoteProof: verificationData.remoteProof ?? undefined,
     };
 
     proposalCache.set(cacheKey, response);
     return res.status(200).json(response);
   } catch (error: unknown) {
-    console.error("[Proposal Summary] Error:", error);
+    logger.error("[Proposal Summary] Error:", error);
     const details =
       error instanceof Error && process.env.NODE_ENV === "development"
         ? error.message
         : undefined;
-    return res.status(500).json({
-      error: "Failed to generate proposal summary",
-      details,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to generate proposal summary",
+        500,
+        details
+      )
+    );
   }
 }

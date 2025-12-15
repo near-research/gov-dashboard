@@ -9,8 +9,9 @@ import type {
   DiscussionSummaryResponse,
   ProposalRevisionSummaryResponse,
   TextSummaryResponse,
-} from "@/types/summaries";
-import type { ProposalReply } from "@/types/proposals";
+} from "@/components/proposal/types/summaries";
+import type { ProposalReply } from "@/components/proposal/types/proposals";
+import { logger } from "@/lib/logger";
 
 interface Message {
   id: string;
@@ -256,9 +257,13 @@ Respond in plain text only. No markdown formatting.`,
 
   // Focus input when expanded
   useEffect(() => {
-    if (isExpanded && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+    if (!isExpanded) {
+      return;
     }
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 100);
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [isExpanded]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -309,7 +314,7 @@ Respond in plain text only. No markdown formatting.`,
     try {
       return JSON.parse(rawArgs);
     } catch (parseError) {
-      console.warn("Failed to parse tool arguments:", parseError, rawArgs);
+      logger.warn("Failed to parse tool arguments:", parseError, rawArgs);
       return {};
     }
   };

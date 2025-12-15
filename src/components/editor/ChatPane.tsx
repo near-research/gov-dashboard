@@ -1,18 +1,5 @@
 import { SidebarChat } from "@/components/editor/SidebarChat";
-import type { Message, ToolCallState } from "@/components/editor/ProposalEditor";
-
-type ChatPaneProps = {
-  currentStep: string | null;
-  messages: Message[];
-  currentMessage: Message | null;
-  activeToolCalls: Map<string, ToolCallState>;
-  isRunning: boolean;
-  suggestions: string[];
-  inputMessage: string;
-  setInputMessage: (value: string) => void;
-  sendMessage: (value: string) => void;
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
-};
+import type { ChatSidebarProps } from "@/components/editor/types";
 
 export function ChatPane({
   currentStep,
@@ -25,7 +12,7 @@ export function ChatPane({
   setInputMessage,
   sendMessage,
   messagesEndRef,
-}: ChatPaneProps) {
+}: ChatSidebarProps) {
   return (
     <div
       className="card"

@@ -1,5 +1,7 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { NearErrorAlert } from "@/components/ui/NearErrorAlert";
+import type { NearOperationError } from "@/utils/errors/near-errors";
 
 export type PublishStep = { label: string; done: boolean; blocked?: boolean };
 
@@ -7,17 +9,19 @@ export type PublishBarProps = {
   publishSteps: PublishStep[];
   publishDisabled: boolean;
   publishLoading: boolean;
-  publishError: string;
+  publishError: NearOperationError | null;
   publishSuccess: string | null;
   discourseLinked: boolean;
   signedAccountId: string | null | undefined;
   linkPayload: string;
-  linkError: string;
+  linkError: NearOperationError | null;
   linking: boolean;
   startDiscourseLink: () => void;
   completeDiscourseLink: () => void;
   setLinkPayload: (value: string) => void;
   publishToDiscourse: () => void;
+  clearPublishError: () => void;
+  clearLinkError: () => void;
   signIn: () => void;
 };
 
@@ -36,6 +40,8 @@ export function PublishBar({
   completeDiscourseLink,
   setLinkPayload,
   publishToDiscourse,
+  clearPublishError,
+  clearLinkError,
   signIn,
 }: PublishBarProps) {
   return (
@@ -98,11 +104,19 @@ export function PublishBar({
             </div>
           ))}
         </div>
-        {publishError && (
-          <Alert className="border-red-500 bg-red-50 text-red-900">
-            <AlertDescription>{publishError}</AlertDescription>
-          </Alert>
-        )}
+        <NearErrorAlert
+          error={publishError}
+          onRetry={() => {
+            clearPublishError();
+            void publishToDiscourse();
+          }}
+          onReconnect={() => {
+            clearPublishError();
+            void signIn();
+          }}
+          onDismiss={clearPublishError}
+          className="mb-3"
+        />
         {publishSuccess && (
           <Alert className="border-green-500 bg-green-50 text-green-900">
             <AlertDescription>
@@ -176,11 +190,19 @@ export function PublishBar({
               className="w-full rounded-md border px-3 py-2 text-sm"
               rows={3}
             />
-            {linkError && (
-              <Alert className="border-red-500 bg-red-50 text-red-900">
-                <AlertDescription>{linkError}</AlertDescription>
-              </Alert>
-            )}
+            <NearErrorAlert
+              error={linkError}
+              onRetry={() => {
+                clearLinkError();
+                void completeDiscourseLink();
+              }}
+              onReconnect={() => {
+                clearLinkError();
+                void signIn();
+              }}
+              onDismiss={clearLinkError}
+              className="mb-3"
+            />
             <div className="flex gap-2">
               <Button variant="outline" onClick={startDiscourseLink} disabled={linking} className="w-1/2">
                 Get auth link

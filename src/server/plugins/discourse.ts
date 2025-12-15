@@ -1,8 +1,8 @@
 import "server-only";
 
 import { createPluginRuntime } from "every-plugin";
-
-const DEFAULT_DISCOURSE_BASE_URL = "https://gov.near.org";
+import { logger } from "@/lib/logger";
+import { DISCOURSE_URLS } from "@/constants/services";
 
 const normalizeFileSchemeUrl = (rawUrl: string) => {
   const trimmed = rawUrl.trim();
@@ -47,7 +47,7 @@ const normalizeRemoteEntryUrl = (input: string): string => {
 
 const getDiscourseBaseUrl = () =>
   normalizeFileSchemeUrl(
-    process.env.DISCOURSE_URL || DEFAULT_DISCOURSE_BASE_URL
+    process.env.DISCOURSE_URL || DISCOURSE_URLS.PRODUCTION
   );
 
 type DiscoursePluginRuntime = ReturnType<typeof createPluginRuntime>;
@@ -150,7 +150,7 @@ if (isTestEnvironment) {
   const normalizedRemoteEntryUrl = normalizeRemoteEntryUrl(remoteEntryUrl);
 
   if (!process.env.DISCOURSE_PLUGIN_URL) {
-    console.warn(
+    logger.warn(
       "[discourse-plugin] Using baked-in remote entry; set DISCOURSE_PLUGIN_URL to override."
     );
   }
@@ -165,7 +165,7 @@ if (isTestEnvironment) {
 
   const shutdownRuntime = () => {
     runtime.shutdown().catch((error) => {
-      console.error("[discourse-plugin] runtime shutdown error", error);
+      logger.error("[discourse-plugin] runtime shutdown error", error);
     });
   };
 
@@ -182,11 +182,11 @@ if (isTestEnvironment) {
     },
     secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
   });
-  console.log(
+  logger.debug(
     "[discourse-plugin] loaded router keys",
     Object.keys(plugin.router).sort()
   );
-  console.log(
+  logger.debug(
     "[discourse-plugin] createPost type",
     typeof (plugin.router as Record<string, unknown>).createPost
   );

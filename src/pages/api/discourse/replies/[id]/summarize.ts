@@ -10,15 +10,13 @@ import type {
   DiscourseTopic,
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
-import type { ReplySummaryResponse } from "@/types/summaries";
-import type { VerificationResult } from "@/types/verification";
+import type { ReplySummaryResponse } from "@/components/proposal/types/summaries";
 import { getNearAIClient } from "@/lib/near-ai";
-import { streamChatCompletion } from "@/lib/near-ai/stream";
+import { runSummaryFlow } from "@/lib/near-ai/summarize";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-import {
-  finalizeSummaryVerification,
-  createSummaryVerificationId,
-} from "@/server/summaryVerification";
+import { logger } from "@/lib/logger";
+import { createSummaryVerificationId } from "@/server/summaryVerification";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 
 const replyLimiter = createRateLimiter(rateLimitConfig.replySummary);
 const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
@@ -38,13 +36,19 @@ export default async function handler(
   res: NextApiResponse<ReplySummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const { id: replyId } = req.query;
 
   if (!replyId || typeof replyId !== "string") {
-    return res.status(400).json({ error: "Invalid reply ID" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid reply ID", 400)
+    );
   }
 
   const clientId = getClientIdentifier(req);
@@ -65,17 +69,19 @@ export default async function handler(
     const retryAfter =
       secondsUntilReset || rateLimitConfig.replySummary.windowMs / 1000;
     res.setHeader("Retry-After", retryAfter.toString());
-    return res.status(429).json({
-      error: "Rate limit exceeded",
-      message: `You've reached the limit of ${
-        rateLimitConfig.replySummary.maxRequests
-      } reply summaries in ${Math.round(
-        rateLimitConfig.replySummary.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(
-        retryAfter / 60
-      )} minutes and try again.`,
-      retryAfter,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.RATE_LIMITED,
+        `You've reached the limit of ${
+          rateLimitConfig.replySummary.maxRequests
+        } reply summaries in ${Math.round(
+          rateLimitConfig.replySummary.windowMs / 60000
+        )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+        429,
+        { retryAfter }
+      )
+    );
   }
 
   try {
@@ -106,10 +112,15 @@ export default async function handler(
     });
 
     if (!postResponse.ok) {
-      return res.status(404).json({
-        error: "Reply not found",
-        status: postResponse.status,
-      });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Reply not found",
+          postResponse.status,
+          { status: postResponse.status }
+        )
+      );
     }
 
     const replyPost: DiscoursePost = await postResponse.json();
@@ -160,7 +171,7 @@ export default async function handler(
           }
         }
       } catch (error) {
-        console.error(`[Reply Summary] Failed to fetch parent post:`, error);
+        logger.error(`[Reply Summary] Failed to fetch parent post:`, error);
         // Continue without parent context if fetch fails
       }
     }
@@ -196,7 +207,6 @@ ${truncatedContent}`;
     // ===================================================================
     const client = getNearAIClient();
     const verificationId = createSummaryVerificationId();
-    const session = client.createSession(verificationId);
 
     // Get like count for engagement context
     const likeCount =
@@ -216,38 +226,19 @@ ${truncatedContent}`;
     );
 
     const model = NEAR_AI_MODELS.DEEPSEEK_V3_1;
-    const nearRequest = {
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-      max_tokens: 250,
-      stream: true,
-    };
-    const requestBody = JSON.stringify(nearRequest);
-
-    const { summary, chatId, responseText } = await streamChatCompletion(
+    const { summary, verification: verificationData } = await runSummaryFlow({
       client,
-      nearRequest,
-      {
-        verificationId,
-        verificationNonce: session.nonce,
-      }
-    );
+      origin,
+      verificationId,
+      model,
+      userPrompt: prompt,
+      temperature: 0.3,
+      maxTokens: 250,
+    });
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
     }
-
-    const verificationData = await finalizeSummaryVerification({
-      client,
-      origin,
-      model,
-      verificationId,
-      sessionNonce: session.nonce,
-      requestBody,
-      responseText,
-      chatId,
-    });
 
     // ===================================================================
     // BUILD RESPONSE
@@ -280,20 +271,24 @@ ${truncatedContent}`;
       verificationResult: verificationData.verificationResult,
       verificationId,
       proof: verificationData.proof,
-      remoteProof: verificationData.remoteProof ?? undefined,
     };
 
     replyCache.set(cacheKey, response);
     return res.status(200).json(response);
   } catch (error: unknown) {
-    console.error("[Reply Summary] Error:", error);
+    logger.error("[Reply Summary] Error:", error);
     const details =
       error instanceof Error && process.env.NODE_ENV === "development"
         ? error.message
         : undefined;
-    return res.status(500).json({
-      error: "Failed to generate reply summary",
-      details,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to generate reply summary",
+        500,
+        details
+      )
+    );
   }
 }

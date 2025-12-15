@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Simple In-Memory Cache for AI Summaries
  *
@@ -48,14 +49,14 @@ export class SimpleCache<T> {
     // Check if expired using pre-calculated timestamp
     if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
-      console.log(`[${this.name}] Cache MISS (expired) for key: ${key}`);
+      logger.debug(`[${this.name}] Cache MISS (expired) for key: ${key}`);
       return null;
     }
 
     // Update hit count
     entry.hits++;
     const age = Date.now() - entry.timestamp;
-    console.log(
+    logger.debug(
       `[${this.name}] Cache HIT for key: ${key} (age: ${Math.round(
         age / 1000
       )}s, hits: ${entry.hits})`
@@ -73,7 +74,7 @@ export class SimpleCache<T> {
       const oldestKey = this.cache.keys().next().value;
       if (oldestKey !== undefined) {
         this.cache.delete(oldestKey);
-        console.log(`[${this.name}] Cache EVICTED oldest entry: ${oldestKey}`);
+        logger.debug(`[${this.name}] Cache EVICTED oldest entry: ${oldestKey}`);
       }
     }
 
@@ -86,7 +87,7 @@ export class SimpleCache<T> {
       expiresAt: now + ttl,
       hits: 0,
     });
-    console.log(
+    logger.debug(
       `[${this.name}] Cache SET for key: ${key} (TTL: ${ttl / 1000}s)`
     );
   }
@@ -141,7 +142,7 @@ export class SimpleCache<T> {
   invalidate(key: string): boolean {
     const deleted = this.cache.delete(key);
     if (deleted) {
-      console.log(`[${this.name}] Cache INVALIDATED for key: ${key}`);
+      logger.debug(`[${this.name}] Cache INVALIDATED for key: ${key}`);
     }
     return deleted;
   }
@@ -161,7 +162,7 @@ export class SimpleCache<T> {
     }
 
     if (count > 0) {
-      console.log(
+      logger.debug(
         `[${this.name}] Cache INVALIDATED ${count} entries matching pattern: ${pattern}`
       );
     }
@@ -175,7 +176,7 @@ export class SimpleCache<T> {
   clear(): void {
     const size = this.cache.size;
     this.cache.clear();
-    console.log(`[${this.name}] Cache CLEARED (${size} entries removed)`);
+    logger.debug(`[${this.name}] Cache CLEARED (${size} entries removed)`);
   }
 
   /**
@@ -231,7 +232,7 @@ export class SimpleCache<T> {
     }
 
     if (removed > 0) {
-      console.log(`[${this.name}] Cleanup removed ${removed} expired entries`);
+      logger.debug(`[${this.name}] Cleanup removed ${removed} expired entries`);
     }
 
     return removed;

@@ -10,17 +10,11 @@ import {
   type AgentUIEvent,
   type MessageUIEvent,
   type ToolCallUIEvent,
-  type MessageProof,
 } from "@/types/agent-ui";
-import type { VerificationMetadata } from "@/types/agui-events";
-import { VerificationProof } from "@/components/verification/VerificationProof";
-import {
-  ToolHistoryCard,
-  type ToolHistoryStatus,
-} from "./ToolHistoryCard";
+import { ToolHistoryCard, type ToolHistoryStatus } from "./ToolHistoryCard";
 import ProposalCard from "@/components/proposal/ProposalCard";
-import type { ProposalDisplayData } from "@/types/proposals";
-import type { RemoteProof } from "@/types/verification";
+import type { ProposalDisplayData } from "@/components/proposal/types/proposals";
+import { logger } from "@/lib/logger";
 
 interface ChatMessagesProps {
   events: AgentUIEvent[];
@@ -90,9 +84,6 @@ interface TurnInfo {
   tools: ToolCallUIEvent[];
   assistantMessages: MessageUIEvent[];
   status: TurnStatus;
-  verification?: VerificationMetadata;
-  proof?: MessageProof;
-  remoteProof?: RemoteProof | null;
   proposalList?: ProposalDisplayData | null;
   toolMap?: Map<string, ToolCallUIEvent>;
 }
@@ -167,23 +158,20 @@ export const ChatMessages = ({
   const { turnInfoMap, relevantTurnInfos } = useMemo(() => {
     const map = new Map<number, TurnInfo>();
 
-    const buckets = events.reduce<Record<number, TurnInfo>>((acc, event) => {
-      if (event.kind !== "tool_call" && event.kind !== "message") {
-        return acc;
-      }
-      const existing =
-        acc[event.turnNumber] ??
-        {
-          turnNumber: event.turnNumber,
-          tools: [],
-          assistantMessages: [],
-          status: "awaiting_response" as TurnStatus,
-          verification: undefined,
-          proof: undefined,
-          remoteProof: undefined,
-          proposalList: null,
-          toolMap: new Map<string, ToolCallUIEvent>(),
-        };
+      const buckets = events.reduce<Record<number, TurnInfo>>((acc, event) => {
+        if (event.kind !== "tool_call" && event.kind !== "message") {
+          return acc;
+        }
+        const existing =
+          acc[event.turnNumber] ??
+          {
+            turnNumber: event.turnNumber,
+            tools: [],
+            assistantMessages: [],
+            status: "awaiting_response" as TurnStatus,
+            proposalList: null,
+            toolMap: new Map<string, ToolCallUIEvent>(),
+          };
       if (event.kind === "tool_call") {
         const map = existing.toolMap ?? new Map<string, ToolCallUIEvent>();
         map.set(event.toolCallId, event);
@@ -192,15 +180,9 @@ export const ChatMessages = ({
         if (!existing.proposalList) {
           existing.proposalList = extractProposalListFromTool(event);
         }
-      } else if (event.kind === "message" && event.role === "assistant") {
-        existing.assistantMessages = [...existing.assistantMessages, event];
-
-        if (event.proof?.stage === "initial_reasoning") {
-          existing.verification = event.verification;
-          existing.proof = event.proof;
-          existing.remoteProof = event.remoteProof ?? null;
+        } else if (event.kind === "message" && event.role === "assistant") {
+          existing.assistantMessages = [...existing.assistantMessages, event];
         }
-      }
       acc[event.turnNumber] = existing;
       return acc;
     }, {});
@@ -230,7 +212,7 @@ export const ChatMessages = ({
     };
   }, [events]);
   if (process.env.NODE_ENV !== "production") {
-    console.log("[ChatMessages Debug]", {
+    logger.debug("[ChatMessages Debug]", {
       totalEvents: events.length,
       currentTurnNumber,
     });
@@ -328,52 +310,10 @@ export const ChatMessages = ({
         </div>
       </div>
     ) : null;
-    const shouldSuppressMessage =
-      event.kind === "message" &&
-      messageHasProposalJson &&
-      Boolean(proposalList);
-
-    const suppressedVerificationElement =
-      shouldSuppressMessage &&
-      event.kind === "message" &&
-      event.role === "assistant" &&
-      (event.verification || event.proof || event.remoteProof) ? (
-        <div className="mt-3">
-          <VerificationProof
-            verification={event.verification}
-            verificationId={event.proof?.verificationId ?? event.messageId}
-            model={model}
-            requestHash={event.proof?.requestHash}
-            responseHash={event.proof?.responseHash}
-            nonce={event.proof?.nonce ?? undefined}
-            expectedArch={event.proof?.arch ?? undefined}
-            expectedDeviceCertHash={event.proof?.deviceCertHash ?? undefined}
-            expectedRimHash={event.proof?.rimHash ?? undefined}
-            expectedUeid={event.proof?.ueid ?? undefined}
-            expectedMeasurements={event.proof?.measurements ?? undefined}
-            prefetchedProof={event.remoteProof ?? undefined}
-            triggerLabel={
-              event.proof?.stage === "final_synthesis"
-                ? "Verify recommendation"
-                : event.proof?.stage === "initial_reasoning"
-                ? "Verify reasoning"
-                : undefined
-            }
-          />
-        </div>
-      ) : null;
-
     const toolHistoryElement =
       shouldShowToolHistory && turnInfo ? (
         <div key={`tools-after-${event.id}`} className="flex justify-start mt-4">
-          <ToolHistoryCard
-            status={turnInfo.status}
-            tools={turnInfo.tools}
-            verification={turnInfo.verification}
-            proof={turnInfo.proof}
-            remoteProof={turnInfo.remoteProof}
-            model={model}
-          />
+          <ToolHistoryCard status={turnInfo.status} tools={turnInfo.tools} />
         </div>
       ) : null;
 
@@ -385,16 +325,6 @@ export const ChatMessages = ({
             "Proposal results:"
           : event.content;
 
-        if (shouldSuppressMessage) {
-          return (
-            <Fragment key={event.id}>
-              {proposalListElement}
-              {suppressedVerificationElement}
-              {toolHistoryElement}
-            </Fragment>
-          );
-        }
-
         return (
           <Fragment key={event.id}>
             {!isAssistantPlaceholder && (
@@ -405,11 +335,6 @@ export const ChatMessages = ({
                 content={event.content}
                 displayContent={sanitizedContent}
                 timestamp={event.timestamp}
-                messageId={event.messageId}
-                verification={event.verification}
-                proof={event.proof}
-                remoteProof={event.remoteProof}
-                model={model}
                 markdown={markdown}
               />
             )}

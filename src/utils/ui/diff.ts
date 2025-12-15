@@ -1,4 +1,5 @@
 import { diffWords } from "diff";
+import type { Change } from "diff";
 
 interface DiffOptions {
   addedColor?: string;
@@ -24,15 +25,15 @@ export function diffPartialText(
       ? oldText.slice(0, newText.length)
       : oldText;
 
-  const changes = diffWords(oldTextToCompare, newText);
+  const changes: Change[] = diffWords(oldTextToCompare, newText);
   let result = "";
 
   for (const part of changes) {
-    if ((part as any).added) {
+    if (part.added) {
       result += `<em style="font-style: italic; color: ${addedColor}; background-color: ${addedBg};">${escapeHtml(
         part.value
       )}</em>`;
-    } else if ((part as any).removed) {
+    } else if (part.removed) {
       result += `<s style="text-decoration: line-through; color: ${removedColor}; background-color: ${removedBg};">${escapeHtml(
         part.value
       )}</s>`;

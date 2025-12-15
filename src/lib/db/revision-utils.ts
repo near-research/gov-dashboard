@@ -15,6 +15,7 @@ import type {
   DiscourseRevision,
 } from "@/types/discourse";
 import type { Evaluation } from "@/types/evaluation";
+import { logger } from "@/lib/logger";
 
 const INTERNAL_API_BASE_URL =
   process.env.INTERNAL_BASE_URL ||
@@ -116,7 +117,7 @@ export async function saveScreeningWithVersion(
       revisionTimestamp = new Date(revision.created_at);
     }
   } catch (err) {
-    console.warn("Could not fetch revision timestamp:", err);
+    logger.warn("Could not fetch revision timestamp:", err);
   }
 
   const screeningData: NewScreeningResult = {

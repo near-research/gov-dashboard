@@ -3,7 +3,6 @@ import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
 import { Markdown } from "@/components/proposal/Markdown";
 import VersionSelector from "@/components/proposal/revisions/VersionSelector";
-import { VerificationProof } from "@/components/verification/VerificationProof";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -11,11 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp, FileText, History } from "lucide-react";
 import type { ProposalFrontmatter } from "@/utils/metadata";
-import type { ProposalRevision } from "@/types/proposals";
+import type { ProposalRevision } from "@/components/proposal/types/proposals";
 import type {
   ProposalRevisionSummaryResponse,
   TextSummaryResponse,
-} from "@/types/summaries";
+} from "@/components/proposal/types/summaries";
 
 const FRONTMATTER_FIELDS: Array<{
   label: string;
@@ -268,26 +267,6 @@ export default function ProposalContent({
                 <Markdown
                   content={proposalSummary.summary}
                   className="text-sm"
-                />
-                <VerificationProof
-                  verification={proposalSummary.verification ?? undefined}
-                  verificationId={proposalSummary.verificationId ?? undefined}
-                  model={proposalSummary.model ?? undefined}
-                  requestHash={proposalSummary.proof?.requestHash ?? undefined}
-                  responseHash={
-                    proposalSummary.proof?.responseHash ?? undefined
-                  }
-                  nonce={proposalSummary.proof?.nonce ?? undefined}
-                  expectedArch={proposalSummary.proof?.arch ?? undefined}
-                  expectedDeviceCertHash={
-                    proposalSummary.proof?.deviceCertHash ?? undefined
-                  }
-                  expectedRimHash={proposalSummary.proof?.rimHash ?? undefined}
-                  expectedUeid={proposalSummary.proof?.ueid ?? undefined}
-                  expectedMeasurements={
-                    proposalSummary.proof?.measurements ?? undefined
-                  }
-                  prefetchedProof={proposalSummary.remoteProof ?? undefined}
                 />
               </AlertDescription>
             </Alert>

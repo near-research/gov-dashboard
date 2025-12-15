@@ -1,12 +1,25 @@
 import type { NextApiResponse } from "next";
 import type { Evaluation } from "@/types/evaluation";
-import type { VerificationResult } from "@/types/verification";
+import { evaluationSchema } from "@/types/evaluation";
 import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
-import { verify, type VerificationResult as NearAuthVerificationResult, type VerifyOptions } from "near-sign-verify";
-import { getNearAIClient } from "@/lib/near-ai";
+import {
+  getNearAIClient,
+  verifyChatMessage,
+  type ChatVerificationResult,
+} from "@/lib/near-ai";
+import {
+  normalizeChatCompletionRequest,
+  serializeChatCompletionRequest,
+} from "@/lib/near-ai/request";
+import {
+  verify,
+  type VerificationResult as NearAuthVerificationResult,
+  type VerifyOptions,
+} from "near-sign-verify";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
-import { z } from "zod";
 import { siwnRecipient } from "@/config/siwn";
+import { logger } from "@/lib/logger";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 
 type ScreeningErrorDetails = {
   code?: string;
@@ -18,18 +31,14 @@ type ScreeningErrorDetails = {
   [key: string]: unknown;
 };
 
-export class ScreeningError extends Error {
-  statusCode: number;
-  details?: ScreeningErrorDetails;
-
+export class ScreeningError extends ApiError {
   constructor(
     statusCode: number,
     message: string,
-    details?: ScreeningErrorDetails
+    details?: ScreeningErrorDetails,
+    code: keyof typeof ErrorCodes = ErrorCodes.INTERNAL_ERROR
   ) {
-    super(message);
-    this.statusCode = statusCode;
-    this.details = details;
+    super(code, message, statusCode, details);
   }
 }
 
@@ -38,28 +47,6 @@ export const MAX_CONTENT_LENGTH = 32000;
 const PROMPT_CONTENT_LIMIT = MAX_CONTENT_LENGTH;
 
 const CONTROL_CHAR_REGEX = /[\x00-\x1F\x7F]/g;
-
-const evaluationSchema = z.object({
-  complete: z.object({ pass: z.boolean(), reason: z.string() }),
-  legible: z.object({ pass: z.boolean(), reason: z.string() }),
-  consistent: z.object({ pass: z.boolean(), reason: z.string() }),
-  compliant: z.object({ pass: z.boolean(), reason: z.string() }),
-  justified: z.object({ pass: z.boolean(), reason: z.string() }),
-  measurable: z.object({ pass: z.boolean(), reason: z.string() }),
-  relevant: z.object({
-    score: z.enum(["high", "medium", "low"]),
-    reason: z.string(),
-  }),
-  material: z.object({
-    score: z.enum(["high", "medium", "low"]),
-    reason: z.string(),
-  }),
-  qualityScore: z.number(),
-  attentionScore: z.number(),
-  overallPass: z.boolean(),
-  summary: z.string(),
-  model: z.string().optional(),
-});
 
 const extractJsonFragments = (text: string): Set<string> => {
   const fragments = new Set<string>();
@@ -129,16 +116,19 @@ export const parseEvaluation = (raw: string): Evaluation => {
       const parsed = JSON.parse(candidate);
       const validated = evaluationSchema.safeParse(parsed);
       if (validated.success) {
-        return validated.data as Evaluation;
+        return validated.data;
       }
     } catch {
       // continue to next candidate
     }
   }
 
-  throw new ScreeningError(500, "Could not parse evaluation response", {
-    body: raw,
-  });
+  throw new ScreeningError(
+    500,
+    "Could not parse evaluation response",
+    { body: raw },
+    ErrorCodes.UPSTREAM_ERROR
+  );
 };
 
 export function sanitizeProposalInput(
@@ -146,17 +136,29 @@ export function sanitizeProposalInput(
   content?: string
 ): { title: string; content: string } {
   if (!title || !title.trim()) {
-    throw new ScreeningError(400, "Proposal title is required");
+      throw new ScreeningError(
+        400,
+        "Proposal title is required",
+        undefined,
+        ErrorCodes.VALIDATION_ERROR
+      );
   }
 
   if (!content || !content.trim()) {
-    throw new ScreeningError(400, "Proposal text is required");
+    throw new ScreeningError(
+      400,
+      "Proposal text is required",
+      undefined,
+      ErrorCodes.VALIDATION_ERROR
+    );
   }
 
   if (title.length > MAX_TITLE_LENGTH) {
     throw new ScreeningError(
       400,
-      `Title too long (max ${MAX_TITLE_LENGTH} characters)`
+      `Title too long (max ${MAX_TITLE_LENGTH} characters)`,
+      undefined,
+      ErrorCodes.VALIDATION_ERROR
     );
   }
 
@@ -179,7 +181,7 @@ export function sanitizeProposalInput(
   }
 
   if (process.env.NODE_ENV === "development") {
-    console.log("[Screening] sending chars:", sanitizedContent.length);
+    logger.debug("[Screening] sending chars:", sanitizedContent.length);
   }
 
   return {
@@ -193,9 +195,12 @@ export async function verifyNearAuth(
   options?: VerifyOptions
 ): Promise<{ token: string; result: NearAuthVerificationResult }> {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    throw new ScreeningError(401, "NEAR authentication required", {
-      code: "missing_token",
-    });
+    throw new ScreeningError(
+      401,
+      "NEAR authentication required",
+      { code: "missing_token" },
+      ErrorCodes.UNAUTHORIZED
+    );
   }
 
   const token = authHeader.substring(7);
@@ -212,16 +217,18 @@ export async function verifyNearAuth(
   } catch (error: unknown) {
     const details =
       error instanceof Error ? error.message : "Unknown verification error";
-    throw new ScreeningError(401, "Invalid authentication", {
-      code: "invalid_token",
-      details,
-    });
+    throw new ScreeningError(
+      401,
+      "Invalid authentication",
+      { code: "invalid_token", details },
+      ErrorCodes.UNAUTHORIZED
+    );
   }
 }
 
 export interface EvaluationRequestResult {
   evaluation: Evaluation;
-  verificationResult: VerificationResult;
+  verificationResult: ChatVerificationResult;
   model: string;
   chatId?: string | null;
   verificationId?: string | null;
@@ -231,11 +238,16 @@ export interface EvaluationRequestResult {
 
 const buildFailedVerificationResult = (
   message: string
-): VerificationResult => ({
+): ChatVerificationResult => ({
   verified: false,
-  reasons: [message],
-  status: "failed",
-  warnings: [message],
+  chatId: "",
+  requestHash: "",
+  responseHash: "",
+  signature: null,
+  hashValidation: null,
+  signatureValidation: null,
+  attestation: null,
+  error: message,
 });
 
 export async function requestEvaluation(
@@ -246,38 +258,35 @@ export async function requestEvaluation(
   const prompt = buildScreeningPrompt(title, content);
 
   const model = NEAR_AI_MODELS.GPT_OSS_120B;
-  const requestPayload = {
+  const normalizedRequest = normalizeChatCompletionRequest({
     model,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.3,
     stream: false,
-  };
-  const requestBodyString = JSON.stringify(requestPayload);
+  });
+  const requestBodyString = serializeChatCompletionRequest(normalizedRequest);
 
   try {
-    const data = await client.chatCompletions(requestPayload);
+    const data = await client.chatCompletions(normalizedRequest);
     const responseText = JSON.stringify(data);
     const contentText = data.choices?.[0]?.message?.content;
 
     if (!contentText) {
-      throw new ScreeningError(500, "Empty response from AI");
+      throw new ScreeningError(
+        500,
+        "Empty response from AI",
+        undefined,
+        ErrorCodes.UPSTREAM_ERROR
+      );
     }
 
     const evaluation = parseEvaluation(contentText);
     evaluation.model = model;
 
     const chatId = data?.id ?? null;
-    const verificationResult =
-      chatId
-        ? await client.verifyChatPayload({
-            requestBody: requestBodyString,
-            responseText,
-            chatId,
-            model,
-          })
-        : buildFailedVerificationResult(
-            "Missing chat ID from NEAR AI response"
-          );
+    const verificationResult = chatId
+      ? await verifyChatMessage(requestBodyString, responseText, model)
+      : buildFailedVerificationResult("Missing chat ID from NEAR AI response");
 
     return {
       evaluation,
@@ -294,20 +303,25 @@ export async function requestEvaluation(
     }
 
     if (error instanceof Error) {
-      console.error("[Screening] NEAR AI API error:", error.message);
+      logger.error("[Screening] NEAR AI API error:", error.message);
       const statusCategory =
         error.message.includes("timeout") || error.message.includes("504")
           ? "NEAR AI timed out while evaluating the proposal. Please try again or shorten the content."
           : "NEAR AI API error";
-      throw new ScreeningError(502, statusCategory, {
-        message: error.message,
-        details: error.message,
-      });
+      throw new ScreeningError(
+        502,
+        statusCategory,
+        { message: error.message, details: error.message },
+        ErrorCodes.UPSTREAM_ERROR
+      );
     }
 
-    throw new ScreeningError(500, "Failed to evaluate proposal", {
-      message: error instanceof Error ? error.message : "Unknown error",
-    });
+    throw new ScreeningError(
+      500,
+      "Failed to evaluate proposal",
+      { message: error instanceof Error ? error.message : "Unknown error" },
+      ErrorCodes.INTERNAL_ERROR
+    );
   }
 }
 
@@ -317,23 +331,25 @@ export function respondWithScreeningError(
   fallbackMessage?: string
 ) {
   if (error instanceof ScreeningError) {
-    const detailMessage =
-      fallbackMessage ??
-      [error.details?.details, error.details?.message, error.details?.body]
-        .filter((value): value is string => typeof value === "string")
-        .find((value) => value.length > 0) ??
-      error.message;
-    return res.status(error.statusCode).json({
-      error: error.message,
-      message: detailMessage,
-      details:
-        process.env.NODE_ENV === "development" ? error.details : undefined,
-    });
+    const responseError =
+      fallbackMessage && fallbackMessage.length
+        ? new ApiError(
+            error.code,
+            fallbackMessage,
+            error.statusCode,
+            error.details
+          )
+        : error;
+    return respondWithError(res, responseError);
   }
 
-  console.error("[Screening] Unexpected error:", error);
-  return res.status(500).json({
-    error: "Failed to evaluate proposal",
-    message: fallbackMessage || "An unexpected error occurred",
-  });
+  logger.error("[Screening] Unexpected error:", error);
+  const message = fallbackMessage || "Failed to evaluate proposal";
+  const details =
+    error instanceof Error ? error.message : typeof error === "string" ? error : error;
+
+  return respondWithError(
+    res,
+    new ApiError(ErrorCodes.INTERNAL_ERROR, message, 500, details)
+  );
 }

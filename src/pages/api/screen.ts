@@ -8,6 +8,8 @@ import {
 } from "@/server/screening";
 import { createRateLimiter } from "@/server/rateLimiter";
 import { rateLimitConfig } from "@/config/rateLimit";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { logger } from "@/lib/logger";
 const screenLimiter = createRateLimiter(rateLimitConfig.screen);
 
 /**
@@ -22,7 +24,10 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const origin =
@@ -57,13 +62,17 @@ export default async function handler(
     const retryAfter =
       secondsUntilReset || rateLimitConfig.screen.windowMs / 1000;
     res.setHeader("Retry-After", retryAfter.toString());
-    return res.status(429).json({
-      error: "Too many requests",
-      message: `Rate limit exceeded for ${nearAddress}. Please wait ${Math.ceil(
-        retryAfter / 60
-      )} minutes and try again.`,
-      retryAfter,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.RATE_LIMITED,
+        `Rate limit exceeded for ${nearAddress}. Please wait ${Math.ceil(
+          retryAfter / 60
+        )} minutes and try again.`,
+        429,
+        { retryAfter }
+      )
+    );
   }
 
   const { title, proposal } = req.body;
@@ -81,7 +90,7 @@ export default async function handler(
     const { evaluation, verificationResult, model, chatId } =
       await requestEvaluation(sanitizedTitle, sanitizedProposal);
 
-    console.log(
+    logger.debug(
       `[Screen] Evaluation complete for ${nearAddress} - Pass: ${
         evaluation.overallPass
       }, Quality: ${(evaluation.qualityScore * 100).toFixed(0)}%, Attention: ${(

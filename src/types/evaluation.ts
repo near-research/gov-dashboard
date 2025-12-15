@@ -1,32 +1,29 @@
-export interface EvaluationCriterion {
-  pass: boolean;
-  reason: string;
-}
+import { z } from "zod";
 
-export interface AttentionScore {
-  score: "high" | "medium" | "low";
-  reason: string;
-}
+const evaluationCriterionSchema = z.object({
+  pass: z.boolean(),
+  reason: z.string(),
+});
 
-export interface Evaluation {
-  // Quality Score Criteria (6 criteria)
-  complete: EvaluationCriterion;
-  legible: EvaluationCriterion;
-  consistent: EvaluationCriterion;
-  compliant: EvaluationCriterion;
-  justified: EvaluationCriterion;
-  measurable: EvaluationCriterion;
+const attentionScoreSchema = z.object({
+  score: z.enum(["high", "medium", "low"]),
+  reason: z.string(),
+});
 
-  // Attention Score Criteria (2 criteria)
-  relevant: AttentionScore;
-  material: AttentionScore;
+export const evaluationSchema = z.object({
+  complete: evaluationCriterionSchema,
+  legible: evaluationCriterionSchema,
+  consistent: evaluationCriterionSchema,
+  compliant: evaluationCriterionSchema,
+  justified: evaluationCriterionSchema,
+  measurable: evaluationCriterionSchema,
+  relevant: attentionScoreSchema,
+  material: attentionScoreSchema,
+  qualityScore: z.number(),
+  attentionScore: z.number(),
+  overallPass: z.boolean(),
+  summary: z.string(),
+  model: z.string().optional(),
+});
 
-  // Computed Scores
-  qualityScore: number;
-  attentionScore: number;
-
-  // Overall Result
-  overallPass: boolean;
-  summary: string;
-  model?: string;
-}
+export type Evaluation = z.infer<typeof evaluationSchema>;

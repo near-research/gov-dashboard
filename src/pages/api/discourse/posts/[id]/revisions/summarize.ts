@@ -11,14 +11,12 @@ import type {
   RevisionTitleChange,
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
-import type { PostRevisionSummaryResponse } from "@/types/summaries";
-import type { VerificationResult } from "@/types/verification";
+import type { PostRevisionSummaryResponse } from "@/components/proposal/types/summaries";
 import { getNearAIClient } from "@/lib/near-ai";
-import { streamChatCompletion } from "@/lib/near-ai/stream";
-import {
-  finalizeSummaryVerification,
-  createSummaryVerificationId,
-} from "@/server/summaryVerification";
+import { runSummaryFlow } from "@/lib/near-ai/summarize";
+import { logger } from "@/lib/logger";
+import { createSummaryVerificationId } from "@/server/summaryVerification";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 
 const postRevisionLimiter = createRateLimiter(rateLimitConfig.postRevisions);
 const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
@@ -40,13 +38,19 @@ export default async function handler(
   res: NextApiResponse<PostRevisionSummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {
-    return res.status(400).json({ error: "Invalid post ID" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid post ID", 400)
+    );
   }
 
   const clientId = getClientIdentifier(req);
@@ -67,17 +71,19 @@ export default async function handler(
     const retryAfter =
       secondsUntilReset || rateLimitConfig.postRevisions.windowMs / 1000;
     res.setHeader("Retry-After", retryAfter.toString());
-    return res.status(429).json({
-      error: "Rate limit exceeded",
-      message: `You've reached the limit of ${
-        rateLimitConfig.postRevisions.maxRequests
-      } post revision summaries in ${Math.round(
-        rateLimitConfig.postRevisions.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(
-        retryAfter / 60
-      )} minutes and try again.`,
-      retryAfter,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.RATE_LIMITED,
+        `You've reached the limit of ${
+          rateLimitConfig.postRevisions.maxRequests
+        } post revision summaries in ${Math.round(
+          rateLimitConfig.postRevisions.windowMs / 60000
+        )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+        429,
+        { retryAfter }
+      )
+    );
   }
 
   try {
@@ -110,10 +116,15 @@ export default async function handler(
     });
 
     if (!postResponse.ok) {
-      return res.status(404).json({
-        error: "Post not found",
-        status: postResponse.status,
-      });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Post not found",
+          postResponse.status,
+          { status: postResponse.status }
+        )
+      );
     }
 
     const postData: DiscoursePost = await postResponse.json();
@@ -156,15 +167,20 @@ export default async function handler(
           });
         }
       } catch (err) {
-        console.error(`Error fetching revision ${i}:`, err);
+        logger.error(`Error fetching revision ${i}:`, err);
         // Continue fetching other revisions
       }
     }
 
     if (revisions.length === 0) {
-      return res.status(404).json({
-        error: "Could not fetch revision data",
-      });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.UPSTREAM_ERROR,
+          "Could not fetch revision data",
+          404
+        )
+      );
     }
 
     // ===================================================================
@@ -226,7 +242,6 @@ export default async function handler(
     // ===================================================================
     const client = getNearAIClient();
     const verificationId = createSummaryVerificationId();
-    const session = client.createSession(verificationId);
 
     // Use the prompt builder function
     const prompt = buildRevisionAnalysisPrompt(
@@ -237,38 +252,19 @@ export default async function handler(
       truncatedTimeline
     );
 
-    const nearRequest = {
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
-      max_tokens: 800,
-      stream: true,
-    };
-    const requestBody = JSON.stringify(nearRequest);
-
-    const { summary, chatId, responseText } = await streamChatCompletion(
+    const { summary, verification: verificationData } = await runSummaryFlow({
       client,
-      nearRequest,
-      {
-        verificationId,
-        verificationNonce: session.nonce,
-      }
-    );
+      origin,
+      verificationId,
+      model,
+      userPrompt: prompt,
+      temperature: 0.4,
+      maxTokens: 800,
+    });
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
     }
-
-    const verificationData = await finalizeSummaryVerification({
-      client,
-      origin,
-      model,
-      verificationId,
-      sessionNonce: session.nonce,
-      requestBody,
-      responseText,
-      chatId,
-    });
 
     // ===================================================================
     // BUILD RESPONSE
@@ -298,20 +294,24 @@ export default async function handler(
       verificationResult: verificationData.verificationResult,
       verificationId,
       proof: verificationData.proof,
-      remoteProof: verificationData.remoteProof ?? undefined,
     };
 
     revisionCache.set(cacheKey, response);
     return res.status(200).json(response);
   } catch (error: unknown) {
-    console.error("Revision summary error:", error);
+    logger.error("Revision summary error:", error);
     const details =
       error instanceof Error && process.env.NODE_ENV === "development"
         ? error.message
         : undefined;
-    return res.status(500).json({
-      error: "Failed to generate revision summary",
-      details,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to generate revision summary",
+        500,
+        details
+      )
+    );
   }
 }

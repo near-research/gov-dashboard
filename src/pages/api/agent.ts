@@ -10,81 +10,28 @@ import {
 } from "@/types/agui-events";
 import { AGENT_MODEL, buildAgentRequest } from "@/server/tools";
 import { getNearAIClient } from "@/lib/near-ai";
-import { executeToolCallsWithEvents } from "@/server/agent/tools";
-import {
-  buildCompletionRequest,
-  registerVerificationSession,
-} from "@/server/agent/verification-flow";
-import { runCompletion } from "@/server/agent/completion";
-import { startSseSession, createEventWriter } from "@/server/agent/sse";
-import { validateAgentRequest } from "@/server/agent/validation";
-import type { StreamResult, ToolMessage } from "@/server/agent/types";
-import type { VerificationResult } from "@/types/verification";
+import { executeToolCallsWithEvents } from "./agent/server/tools";
+import { buildCompletionRequest } from "./agent/server/verification-flow";
+import { runCompletion } from "./agent/server/completion";
+import { startSseSession, createEventWriter } from "./agent/server/sse";
+import { validateAgentRequest } from "./agent/server/validation";
+import type { StreamResult, ToolMessage } from "./agent/server/types";
+import { telemetry } from "@/lib/telemetry";
+import { logger } from "@/lib/logger";
+import { MAX_TOOL_ITERATIONS } from "@/constants/agent";
 
-const MAX_TOOL_ITERATIONS = 10;
-
-type VerificationStage =
-  | "initial_reasoning"
-  | "final_response"
-  | `tool_round_${number}`;
-
-function getVerificationStage(
-  iteration: number,
-  hasToolCalls: boolean
-): VerificationStage {
-  if (iteration === 0 && hasToolCalls) {
-    return "initial_reasoning";
+const extractStatusCode = (value: unknown): number => {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "statusCode" in value &&
+    typeof (value as { statusCode?: unknown }).statusCode === "number"
+  ) {
+    return (value as { statusCode?: number }).statusCode ?? 500;
   }
-  if (iteration === 0 && !hasToolCalls) {
-    return "final_response";
-  }
-  return `tool_round_${iteration}`;
-}
+  return 500;
+};
 
-async function verifyCompletionResult({
-  client,
-  result,
-  requestBodyString,
-  stage,
-  writeEvent,
-}: {
-  client: ReturnType<typeof getNearAIClient>;
-  result: StreamResult;
-  requestBodyString: string;
-  stage: VerificationStage;
-  writeEvent: (event: AGUIEvent) => void;
-}): Promise<VerificationResult | null> {
-  if (!result.verificationId || !result.rawSseText) {
-    return null;
-  }
-
-  try {
-    const verificationResult = await client.verifyChatPayload({
-      requestBody: requestBodyString,
-      responseText: result.rawSseText,
-      chatId: result.verificationId,
-      model: AGENT_MODEL,
-    });
-
-    if (verificationResult) {
-      console.log(`[Agent] ${stage} verification result`, {
-        verificationId: result.verificationId,
-        status: verificationResult.status,
-      });
-      writeEvent({
-        type: EventType.CUSTOM,
-        name: "verification",
-        value: { ...verificationResult, stage },
-        timestamp: Date.now(),
-      });
-    }
-
-    return verificationResult;
-  } catch (error) {
-    console.warn(`[Agent] ${stage} verification failed`, error);
-    return null;
-  }
-}
 
 export default async function handler(
   req: NextApiRequest,
@@ -114,6 +61,9 @@ export default async function handler(
   }
 
   const { body, thread, run, runtimeBaseUrl } = validated;
+  const startTime = Date.now();
+  telemetry.agentRunStarted(run, thread);
+  let iteration = 0;
 
   try {
     const client = getNearAIClient();
@@ -133,12 +83,7 @@ export default async function handler(
 
     let currentMessages: AgentConversationMessage[] = requestBody.messages;
 
-    console.log("[Agent] Tool choice:", toolChoice);
-    if (body.verificationId) {
-      console.log("[verification][agent] request prepared", {
-        verificationId: body.verificationId,
-      });
-    }
+    logger.debug("[Agent] Tool choice", { toolChoice });
 
     const sse = startSseSession({ req, res, validated });
     const baseWriteEvent = sse.writeEvent;
@@ -151,11 +96,13 @@ export default async function handler(
 
       if (terminalEventEmitted) {
         if (isTerminal) {
-          console.warn(
+          logger.warn(
             `[Agent] Suppressing duplicate terminal event: ${event.type}`
           );
         } else {
-          console.warn(`[Agent] Suppressing event after terminal: ${event.type}`);
+          logger.warn(
+            `[Agent] Suppressing event after terminal: ${event.type}`
+          );
         }
         return;
       }
@@ -163,6 +110,13 @@ export default async function handler(
       if (isTerminal) {
         terminalEventEmitted = true;
       }
+
+      telemetry.track("agent.event", {
+        runId: run,
+        threadId: thread,
+        eventType: event.type,
+        iteration,
+      });
 
       baseWriteEvent(event);
     };
@@ -179,67 +133,37 @@ export default async function handler(
       timestamp: Date.now(),
     });
 
-    let iteration = 0;
-
     while (iteration < MAX_TOOL_ITERATIONS) {
-      const { requestBodyString, requestHash } = buildCompletionRequest({
+      const { requestBodyString } = buildCompletionRequest({
         model: AGENT_MODEL,
         messages: currentMessages,
         tools: baseTools,
         toolChoice: baseToolChoice,
       });
 
-      const { verificationId, nonce } =
-        iteration === 0
-          ? (() => {
-              if (body.verificationId) {
-                client.createSession(body.verificationId, body.verificationNonce);
-                client.updateSessionHashes(body.verificationId, {
-                  requestHash,
-                });
-              }
-              return {
-                verificationId: body.verificationId,
-                nonce: body.verificationNonce,
-              };
-            })()
-          : await registerVerificationSession({
-              runtimeBaseUrl,
-              baseVerificationId: body.verificationId,
-              requestHash,
-              iteration,
-            });
-
-      console.log(`[Agent] Iteration ${iteration}`, {
+      logger.debug(`[Agent] Iteration ${iteration}`, {
         messageCount: currentMessages.length,
-        verificationId,
       });
 
       const result = await runCompletion({
         client,
         requestBodyString,
-        requestHash,
-        verificationId,
-        verificationNonce: nonce,
         writeEvent,
         captureToolCalls: true,
       });
 
       if (result.finishReason === "error") {
+        telemetry.agentRunFailed(
+          run,
+          "Completion stream reported error",
+          iteration
+        );
         closeStream();
         return;
       }
 
       const hasToolCalls =
         Array.isArray(result.toolCalls) && result.toolCalls.length > 0;
-
-      await verifyCompletionResult({
-        client,
-        result,
-        requestBodyString,
-        stage: getVerificationStage(iteration, hasToolCalls),
-        writeEvent,
-      });
 
       if (
         iteration === 0 &&
@@ -261,20 +185,11 @@ export default async function handler(
         break;
       }
 
-      const verificationContext =
-        result.verificationId || result.lastVerification?.messageId
-          ? {
-              verificationId: result.verificationId,
-              messageId:
-                result.lastVerification?.messageId ?? result.verificationId,
-            }
-          : undefined;
-
       const toolMessages: ToolMessage[] = await executeToolCallsWithEvents({
+        runId: run,
         toolCalls: result.toolCalls!,
         runtimeBaseUrl,
         writeEvent,
-        verificationContext,
       });
 
       writeEvent({
@@ -301,7 +216,7 @@ export default async function handler(
     }
 
     if (iteration >= MAX_TOOL_ITERATIONS) {
-      console.warn("[Agent] Hit max tool iterations", { iteration });
+      logger.warn("[Agent] Hit max tool iterations", { iteration });
       writeEvent({
         type: EventType.CUSTOM,
         name: "warning",
@@ -317,16 +232,19 @@ export default async function handler(
       timestamp: Date.now(),
     });
 
+    telemetry.agentRunCompleted(run, iteration, Date.now() - startTime);
+
     closeStream();
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
+    telemetry.agentRunFailed(run, errorMessage, iteration);
 
     if (!stream) {
       if (error instanceof Error && error.name === "AbortError") {
         return res.status(504).json({ error: "Upstream request timed out" });
       }
-      const statusCode = (error as any)?.statusCode ?? 500;
+      const statusCode = extractStatusCode(error);
       return res.status(statusCode).json({ error: errorMessage });
     }
 
@@ -340,7 +258,9 @@ export default async function handler(
       return closeStream();
     }
 
-    console.error("[Agent] Error:", error);
+    logger.error("[Agent] Error", {
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
     writeEvent({
       type: EventType.RUN_ERROR,
       message: errorMessage,

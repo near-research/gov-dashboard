@@ -11,14 +11,12 @@ import type {
   RevisionTitleChange,
 } from "@/types/discourse";
 import type { ApiErrorResponse } from "@/types/api";
-import type { ProposalRevisionSummaryResponse } from "@/types/summaries";
-import type { VerificationResult } from "@/types/verification";
+import type { ProposalRevisionSummaryResponse } from "@/components/proposal/types/summaries";
 import { getNearAIClient } from "@/lib/near-ai";
-import { streamChatCompletion } from "@/lib/near-ai/stream";
-import {
-  finalizeSummaryVerification,
-  createSummaryVerificationId,
-} from "@/server/summaryVerification";
+import { logger } from "@/lib/logger";
+import { runSummaryFlow } from "@/lib/near-ai/summarize";
+import { createSummaryVerificationId } from "@/server/summaryVerification";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 
 const proposalRevisionLimiter = createRateLimiter(
   rateLimitConfig.proposalRevisions
@@ -42,13 +40,19 @@ export default async function handler(
   res: NextApiResponse<ProposalRevisionSummaryResponse | ApiErrorResponse>
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const { id } = req.query;
 
   if (!id || typeof id !== "string") {
-    return res.status(400).json({ error: "Invalid topic ID" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid topic ID", 400)
+    );
   }
 
   const clientId = getClientIdentifier(req);
@@ -70,17 +74,19 @@ export default async function handler(
     const retryAfter =
       secondsUntilReset || rateLimitConfig.proposalRevisions.windowMs / 1000;
     res.setHeader("Retry-After", retryAfter.toString());
-    return res.status(429).json({
-      error: "Rate limit exceeded",
-      message: `You've reached the limit of ${
-        rateLimitConfig.proposalRevisions.maxRequests
-      } revision summaries in ${Math.round(
-        rateLimitConfig.proposalRevisions.windowMs / 60000
-      )} minutes. Please wait ${Math.ceil(
-        retryAfter / 60
-      )} minutes and try again.`,
-      retryAfter,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.RATE_LIMITED,
+        `You've reached the limit of ${
+          rateLimitConfig.proposalRevisions.maxRequests
+        } revision summaries in ${Math.round(
+          rateLimitConfig.proposalRevisions.windowMs / 60000
+        )} minutes. Please wait ${Math.ceil(retryAfter / 60)} minutes and try again.`,
+        429,
+        { retryAfter }
+      )
+    );
   }
 
   try {
@@ -112,23 +118,31 @@ export default async function handler(
     });
 
     if (!topicResponse.ok) {
-      return res.status(404).json({
-        error: "Topic not found",
-        status: topicResponse.status,
-      });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "Topic not found",
+          topicResponse.status,
+          { status: topicResponse.status }
+        )
+      );
     }
 
     const topicData = await topicResponse.json();
     const firstPost = topicData.post_stream?.posts?.[0];
 
     if (!firstPost) {
-      return res.status(404).json({ error: "Post not found in topic" });
+      return respondWithError(
+        res,
+        new ApiError(ErrorCodes.NOT_FOUND, "Post not found in topic", 404)
+      );
     }
 
     const postId = firstPost.id;
     const version = firstPost.version || 1;
 
-    console.log(
+    logger.debug(
       `[Proposal Revisions] Topic ${id} -> Post ${postId} version ${version}`
     );
 
@@ -169,14 +183,14 @@ export default async function handler(
             title_changes: revData.title_changes,
           });
 
-          console.log(`[Proposal Revisions] Fetched revision ${i}/${version}`);
+          logger.debug(`[Proposal Revisions] Fetched revision ${i}/${version}`);
         } else {
-          console.warn(
+          logger.warn(
             `[Proposal Revisions] Failed to fetch revision ${i}: ${revResponse.status}`
           );
         }
       } catch (err) {
-        console.error(
+        logger.error(
           `[Proposal Revisions] Error fetching revision ${i}:`,
           err
         );
@@ -185,9 +199,14 @@ export default async function handler(
     }
 
     if (revisions.length === 0) {
-      return res.status(404).json({
-        error: "Could not fetch revision data",
-      });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.UPSTREAM_ERROR,
+          "Could not fetch revision data",
+          404
+        )
+      );
     }
 
     // ===================================================================
@@ -263,7 +282,6 @@ export default async function handler(
     // ===================================================================
     const client = getNearAIClient();
     const verificationId = createSummaryVerificationId();
-    const session = client.createSession(verificationId);
 
     // Use the prompt builder function
     const prompt = buildRevisionAnalysisPrompt(
@@ -274,38 +292,19 @@ export default async function handler(
       truncatedTimeline
     );
 
-    const nearRequest = {
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
-      max_tokens: 800,
-      stream: true,
-    };
-    const requestBody = JSON.stringify(nearRequest);
-
-    const { summary, chatId, responseText } = await streamChatCompletion(
+    const { summary, verification: verificationData } = await runSummaryFlow({
       client,
-      nearRequest,
-      {
-        verificationId,
-        verificationNonce: session.nonce,
-      }
-    );
+      origin,
+      verificationId,
+      model,
+      userPrompt: prompt,
+      temperature: 0.4,
+      maxTokens: 800,
+    });
 
     if (!summary) {
       throw new Error("Empty summary returned from AI");
     }
-
-    const verificationData = await finalizeSummaryVerification({
-      client,
-      origin,
-      model,
-      verificationId,
-      sessionNonce: session.nonce,
-      requestBody,
-      responseText,
-      chatId,
-    });
 
     // ===================================================================
     // BUILD RESPONSE
@@ -336,19 +335,23 @@ export default async function handler(
       verificationResult: verificationData.verificationResult,
       verificationId,
       proof: verificationData.proof,
-      remoteProof: verificationData.remoteProof ?? undefined,
     };
     revisionCache.set(cacheKey, response);
     return res.status(200).json(response);
   } catch (error: unknown) {
-    console.error("[Proposal Revisions] Error:", error);
+    logger.error("[Proposal Revisions] Error:", error);
     const details =
       error instanceof Error && process.env.NODE_ENV === "development"
         ? error.message
         : undefined;
-    return res.status(500).json({
-      error: "Failed to generate revision summary",
-      details,
-    });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Failed to generate revision summary",
+        500,
+        details
+      )
+    );
   }
 }

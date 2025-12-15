@@ -13,6 +13,7 @@ export type DiscourseCompleteLinkResult = {
 
 export type DiscourseLinkage = {
   discourseUsername?: string;
+  discourseUserId?: string | number;
   userApiKey?: string;
   nearAccount?: string;
 };

@@ -6,6 +6,7 @@ import { siwnRecipient } from "@/config/siwn";
 import { shouldRetryNonce } from "@/lib/auth/retry";
 import { NearError, type Near, type SignMessageParams } from "near-kit";
 import type { WalletInterface } from "near-sign-verify";
+import { logger } from "@/lib/logger";
 
 type PlaywrightMockWallet = {
   accountId: string;
@@ -64,9 +65,38 @@ export interface CallFunctionParams {
   deposit?: string;
 }
 
+type WindowWithPlaywrightWalletAccount = Window & {
+  __PLAYWRIGHT_WALLET_ACCOUNT__?: string;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+
+const getSiwnAccountIdFromUser = (user: unknown): string | null => {
+  const sessionRecord = asRecord(user);
+  if (!sessionRecord) return null;
+  const accountsValue = sessionRecord.accounts;
+  if (!Array.isArray(accountsValue)) return null;
+
+  for (const account of accountsValue) {
+    if (typeof account !== "object" || account === null) {
+      continue;
+    }
+    const providerId = (account as Record<string, unknown>).providerId;
+    const accountId = (account as Record<string, unknown>).accountId;
+    if (providerId === "siwn" && typeof accountId === "string") {
+      return accountId;
+    }
+  }
+
+  return null;
+};
+
 const getPlaywrightWalletAccount = () =>
   typeof window !== "undefined"
-    ? (window as any).__PLAYWRIGHT_WALLET_ACCOUNT__ ?? null
+    ? (
+        window as WindowWithPlaywrightWalletAccount
+      ).__PLAYWRIGHT_WALLET_ACCOUNT__ ?? null
     : null;
 
 const isPlaywrightTest =
@@ -105,6 +135,7 @@ export function useNear() {
   const [clientInitKey, setClientInitKey] = useState(0);
   const [isSignInPending, setIsSignInPending] = useState(false);
   const signInPromiseRef = useRef<Promise<string> | null>(null);
+  const [hasSignedOut, setHasSignedOut] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,7 +166,7 @@ export function useNear() {
         setWalletAccountId(accountId);
         setIsClientReady(true);
       } catch (error) {
-        console.error("Failed to initialize NEAR wallet client:", error);
+        logger.error("Failed to initialize NEAR wallet client:", error);
         setIsClientReady(false);
       }
     };
@@ -178,22 +209,24 @@ export function useNear() {
     try {
       return authClient.near.getNearClient();
     } catch (error) {
-      console.error("NEAR client access failed:", error);
+      logger.error("NEAR client access failed:", error);
       return null;
     }
   }, [nearClient]);
 
   const signedAccountId = useMemo(() => {
-    if (session?.user) {
-      const nearAccount = (session.user as any).accounts?.find(
-        (acc: any) => acc.providerId === "siwn"
-      );
-      if (nearAccount?.accountId) {
-        return nearAccount.accountId.split(":")[0];
-      }
+    if (hasSignedOut) {
+      return "";
     }
-    return walletAccountId ?? "";
-  }, [session, walletAccountId]);
+    if (walletAccountId) {
+      return walletAccountId;
+    }
+    const accountId = getSiwnAccountIdFromUser(session?.user);
+    if (accountId) {
+      return accountId.split(":")[0];
+    }
+    return "";
+  }, [session, walletAccountId, hasSignedOut]);
 
   const walletSigner = useMemo<WalletInterface | null>(() => {
     if (!signedAccountId) {
@@ -203,7 +236,10 @@ export function useNear() {
     return {
       signMessage(params: SignMessageParams) {
         const client = authClient.near.getNearClient();
-        return client.signMessage(params, { signerId: signedAccountId });
+        return client.signMessage(
+          { message: params.message },
+          { signerId: signedAccountId }
+        );
       },
     };
   }, [signedAccountId]);
@@ -223,16 +259,17 @@ export function useNear() {
       while (true) {
         try {
           await authClient.requestSignIn.near({ recipient: siwnRecipient });
-          await authClient.signIn.near({ recipient: siwnRecipient });
+      await authClient.signIn.near({ recipient: siwnRecipient });
 
-          const accountId = authClient.near.getAccountId() ?? "";
-          setWalletAccountId(accountId);
+      const accountId = authClient.near.getAccountId() ?? "";
+      setWalletAccountId(accountId);
+      setHasSignedOut(false);
 
           if (refetchSession) {
             try {
               await refetchSession();
             } catch (error) {
-              console.error("Failed to refresh session after NEAR sign-in:", error);
+              logger.error("Failed to refresh session after NEAR sign-in:", error);
             }
           }
 
@@ -268,21 +305,22 @@ export function useNear() {
         try {
           await refetchSession();
         } catch (refetchError) {
-          console.error("Failed to refresh session after NEAR sign-out:", refetchError);
+          logger.error("Failed to refresh session after NEAR sign-out:", refetchError);
         }
       }
     } catch (error) {
-      console.error("Safe sign-out failed:", error);
-    } finally {
-      setWalletAccountId("");
-      setNearClient(null);
-      setIsClientReady(false);
-      setClientInitKey((prev) => prev + 1);
-      if (signInPromiseRef.current) {
-        signInPromiseRef.current = null;
+      logger.error("Safe sign-out failed:", error);
+      } finally {
+        setWalletAccountId("");
+        setNearClient(null);
+        setIsClientReady(false);
+        setClientInitKey((prev) => prev + 1);
+        if (signInPromiseRef.current) {
+          signInPromiseRef.current = null;
+        }
+        setIsSignInPending(false);
+        setHasSignedOut(true);
       }
-      setIsSignInPending(false);
-    }
   }, [refetchSession]);
 
   const viewFunction = useCallback(
@@ -300,7 +338,7 @@ export function useNear() {
         return (await client.view(contractId, method, args)) as T;
       } catch (err) {
         const classified = classifyNearError(err);
-        console.error(`[useNear] viewFunction failed:`, {
+        logger.error(`[useNear] viewFunction failed:`, {
           contractId,
           method,
           ...classified,
@@ -331,7 +369,7 @@ export function useNear() {
         });
       } catch (err) {
         const classified = classifyNearError(err);
-        console.error(`[useNear] callFunction failed:`, {
+        logger.error(`[useNear] callFunction failed:`, {
           contractId,
           method,
           ...classified,

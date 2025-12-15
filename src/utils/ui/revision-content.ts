@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Client-side utilities for working with Discourse revisions
  * This file contains NO server-side imports and can be used in browser components
@@ -89,7 +90,7 @@ export function reconstructRevisionContent(
 
   if (targetVersion < 1 || targetVersion > currentVersion) {
     const error = `Invalid target version: ${targetVersion} (must be between 1 and ${currentVersion})`;
-    console.error(error);
+    logger.error(error);
     return {
       content: currentContent,
       title: currentTitle,
@@ -131,7 +132,7 @@ export function reconstructRevisionContent(
       }
     } catch (error) {
       const errorMsg = `Failed to process revision v${revision.version}: ${error}`;
-      console.error(errorMsg);
+      logger.error(errorMsg);
       errors.push(errorMsg);
     }
   }

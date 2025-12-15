@@ -26,6 +26,17 @@ import type {
   DiscourseAuthUrl,
   DiscourseCompleteLinkResult,
 } from "@/types/discourse-linkage";
+import { assertSigningReady } from "@/utils/wallet/guards";
+import { SIGNING_MESSAGES } from "@/constants/signing-messages";
+import { NearErrorAlert } from "@/components/ui/NearErrorAlert";
+import {
+  createNearOperationError,
+  logNearError,
+  type NearOperationError,
+} from "@/utils/errors/near-errors";
+import { SIWN_RECIPIENT } from "@/constants/near";
+import { NONCE_FRESHNESS_CHECK_MS } from "@/constants/auth";
+import { logger } from "@/lib/logger";
 
 interface DiscourseConnectProps {
   onLinked: (result: {
@@ -46,27 +57,39 @@ export const DiscourseConnect = ({
   onLinked,
   onError,
 }: DiscourseConnectProps) => {
-  const { signedAccountId, walletSigner } = useNear();
+  const { signedAccountId, walletSigner, signIn } = useNear();
   const isWalletReady = Boolean(walletSigner && signedAccountId);
 
   const [step, setStep] = useState<
     "idle" | "authorizing" | "signing" | "completing"
   >("idle");
   const [authUrl, setAuthUrl] = useState("");
-  const [nonce, setNonce] = useState("");
   const [payload, setPayload] = useState("");
-  const [localError, setLocalError] = useState("");
+  const [error, setError] = useState<NearOperationError | null>(null);
+  const [nonceData, setNonceData] = useState<
+    { nonce: string; createdAt: number } | null
+  >(null);
   const popupRef = useRef<Window | null>(null);
   const popupCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleError = (message: string) => {
-    setLocalError(message);
-    onError(message);
-    toast.error(message);
+  const handleError = (
+    errorValue: unknown,
+    operationName: string,
+    fallbackMessage?: string
+  ) => {
+    const nearError = fallbackMessage
+      ? createNearOperationError(new Error(fallbackMessage))
+      : createNearOperationError(errorValue);
+    logNearError(operationName, nearError);
+    const displayMessage = fallbackMessage ?? nearError.message;
+    const errorForState = { ...nearError, message: displayMessage };
+    setError(errorForState);
+    onError(displayMessage);
+    toast.error(displayMessage);
   };
 
   const clearErrors = () => {
-    setLocalError("");
+    setError(null);
   };
 
   const stopPopupWatcher = () => {
@@ -87,15 +110,23 @@ export const DiscourseConnect = ({
     try {
       const text = await navigator.clipboard.readText();
       setPayload(text);
-      setLocalError("");
+      clearErrors();
     } catch {
-      handleError("Unable to access clipboard. Please paste manually.");
+      handleError(
+        undefined,
+        "DiscourseConnect.handlePaste",
+        "Unable to access clipboard. Please paste manually."
+      );
     }
   };
 
   const startLinking = async () => {
     if (!isWalletReady) {
-      handleError("Please connect and load your wallet first.");
+      handleError(
+        undefined,
+        "DiscourseConnect.startLinking",
+        "Please connect and load your wallet first."
+      );
       return;
     }
 
@@ -108,12 +139,18 @@ export const DiscourseConnect = ({
         applicationName: "NEAR Gov",
       })) as DiscourseAuthUrl;
       setAuthUrl(data.authUrl);
-      setNonce(data.nonce);
+      setNonceData({ nonce: data.nonce, createdAt: Date.now() });
       stopPopupWatcher();
       const popup = window.open(data.authUrl, "_blank");
       popupRef.current = popup;
       if (!popup || popup.closed) {
-        handleError("Popup blocked. Please allow popups to continue linking.");
+        handleError(
+          undefined,
+          "DiscourseConnect.startLinking",
+          "Popup blocked. Please allow popups to continue linking."
+        );
+        setAuthUrl("");
+        setNonceData(null);
         setStep("idle");
         return;
       }
@@ -123,27 +160,53 @@ export const DiscourseConnect = ({
           popupRef.current = null;
         }
       }, 500);
-    } catch (err: any) {
-      handleError(err?.message || "Failed to start linking");
+    } catch (err: unknown) {
+      handleError(err, "DiscourseConnect.startLinking");
+      setAuthUrl("");
+      setNonceData(null);
       setStep("idle");
     }
   };
 
   const completeLink = async () => {
     if (!payload.trim()) {
-      handleError("Please paste the Discourse User API key.");
+      handleError(
+        undefined,
+        "DiscourseConnect.completeLink",
+        "Please paste the Discourse User API key."
+      );
       return;
     }
 
     if (!isWalletReady) {
-      handleError("No NEAR account found. Please reconnect your wallet.");
+      handleError(
+        undefined,
+        "DiscourseConnect.completeLink",
+        "No NEAR account found. Please reconnect your wallet."
+      );
       setStep("idle");
       return;
     }
 
-    if (!nonce) {
-      handleError("Session expired. Please restart the linking flow.");
+    if (!nonceData) {
+      handleError(
+        undefined,
+        "DiscourseConnect.completeLink",
+        "Session expired. Please restart the linking flow."
+      );
       setStep("idle");
+      return;
+    }
+
+    if (
+      nonceData.createdAt &&
+      Date.now() - nonceData.createdAt > NONCE_FRESHNESS_CHECK_MS
+    ) {
+      setNonceData(null);
+      setStep("idle");
+      toast.error("Session Expired", {
+        description: "Please start the linking process again.",
+      });
       return;
     }
 
@@ -151,14 +214,10 @@ export const DiscourseConnect = ({
     clearErrors();
 
     try {
-      if (!walletSigner) {
-        throw new Error(
-          "Unable to determine NEAR signer. Please reconnect your wallet."
-        );
-      }
-      const authToken = await sign("Link my NEAR account to Discourse", {
+      assertSigningReady(walletSigner, signedAccountId);
+      const authToken = await sign(SIGNING_MESSAGES.DISCOURSE_LINK, {
         signer: walletSigner,
-        recipient: "social.near",
+        recipient: SIWN_RECIPIENT,
       });
 
       setStep("completing");
@@ -166,7 +225,7 @@ export const DiscourseConnect = ({
       // Complete the link via oRPC
       if (process.env.NODE_ENV === "development") {
         const trimmedPayload = payload.trim();
-        console.log(
+        logger.debug(
           "[Discourse] completing link with payload",
           trimmedPayload,
           "length",
@@ -175,7 +234,7 @@ export const DiscourseConnect = ({
       }
       const data = (await client.discourse.completeLink({
         payload: payload.trim(),
-        nonce,
+        nonce: nonceData.nonce,
         authToken,
       })) as DiscourseCompleteLinkResult;
 
@@ -184,14 +243,17 @@ export const DiscourseConnect = ({
       popupRef.current = null;
       setStep("idle");
       setPayload("");
-      setNonce("");
+      setNonceData(null);
       setAuthUrl("");
       saveDiscourseUserApiKey(data.userApiKey);
       toast.success(`Linked to @${data.discourseUsername}`);
       onLinked(data);
-    } catch (err: any) {
-      console.error("Discourse link error:", err);
-      handleError(err?.message || "Failed to complete link. Please try again.");
+    } catch (err: unknown) {
+      stopPopupWatcher();
+      popupRef.current?.close();
+      popupRef.current = null;
+      logger.error("Discourse link error:", err);
+      handleError(err, "DiscourseConnect.completeLink");
       setStep("authorizing");
     }
   };
@@ -275,7 +337,19 @@ export const DiscourseConnect = ({
             Connect to Discourse
           </Button>
         )}
-        {localError && <p className="text-sm text-red-600">{localError}</p>}
+        <NearErrorAlert
+          error={error}
+          onRetry={() => {
+            clearErrors();
+            void startLinking();
+          }}
+          onReconnect={() => {
+            clearErrors();
+            void signIn();
+          }}
+          onDismiss={clearErrors}
+          className="mt-3"
+        />
       </div>
     );
   }
@@ -291,6 +365,20 @@ export const DiscourseConnect = ({
       </CardHeader>
       <CardContent className="space-y-6">
         {renderStepIndicator()}
+
+        <NearErrorAlert
+          error={error}
+          onRetry={() => {
+            clearErrors();
+            void completeLink();
+          }}
+          onReconnect={() => {
+            clearErrors();
+            void signIn();
+          }}
+          onDismiss={clearErrors}
+          className="mb-3"
+        />
 
         <Alert className="border-blue-200 bg-blue-50">
           <AlertDescription>
@@ -338,7 +426,6 @@ export const DiscourseConnect = ({
             rows={6}
             className="font-mono"
           />
-          {localError && <p className="text-sm text-red-600">{localError}</p>}
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">

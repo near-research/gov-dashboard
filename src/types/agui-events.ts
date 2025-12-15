@@ -1,7 +1,7 @@
 import type {
   VerificationMetadata,
   VerificationStatus,
-} from "@/types/verification";
+} from "@/lib/near-ai";
 
 /**
  * AG-UI Protocol Event Types
@@ -422,4 +422,4 @@ export interface CompletionMessage {
   tool_calls?: CompletionToolCall[];
 }
 
-export type { VerificationMetadata, VerificationStatus } from "@/types/verification";
+export type { VerificationMetadata, VerificationStatus } from "@/lib/near-ai";

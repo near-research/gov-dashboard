@@ -1,4 +1,4 @@
-import type { ProposalRevision } from "@/types/proposals";
+import type { ProposalRevision } from "@/components/proposal/types/proposals";
 
 /**
  * Generates the AI prompt for analyzing NEAR governance post revision history
