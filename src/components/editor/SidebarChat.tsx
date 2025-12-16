@@ -1,17 +1,21 @@
 import React from "react";
 import type { MessageRole } from "@/types/agui-events";
+import type { Evaluation } from "@/types/evaluation";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Send, Wrench } from "lucide-react";
+import { Loader2, Send, Wrench, ShieldCheck, ShieldAlert, Check, X } from "lucide-react";
 
 interface Message {
   id: string;
   role: MessageRole;
   content: string;
   remoteId?: string;
+  evaluation?: Evaluation;
+  messageType?: "text" | "evaluation";
 }
 
 interface ToolCallState {
@@ -19,6 +23,145 @@ interface ToolCallState {
   name: string;
   args: string;
   status: "in_progress" | "completed";
+}
+
+type CriteriaItem = {
+  label: string;
+  pass: boolean;
+  reason: string;
+};
+
+function CriteriaList({ criteria }: { criteria: CriteriaItem[] }) {
+  return (
+    <div className="space-y-2 text-sm">
+      {criteria.map((item) => (
+        <div key={item.label} className="flex gap-2 items-start">
+          <span
+            className={`flex h-5 w-5 items-center justify-center rounded-full border text-[0.65rem] ${
+              item.pass
+                ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                : "border-yellow-400 bg-yellow-50 text-yellow-700"
+            }`}
+          >
+            {item.pass ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+          </span>
+          <div>
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              {item.label}
+            </div>
+            <p className="text-xs text-foreground/80">{item.reason}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EvaluationMessageCard({ evaluation }: { evaluation: Evaluation }) {
+  const isPassing = evaluation.overallPass;
+  const qualityScore = Number.isFinite(evaluation.qualityScore)
+    ? evaluation.qualityScore.toFixed(1)
+    : String(evaluation.qualityScore);
+  const attentionScore = Number.isFinite(evaluation.attentionScore)
+    ? evaluation.attentionScore.toFixed(1)
+    : String(evaluation.attentionScore);
+
+  const criteria: CriteriaItem[] = [
+    { label: "Complete", pass: evaluation.complete.pass, reason: evaluation.complete.reason },
+    { label: "Legible", pass: evaluation.legible.pass, reason: evaluation.legible.reason },
+    { label: "Consistent", pass: evaluation.consistent.pass, reason: evaluation.consistent.reason },
+    { label: "Compliant", pass: evaluation.compliant.pass, reason: evaluation.compliant.reason },
+    { label: "Justified", pass: evaluation.justified.pass, reason: evaluation.justified.reason },
+    { label: "Measurable", pass: evaluation.measurable.pass, reason: evaluation.measurable.reason },
+    {
+      label: "Relevant",
+      pass: evaluation.relevant.score === "high",
+      reason: evaluation.relevant.reason,
+    },
+    {
+      label: "Material",
+      pass: evaluation.material.score === "high",
+      reason: evaluation.material.reason,
+    },
+  ];
+
+  const issues = criteria.filter((item) => !item.pass);
+
+  return (
+    <Card
+      className={`border ${
+        isPassing ? "bg-emerald-50 border-emerald-200" : "bg-yellow-50 border-yellow-200"
+      }`}
+    >
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            {isPassing ? (
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            ) : (
+              <ShieldAlert className="h-4 w-4 text-yellow-800" />
+            )}
+            <div>
+              <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+                Screening result
+              </div>
+              <div className="text-sm font-semibold">
+                {isPassing ? "Passes screening" : "Needs work"}
+              </div>
+            </div>
+          </div>
+          <Badge variant={isPassing ? "outline" : "secondary"} className="text-xs">
+            {isPassing ? "Pass" : "Fail"}
+          </Badge>
+        </div>
+
+        <p className="text-sm leading-relaxed text-foreground/90">
+          {evaluation.summary || "No summary provided."}
+        </p>
+
+        <div className="flex gap-3 text-[0.7rem] text-foreground/70">
+          <div>Quality {qualityScore}</div>
+          <div>Attention {attentionScore}</div>
+        </div>
+
+        {isPassing ? (
+          <details className="mt-2 rounded border border-foreground/10 bg-white/40 p-3 text-sm">
+            <summary className="cursor-pointer font-semibold text-foreground/80">
+              View criteria details
+            </summary>
+            <div className="mt-2">
+              <CriteriaList criteria={criteria} />
+            </div>
+          </details>
+        ) : (
+          <div className="mt-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-foreground/60 mb-2">
+              Issues to address
+            </div>
+            <CriteriaList criteria={issues.length ? issues : criteria} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MessageCard({ msg }: { msg: Message }) {
+  if (msg.evaluation) {
+    return <EvaluationMessageCard evaluation={msg.evaluation} />;
+  }
+  return (
+    <Card className={msg.role === "user" ? "bg-blue-50 border-blue-200" : ""}>
+      <CardContent className="pt-3 pb-3">
+        <div className="text-xs font-semibold text-muted-foreground mb-2">
+          {msg.role === "user" ? "You" : "Assistant"}
+        </div>
+        <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+          {msg.content}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 export function SidebarChat({
   currentStep,
@@ -31,6 +174,10 @@ export function SidebarChat({
   setInputMessage,
   sendMessage,
   evaluationSlot,
+  onEvaluate,
+  evalLoading,
+  evaluationError,
+  isPassing,
 }: {
   currentStep: string | null;
   messages: Message[];
@@ -46,6 +193,10 @@ export function SidebarChat({
   setInputMessage: (s: string) => void;
   sendMessage: (s: string) => void;
   evaluationSlot?: React.ReactNode;
+  onEvaluate?: () => void;
+  evalLoading?: boolean;
+  evaluationError?: string;
+  isPassing?: boolean;
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -55,6 +206,21 @@ export function SidebarChat({
         <p className="text-sm text-muted-foreground">
           Screen proposals and suggest improvements
         </p>
+
+        {typeof isPassing === "boolean" && (
+          <Badge
+            variant={isPassing ? "outline" : "destructive"}
+            className="text-xs mt-2"
+          >
+            {isPassing ? "Passing" : "Needs work"}
+          </Badge>
+        )}
+
+        {evaluationError && (
+          <Alert className="mt-3 border-red-200 bg-red-50 text-red-900">
+            <AlertDescription>{evaluationError}</AlertDescription>
+          </Alert>
+        )}
 
         {currentStep && (
           <Badge variant="secondary" className="mt-3 gap-2">
@@ -69,6 +235,15 @@ export function SidebarChat({
         <div className="space-y-3">
           {messages.length === 0 ? (
             <div>
+              <Button
+                onClick={onEvaluate}
+                disabled={isRunning || !!evalLoading || !onEvaluate}
+                variant="outline"
+                className="mb-3 flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Screen this proposal
+              </Button>
               <p className="mb-3 font-semibold text-sm">Try a quick action:</p>
               <div className="space-y-2">
                 {suggestions.map((suggestion, i) => (
@@ -88,21 +263,7 @@ export function SidebarChat({
           ) : (
             <>
               {messages.map((msg) => (
-                <Card
-                  key={msg.id}
-                  className={
-                    msg.role === "user" ? "bg-blue-50 border-blue-200" : ""
-                  }
-                >
-                  <CardContent className="pt-3 pb-3">
-                    <div className="text-xs font-semibold text-muted-foreground mb-2">
-                      {msg.role === "user" ? "You" : "Assistant"}
-                    </div>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
-                      {msg.content}
-                    </div>
-                  </CardContent>
-                </Card>
+                <MessageCard key={msg.id} msg={msg} />
               ))}
 
               {currentMessage && (
@@ -145,13 +306,13 @@ export function SidebarChat({
                 </Card>
               ))}
 
-      {isRunning && !currentMessage && activeToolCalls.size === 0 && (
-        <div
-          className="flex items-center gap-2 text-sm text-muted-foreground"
-          data-testid="typing-indicator"
-        >
+              {isRunning && !currentMessage && activeToolCalls.size === 0 && (
+                <div
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                  data-testid="typing-indicator"
+                >
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Thinking…
+                  {evalLoading ? "Evaluating…" : "Thinking…"}
                 </div>
               )}
             </>

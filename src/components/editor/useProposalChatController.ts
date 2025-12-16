@@ -1,7 +1,8 @@
-import { useRef, useState, type Dispatch, type RefObject } from "react";
+import { useCallback, useRef, useState, type Dispatch, type RefObject } from "react";
 import { useProposalChatAdapter } from "@/components/editor/useProposalChatAdapter";
 import { type ProposalEditorAction, type ProposalState } from "@/components/editor/ProposalEditorContext";
 import type { VerificationMetadata } from "@/types/agui-events";
+import type { Evaluation } from "@/types/evaluation";
 
 type UseProposalChatControllerArgs = {
   proposalState: ProposalState;
@@ -42,6 +43,7 @@ export const useProposalChatController = ({
     currentStep,
     activeToolCalls,
     sendMessage,
+    addEvaluationMessage,
   } = useProposalChatAdapter({
     proposalState,
     dispatch,
@@ -70,5 +72,11 @@ export const useProposalChatController = ({
     messagesEndRef,
   };
 
-  return { chatProps, isRunning, messagesEndRef };
+  const addEvaluationToChat = useCallback(
+    (evaluation: Evaluation, verification?: VerificationMetadata) =>
+      addEvaluationMessage(evaluation, verification),
+    [addEvaluationMessage]
+  );
+
+  return { chatProps, isRunning, messagesEndRef, addEvaluationToChat };
 };

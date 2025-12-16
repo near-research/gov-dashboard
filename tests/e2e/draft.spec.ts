@@ -77,6 +77,15 @@ describeSpec("Draft workflow", () => {
         console.log("PAGE LOG:", text);
       }
     });
+    await page.route("**/api/evaluateDraft", async (route) => {
+      logMockRoute("api/evaluateDraft (quick-action)", route);
+      await pause(120);
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(screeningFixture),
+      });
+    });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const draftButton = page.getByRole("button", { name: "Draft" });
@@ -97,14 +106,16 @@ describeSpec("Draft workflow", () => {
     await page.getByRole("tab", { name: "Editor" }).click();
 
     const quickAction = page.getByRole("button", {
-      name: /Screen this proposal against NEAR criteria/,
+      name: /Screen this proposal/,
     });
     await expect(quickAction).toBeVisible();
     await quickAction.click();
 
-    await expect(page.getByText("AI Suggested Changes")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Reject" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
+    await expect(page.getByText("Passes screening")).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText("Quality 0.9")).toBeVisible();
+    await expect(page.getByText("Attention 0.9")).toBeVisible();
   });
 
   test("evaluation panel validates inputs, surfaces rate limits, shows verification proof, and keeps publish gated", async ({
@@ -118,10 +129,9 @@ describeSpec("Draft workflow", () => {
         console.log("PAGE LOG:", text);
       }
     });
-    let evaluationCall = 0;
 
     await page.route("**/api/evaluateDraft", async (route) => {
-      logMockRoute("api/evaluateDraft (rate limit)", route);
+      logMockRoute("api/evaluateDraft (chat)", route);
       await pause(180);
 
       route.fulfill({
@@ -132,8 +142,10 @@ describeSpec("Draft workflow", () => {
     });
 
     await page.goto("/proposals/new", { waitUntil: "domcontentloaded" });
-    const runButton = page.getByRole("button", { name: /Run screening/ });
-    await runButton.click();
+    const screenButton = page.getByRole("button", { name: /Screen this proposal/ });
+    await expect(screenButton).toBeVisible();
+
+    await screenButton.click();
     await expect(
       page.getByText("Please enter both title and proposal content.")
     ).toBeVisible();
@@ -142,22 +154,28 @@ describeSpec("Draft workflow", () => {
     await page
       .getByLabel("Content")
       .fill("Complete draft content ready for screening.");
-    await runButton.click();
-    await expect(
-      page.getByRole("button", { name: /Evaluating.../ })
-    ).toBeVisible();
+    await screenButton.click();
 
-    await expect(page.getByText("Finish the checklist to publish")).toBeVisible({
+    await expect(page.getByText("Passes screening")).toBeVisible({
       timeout: 15000,
     });
-    const publishHeading = page.getByRole("heading", {
-      name: /Publish to Discourse/i,
-    });
-    await expect(publishHeading).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.getByText(
+        "Mock screening result: the proposal is ready for submission with clear roadmap and metrics."
+      )
+    ).toBeVisible();
+    await expect(page.getByText("Quality 0.9")).toBeVisible();
+    await expect(page.getByText("Attention 0.9")).toBeVisible();
+
+    await expect(page.getByText(/^Passing$/)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Publish to Discourse/ })
+    ).toBeVisible({ timeout: 5000 });
     const publishButton = page.getByRole("button", {
       name: /Publish to Discourse/,
     });
     await expect(publishButton).toBeDisabled();
+    await expect(page.getByText("Finish the checklist to publish")).toBeVisible();
 
     const events = await readAnalyticsEvents(page);
     expect(

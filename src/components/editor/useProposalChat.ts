@@ -56,6 +56,52 @@ const generateMessageId = (prefix: string): string => {
   return `${prefix}_${timestamp}_${random}`;
 };
 
+const formatEvaluationAsMessage = (evaluation: Evaluation): string => {
+  const status = evaluation.overallPass ? "Passing" : "Not passing";
+  const formatNumber = (value: number) =>
+    Number.isFinite(value) ? value.toFixed(2) : String(value);
+  const criteria = [
+    ["Complete", evaluation.complete],
+    ["Legible", evaluation.legible],
+    ["Consistent", evaluation.consistent],
+    ["Compliant", evaluation.compliant],
+    ["Justified", evaluation.justified],
+    ["Measurable", evaluation.measurable],
+  ] as const;
+  const attentionCriteria = [
+    ["Relevant", evaluation.relevant],
+    ["Material", evaluation.material],
+  ] as const;
+
+  const lines = [
+    "### Evaluation Status",
+    `- **Result:** ${status}`,
+    `- **Quality Score:** ${formatNumber(evaluation.qualityScore)}`,
+    `- **Attention Score:** ${formatNumber(evaluation.attentionScore)}`,
+  ];
+
+  if (evaluation.model) {
+    lines.push(`- **Model:** ${evaluation.model}`);
+  }
+
+  lines.push("", "### Summary", evaluation.summary.trim() || "No summary provided.", "", "### Criteria");
+
+  criteria.forEach(([label, detail]) => {
+    lines.push(
+      `- **${label}:** ${detail.pass ? "Pass" : "Fail"} — ${detail.reason}`
+    );
+  });
+
+  lines.push("", "### Attention");
+  attentionCriteria.forEach(([label, detail]) => {
+    lines.push(
+      `- **${label}:** ${detail.score} — ${detail.reason}`
+    );
+  });
+
+  return lines.join("\n");
+};
+
 function useThrottledCallback<T extends (...args: never[]) => void>(
   callback: T,
   delay: number
@@ -280,6 +326,26 @@ export const useProposalChat = ({
     completedToolCallsRef.current.clear();
   }, []);
 
+  const addEvaluationMessage = useCallback(
+    (evaluation: Evaluation, verification?: VerificationMetadata) => {
+      const userMessage: Message = {
+        id: generateMessageId("msg_user"),
+        role: "user",
+        content: "Screen this proposal against NEAR criteria",
+      };
+      const assistantMessage: Message = {
+        id: generateMessageId("msg_eval"),
+        role: "assistant",
+        content: formatEvaluationAsMessage(evaluation),
+        evaluation,
+        messageType: "evaluation",
+        verification,
+      };
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    },
+    [setMessages]
+  );
+
   const handleEvent = useCallback(
     async (event: AGUIEvent) => {
       switch (event.type) {
@@ -501,7 +567,15 @@ export const useProposalChat = ({
               logger.error("Failed to parse screen_proposal result:", e);
               result = event.content;
             }
+            let evaluationResult: Evaluation | undefined;
+            if (result && typeof result === "object") {
+              evaluationResult = result as Evaluation;
+            }
             setProposalState((prev: ProposalState) => ({ ...prev, evaluation: result as Evaluation }));
+            if (evaluationResult) {
+              const verification = event.verification ?? toolCall?.verification;
+              addEvaluationMessage(evaluationResult, verification);
+            }
           }
 
           if (toolCallId) {
@@ -721,6 +795,7 @@ export const useProposalChat = ({
       setProposalState,
       setShowDiffHighlights,
       setVerificationProofs,
+      addEvaluationMessage,
     ]
   );
 
@@ -907,5 +982,6 @@ export const useProposalChat = ({
     activeToolCalls: stateSnapshot.activeToolCalls,
     verificationProofs: stateSnapshot.verificationProofs,
     sendMessage,
+    addEvaluationMessage,
   };
 };

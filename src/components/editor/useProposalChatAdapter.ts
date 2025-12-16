@@ -48,7 +48,15 @@ export function useProposalChatAdapter({
     [dispatch]
   );
 
-  return useProposalChat({
+  const {
+    messages,
+    isRunning,
+    currentMessage,
+    currentStep,
+    activeToolCalls,
+    sendMessage,
+    addEvaluationMessage,
+  } = useProposalChat({
     proposalState,
     setProposalState: (updater: SetStateAction<ProposalState>) =>
       dispatch(
@@ -77,4 +85,13 @@ export function useProposalChatAdapter({
     setInputMessage,
     addPendingDelta,
   });
+  return {
+    messages,
+    isRunning,
+    currentMessage,
+    currentStep,
+    activeToolCalls,
+    sendMessage,
+    addEvaluationMessage,
+  };
 }

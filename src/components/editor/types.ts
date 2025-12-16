@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import type { MessageRole, VerificationMetadata } from "@/types/agui-events";
+import type { Evaluation } from "@/types/evaluation";
 
 export interface Message {
   id: string;
@@ -7,6 +8,8 @@ export interface Message {
   content: string;
   verification?: VerificationMetadata;
   remoteId?: string;
+  evaluation?: Evaluation;
+  messageType?: "text" | "evaluation";
 }
 
 export interface ToolCallState {
@@ -28,4 +31,8 @@ export type ChatSidebarProps = {
   setInputMessage: (value: string) => void;
   sendMessage: (value: string) => void;
   messagesEndRef: RefObject<HTMLDivElement | null>;
+  onEvaluate?: () => void;
+  evalLoading?: boolean;
+  evaluationError?: string;
+  isPassing?: boolean;
 };

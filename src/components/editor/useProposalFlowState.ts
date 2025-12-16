@@ -12,6 +12,7 @@ import type { GovernanceTrackFn } from "@/lib/analytics";
 import type { VerificationMetadata } from "@/types/agui-events";
 import type { WalletInterface } from "near-sign-verify";
 import { client } from "@/lib/orpc";
+import type { Evaluation } from "@/types/evaluation";
 
 type UseProposalFlowStateArgs = {
   state: ProposalEditorState;
@@ -26,6 +27,7 @@ type UseProposalFlowStateArgs = {
   track: GovernanceTrackFn;
   isRunning: boolean;
   originalStateRef: RefObject<ProposalState | null>;
+  onEvaluationComplete?: (evaluation: Evaluation, verification?: VerificationMetadata) => void;
 };
 
 export const useProposalFlowState = ({
@@ -41,6 +43,7 @@ export const useProposalFlowState = ({
   track,
   isRunning,
   originalStateRef,
+  onEvaluationComplete,
 }: UseProposalFlowStateArgs) => {
   const {
     proposal: proposalState,
@@ -97,6 +100,7 @@ export const useProposalFlowState = ({
     track,
     setEvaluationVerification,
     setEvaluationChatId,
+    onEvaluationComplete,
   });
 
   useEffect(() => {

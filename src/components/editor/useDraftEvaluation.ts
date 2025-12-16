@@ -14,6 +14,7 @@ type UseDraftEvaluationParams = {
   track: GovernanceTrackFn;
   setEvaluationVerification: (v?: VerificationMetadata) => void;
   setEvaluationChatId: (id?: string) => void;
+  onEvaluationComplete?: (evaluation: Evaluation, verification?: VerificationMetadata) => void;
 };
 
 type UseDraftEvaluationState = {
@@ -31,6 +32,7 @@ export function useDraftEvaluation({
   track,
   setEvaluationVerification,
   setEvaluationChatId,
+  onEvaluationComplete,
 }: UseDraftEvaluationParams): UseDraftEvaluationState {
   const [remainingEvaluations, setRemainingEvaluations] = useState<number | null>(null);
   const [rateLimitResetSeconds, setRateLimitResetSeconds] = useState<number | null>(null);
@@ -116,8 +118,11 @@ export function useDraftEvaluation({
       );
       setEvaluationVerification(data.verification ?? undefined);
       setEvaluationChatId(data.verificationId ?? data.verification?.messageId ?? undefined);
+      if (data.evaluation) {
+        onEvaluationComplete?.(data.evaluation, data.verification ?? undefined);
+      }
     },
-    [dispatch, setEvaluationChatId, setEvaluationVerification]
+    [dispatch, onEvaluationComplete, setEvaluationChatId, setEvaluationVerification]
   );
 
   const trackSuccess = useCallback(

@@ -15,7 +15,6 @@ import { useProposalFlowState } from "@/components/editor/useProposalFlowState";
 import { useViewModeToggle } from "@/components/editor/useViewModeToggle";
 
 const suggestions = [
-  "Screen this proposal against NEAR criteria",
   "Write a proposal about improving developer documentation",
   "Add a detailed budget breakdown section",
   "Generate measurable KPIs for this proposal",
@@ -59,7 +58,7 @@ export function useEditorState() {
     [dispatch]
   );
 
-  const { chatProps, isRunning } = useProposalChatController({
+  const { chatProps, isRunning, addEvaluationToChat } = useProposalChatController({
     proposalState: state.proposal,
     dispatch,
     pendingTitle: state.pendingTitle,
@@ -88,6 +87,7 @@ export function useEditorState() {
       track: trackEvent,
       isRunning,
       originalStateRef,
+      onEvaluationComplete: addEvaluationToChat,
     });
 
   const editorProps = {
@@ -101,11 +101,18 @@ export function useEditorState() {
     ...flowEditorProps,
   };
 
+  const chatPropsWithEval = {
+    ...chatProps,
+    onEvaluate: evaluationPanelProps.evaluateDraft,
+    evalLoading: evaluationPanelProps.evalLoading,
+    evaluationError: evaluationPanelProps.evaluationError,
+    isPassing,
+  };
+
   const assistantProps = {
     isPassing,
-    evaluationPanelProps,
     publishBarProps: { ...publishBarProps, signIn },
-    chatProps,
+    chatProps: chatPropsWithEval,
   };
 
   return { editorProps, assistantProps };

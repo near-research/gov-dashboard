@@ -12,6 +12,10 @@ export function ChatPane({
   setInputMessage,
   sendMessage,
   messagesEndRef,
+  onEvaluate,
+  evalLoading,
+  evaluationError,
+  isPassing,
 }: ChatSidebarProps) {
   return (
     <div
@@ -35,6 +39,10 @@ export function ChatPane({
         setInputMessage={setInputMessage}
         sendMessage={sendMessage}
         evaluationSlot={undefined}
+        onEvaluate={onEvaluate}
+        evalLoading={evalLoading}
+        evaluationError={evaluationError}
+        isPassing={isPassing}
       />
       <div ref={messagesEndRef} />
     </div>

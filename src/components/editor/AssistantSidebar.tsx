@@ -1,18 +1,15 @@
-import { EvaluationPanel, type EvaluationPanelProps } from "@/components/editor/EvaluationPanel";
 import { PublishBar, type PublishBarProps } from "@/components/editor/PublishBar";
 import { ChatPane } from "@/components/editor/ChatPane";
 import type { ChatSidebarProps } from "@/components/editor/types";
 
 type AssistantSidebarProps = {
   isPassing: boolean;
-  evaluationPanelProps: EvaluationPanelProps;
   publishBarProps: PublishBarProps;
   chatProps: ChatSidebarProps;
 };
 
 export function AssistantSidebar({
   isPassing,
-  evaluationPanelProps,
   publishBarProps,
   chatProps,
 }: AssistantSidebarProps) {
@@ -27,7 +24,7 @@ export function AssistantSidebar({
         maxHeight: "calc(100vh - 150px)",
       }}
     >
-      {!isPassing ? <EvaluationPanel {...evaluationPanelProps} /> : <PublishBar {...publishBarProps} />}
+      {isPassing && <PublishBar {...publishBarProps} />}
       <ChatPane {...chatProps} />
     </div>
   );
