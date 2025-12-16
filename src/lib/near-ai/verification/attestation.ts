@@ -1,5 +1,6 @@
 import { verifyNvidiaPayloads } from "./nvidia";
 import type { NvidiaVerificationInfo } from "./types";
+import { logger } from "@/lib/logger";
 
 /**
  * Attestation fetching for TEE signer verification
@@ -68,7 +69,7 @@ export async function fetchAttestation(
     model
   )}&signing_algo=ecdsa`;
 
-  console.log("[DEBUG] Attestation endpoint URL:", url);
+  logger.debug("[Agent] Fetching attestation report", { model });
 
   const controller = new AbortController();
   const timeoutId = setTimeout(
@@ -97,7 +98,7 @@ export async function fetchAttestation(
     const rawData: AttestationReport = data;
     const modelAttestations = data.model_attestations || [];
 
-    console.log("[DEBUG] Attestation response structure:", {
+    logger.debug("[Agent] Attestation response structure", {
       rootKeys: Object.keys(data),
       gatewayHasSigningAddress: Boolean(
         data.gateway_attestation?.signing_address
@@ -162,12 +163,11 @@ export async function fetchAttestation(
       }
     }
 
-    console.log("[DEBUG] TEE addresses:", teeAddresses);
-    console.log("[DEBUG] Signing addresses found:", signingAddressesFound);
-    const compactAddressSources = addressSources.map(
-      (source) => `${source.address.slice(0, 10)}...@${source.path}`
-    );
-    console.log("[DEBUG] Address sources:", compactAddressSources);
+    logger.debug("[Agent] TEE address stats", {
+      uniqueTees: teeAddresses.length,
+      signingAddressesFound: signingAddressesFound.length,
+      sourceCount: addressSources.length,
+    });
 
     let nvidiaVerification: NvidiaVerificationInfo | undefined;
 

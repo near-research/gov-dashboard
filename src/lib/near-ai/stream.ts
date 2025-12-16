@@ -16,8 +16,6 @@ export function parseStreamedSummary(text: string): {
   chatId: string | null;
   responseText: string;
 } {
-  console.log("[DEBUG] [parseStreamedSummary] Input length:", text.length);
-
   let summary = "";
   let chatId: string | null = null;
 
@@ -46,28 +44,12 @@ export function parseStreamedSummary(text: string): {
         const content = parsed.choices?.[0]?.delta?.content;
         if (content) {
           summary += content;
-          console.log(
-            "[DEBUG] [parseStreamedSummary] Added content:",
-            content.substring(0, 30)
-          );
         }
       } catch {
-        console.log(
-          "[DEBUG] [parseStreamedSummary] Failed to parse:",
-          data.substring(0, 50)
-        );
+        // Suppress streaming parse errors; leave summary as-is
       }
     }
   }
-
-  console.log(
-    "[DEBUG] [parseStreamedSummary] Final summary length:",
-    summary.length
-  );
-  console.log(
-    "[DEBUG] [parseStreamedSummary] Final summary preview:",
-    summary.substring(0, 100)
-  );
 
   return { summary, chatId, responseText: text };
 }

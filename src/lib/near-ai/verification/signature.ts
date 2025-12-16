@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { logger } from "@/lib/logger";
 import type {
   SignatureResponse,
   HashValidation,
@@ -52,10 +53,12 @@ export async function fetchSignature(
     }
 
     const signatureData = (await response.json()) as SignatureResponse;
-    console.log(
-      "[DEBUG] Raw signature response from NEAR AI:",
-      JSON.stringify(signatureData)
-    );
+    logger.debug("[Agent] Signature fetched", {
+      chatId,
+      signingAddress: signatureData.signing_address,
+      signingAlgo: signatureData.signing_algo,
+      hasSignature: Boolean(signatureData.signature),
+    });
     return signatureData;
   } finally {
     clearTimeout(timeoutId);

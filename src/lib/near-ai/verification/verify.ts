@@ -74,10 +74,14 @@ export async function verifyChatMessage(
       responseHash
     );
 
-    logger.debug("[RequestHash] Request body being hashed:", requestBody);
-    logger.debug("[RequestHash] Our computed hash:", requestHash);
-    logger.debug("[RequestHash] NEAR AI's hash:", hashValidation.signedRequestHash);
-    logger.debug("[RequestHash] Match:", hashValidation.requestHashMatch);
+    logger.debug("[RequestHash] Hash comparison", {
+      requestBodyLength: requestBody.length,
+      requestHash,
+      responseHash,
+      signedRequestHash: hashValidation.signedRequestHash,
+      requestHashMatch: hashValidation.requestHashMatch,
+      responseHashMatch: hashValidation.responseHashMatch,
+    });
 
     let teeAddresses: string[] = [];
     let attestationInfo: AttestationInfo;
@@ -136,15 +140,14 @@ export async function verifyChatMessage(
       signature.signing_address
     );
 
-    console.log(
-      "[DEBUG] TEE addresses from attestation:",
-      JSON.stringify(teeAddresses)
-    );
-    console.log("[DEBUG] Signature response:", {
-      signing_address: signature.signing_address,
-      signing_algo: signature.signing_algo,
+    logger.debug("[Agent] TEE address count", {
+      teeAddresses: teeAddresses.length,
     });
-    console.log("[DEBUG] Signature validation result:", {
+    logger.debug("[Agent] Signature response", {
+      signingAddress: signature.signing_address,
+      signingAlgo: signature.signing_algo,
+    });
+    logger.debug("[Agent] Signature validation result", {
       recoveredAddress: signatureValidation.recoveredAddress,
       signingAddress: signatureValidation.signingAddress,
       valid: signatureValidation.valid,
