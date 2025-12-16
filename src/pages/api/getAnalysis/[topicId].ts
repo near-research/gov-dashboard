@@ -67,36 +67,54 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== "GET") {
-    return res.status(405).json({
-      error: "Method not allowed",
-      message: "This endpoint only supports GET requests",
-    });
-  }
-
-  const { topicId } = req.query;
-  if (!topicId || typeof topicId !== "string") {
-    return res.status(400).json({ error: "Invalid topic ID" });
-  }
-
-  const parsedQuery = querySchema.safeParse(req.query);
-  if (!parsedQuery.success) {
-    return res.status(400).json({
-      error: "Invalid query parameters",
-      message: parsedQuery.error.issues.map((issue) => issue.message).join("; "),
-    });
-  }
-
-  const { all, limit, cursor, revisionNumber } = parsedQuery.data;
-
   try {
+    if (req.method !== "GET") {
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.METHOD_NOT_ALLOWED,
+          "This endpoint only supports GET requests",
+          405
+        )
+      );
+    }
+
+    const { topicId } = req.query;
+    if (!topicId || typeof topicId !== "string") {
+      return respondWithError(
+        res,
+        new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid topic ID", 400)
+      );
+    }
+
+    const parsedQuery = querySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.VALIDATION_ERROR,
+          parsedQuery.error.issues
+            .map((issue) => issue.message)
+            .join("; "),
+          400
+        )
+      );
+    }
+
+    const { all, limit, cursor, revisionNumber } = parsedQuery.data;
+
     if (all === "true") {
       const cursorValue = cursor ? Number(cursor) : undefined;
       if (cursor && Number.isNaN(cursorValue)) {
-        return res.status(400).json({
-          error: "Invalid cursor value",
-          message: "Cursor must be a numeric revision number",
-        });
+        return respondWithError(
+          res,
+          new ApiError(
+            ErrorCodes.VALIDATION_ERROR,
+            "Invalid cursor value",
+            400,
+            "Cursor must be a numeric revision number"
+          )
+        );
       }
 
       const pageLimit = limit + 1;
@@ -117,10 +135,15 @@ export default async function handler(
         .limit(pageLimit);
 
       if (!rows || rows.length === 0) {
-        return res.status(404).json({
-          error: "No screening results found",
-          message: `No screenings exist for topic ${topicId}`,
-        });
+        return respondWithError(
+          res,
+          new ApiError(
+            ErrorCodes.NOT_FOUND,
+            "No screening results found",
+            404,
+            `No screenings exist for topic ${topicId}`
+          )
+        );
       }
 
       const hasMore = rows.length > limit;
@@ -152,10 +175,15 @@ export default async function handler(
         .limit(1);
 
       if (!result || result.length === 0) {
-        return res.status(404).json({
-          error: "No screening results found",
-          message: `No screening exists for topic ${topicId} revision ${revisionNumber}`,
-        });
+        return respondWithError(
+          res,
+          new ApiError(
+            ErrorCodes.NOT_FOUND,
+            "No screening results found",
+            404,
+            `No screening exists for topic ${topicId} revision ${revisionNumber}`
+          )
+        );
       }
 
       return res.status(200).json(formatScreeningRecord(result[0]));
@@ -169,23 +197,29 @@ export default async function handler(
       .limit(1);
 
     if (!latest || latest.length === 0) {
-      return res.status(404).json({
-        error: "No screening results found",
-        message: `No screening exists for topic ${topicId}`,
-      });
+      return respondWithError(
+        res,
+        new ApiError(
+          ErrorCodes.NOT_FOUND,
+          "No screening results found",
+          404,
+          `No screening exists for topic ${topicId}`
+        )
+      );
     }
 
     return res.status(200).json(formatScreeningRecord(latest[0]));
   } catch (error) {
-    logger.error("[getAnalysis] Database error:", error);
-    return respondWithError(
-      res,
-      new ApiError(
-        ErrorCodes.UPSTREAM_ERROR,
-        "Failed to fetch screening results",
-        500,
-        process.env.NODE_ENV === "development" ? String(error) : undefined
-      )
-    );
+    logger.error("[getAnalysis] Handler error:", error);
+    const apiError =
+      error instanceof ApiError
+        ? error
+        : new ApiError(
+            ErrorCodes.UPSTREAM_ERROR,
+            "Failed to fetch screening results",
+            500,
+            process.env.NODE_ENV === "development" ? String(error) : undefined
+          );
+    return respondWithError(res, apiError);
   }
 }

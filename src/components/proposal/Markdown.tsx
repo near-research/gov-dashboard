@@ -17,10 +17,24 @@ const md = new MarkdownIt({
   breaks: true,
 });
 
+const purify =
+  typeof window !== "undefined" ? DOMPurify(window) : DOMPurify;
+
+if (purify?.addHook) {
+  purify.addHook("afterSanitizeAttributes", (node) => {
+    if (node instanceof Element && node.tagName === "A") {
+      if (!node.hasAttribute("target")) {
+        node.setAttribute("target", "_blank");
+      }
+      node.setAttribute("rel", "noreferrer noopener");
+    }
+  });
+}
+
 export function Markdown({ content, className, style }: MarkdownProps) {
   const html = useMemo(() => {
     const rendered = md.render(content);
-    return DOMPurify.sanitize(rendered);
+    return purify.sanitize(rendered);
   }, [content]);
 
   return (

@@ -137,6 +137,9 @@ const remoteDefaults = {
   clientId: process.env.DISCOURSE_CLIENT_ID || "discourse-plugin",
 };
 
+const discourseApiKey =
+  process.env.DISCOURSE_API_KEY || "test-discourse-api-key";
+
 let discourseRouter: DiscourseRouter;
 let discourseClient: DiscourseClient;
 
@@ -158,8 +161,7 @@ if (isTestEnvironment) {
   const runtime = createPluginRuntime({
     registry: { "discourse-plugin": { remoteUrl: normalizedRemoteEntryUrl } },
     secrets: {
-      DISCOURSE_API_KEY:
-        process.env.DISCOURSE_API_KEY || "test-discourse-api-key",
+      DISCOURSE_API_KEY: discourseApiKey,
     },
   });
 
@@ -180,7 +182,7 @@ if (isTestEnvironment) {
       discourseApiUsername: remoteDefaults.apiUsername,
       clientId: remoteDefaults.clientId,
     },
-    secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
+    secrets: { discourseApiKey },
   });
   logger.debug(
     "[discourse-plugin] loaded router keys",

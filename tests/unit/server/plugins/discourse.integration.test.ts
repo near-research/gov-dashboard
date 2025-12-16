@@ -237,7 +237,7 @@ describe("production plugin runtime initialization", () => {
           discourseApiUsername: "api-user",
           clientId: "custom-client",
         },
-        secrets: { discourseApiKey: "{{DISCOURSE_API_KEY}}" },
+        secrets: { discourseApiKey: "prod-key" },
       });
       expect(discourseRouter).toBe(pluginRouter);
       expect(discourseClient).toBe(pluginClient);
