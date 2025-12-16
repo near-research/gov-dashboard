@@ -17,6 +17,7 @@ import { startSseSession, createEventWriter } from "./agent/server/sse";
 import { validateAgentRequest } from "./agent/server/validation";
 import type { StreamResult, ToolMessage } from "./agent/server/types";
 import { telemetry } from "@/lib/telemetry";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
 import { MAX_TOOL_ITERATIONS } from "@/constants/agent";
 
@@ -44,28 +45,42 @@ export default async function handler(
     }
   };
   let stream: ReturnType<typeof startSseSession>["stream"] | null = null;
+  let runId: string | undefined;
+  let threadId: string | undefined;
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    );
   }
 
   const validated = validateAgentRequest(req);
-  if (!validated.ok) {
-    return res.status(validated.status).json({ error: validated.error });
-  }
-
-  if (!process.env.NEAR_AI_CLOUD_API_KEY) {
-    return res
-      .status(500)
-      .json({ error: "Missing NEAR_AI_CLOUD_API_KEY environment variable" });
-  }
-
-  const { body, thread, run, runtimeBaseUrl } = validated;
-  const startTime = Date.now();
-  telemetry.agentRunStarted(run, thread);
   let iteration = 0;
 
   try {
+    if (!validated.ok) {
+      throw new ApiError(
+        ErrorCodes.UNAUTHORIZED,
+        validated.error ?? "Invalid agent request",
+        validated.status ?? 400
+      );
+    }
+
+    if (!process.env.NEAR_AI_CLOUD_API_KEY) {
+      throw new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Missing NEAR_AI_CLOUD_API_KEY environment variable",
+        500
+      );
+    }
+
+    const { body, thread, run, runtimeBaseUrl } = validated;
+    threadId = thread;
+    runId = run;
+    const startTime = Date.now();
+    telemetry.agentRunStarted(run, thread);
+
     const client = getNearAIClient();
     const { requestBody, toolChoice } = buildAgentRequest({
       messages: body.messages,
@@ -238,14 +253,34 @@ export default async function handler(
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
-    telemetry.agentRunFailed(run, errorMessage, iteration);
+    if (runId) {
+      telemetry.agentRunFailed(runId, errorMessage, iteration);
+    }
+
+    logger.error("[Agent] Handler error", {
+      error: errorMessage,
+      threadId,
+      runId,
+      streamStarted: Boolean(stream),
+    });
 
     if (!stream) {
       if (error instanceof Error && error.name === "AbortError") {
-        return res.status(504).json({ error: "Upstream request timed out" });
+        return respondWithError(
+          res,
+          new ApiError(
+            ErrorCodes.UPSTREAM_ERROR,
+            "Upstream request timed out",
+            504
+          )
+        );
       }
       const statusCode = extractStatusCode(error);
-      return res.status(statusCode).json({ error: errorMessage });
+      const apiError =
+        error instanceof ApiError
+          ? error
+          : new ApiError(ErrorCodes.UPSTREAM_ERROR, errorMessage, statusCode);
+      return respondWithError(res, apiError);
     }
 
     if (error instanceof Error && error.name === "AbortError") {

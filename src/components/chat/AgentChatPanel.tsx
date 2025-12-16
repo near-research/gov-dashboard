@@ -1,7 +1,14 @@
 // components/chat/Chat.tsx
 "use client";
 
-import { useState, useRef, useEffect, useMemo, useReducer } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useReducer,
+  useCallback,
+} from "react";
 import MarkdownIt from "markdown-it";
 import { toast } from "sonner";
 import { applyPatch, type Operation } from "fast-json-patch";
@@ -240,6 +247,69 @@ export const prepareEventsForPersistence = (
   return trimmed;
 };
 
+function useThrottledCallback<T extends (...args: never[]) => void>(
+  callback: T,
+  delay: number
+): T & { cancel: () => void; flush: () => void } {
+  const lastRun = useRef(0);
+  const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pendingArgs = useRef<Parameters<T> | null>(null);
+
+  const throttled = useCallback(
+    (...args: Parameters<T>) => {
+      pendingArgs.current = args;
+      const now = Date.now();
+      const remaining = delay - (now - lastRun.current);
+
+      if (remaining <= 0) {
+        if (timeout.current) {
+          clearTimeout(timeout.current);
+          timeout.current = undefined;
+        }
+        lastRun.current = now;
+        pendingArgs.current = null;
+        callback(...args);
+      } else if (!timeout.current) {
+        timeout.current = setTimeout(() => {
+          lastRun.current = Date.now();
+          timeout.current = undefined;
+          if (pendingArgs.current) {
+            callback(...pendingArgs.current);
+            pendingArgs.current = null;
+          }
+        }, remaining);
+      }
+    },
+    [callback, delay]
+  ) as T & { cancel: () => void; flush: () => void };
+
+  throttled.cancel = () => {
+    if (timeout.current) {
+      clearTimeout(timeout.current);
+      timeout.current = undefined;
+    }
+    pendingArgs.current = null;
+  };
+
+  throttled.flush = () => {
+    if (timeout.current) {
+      clearTimeout(timeout.current);
+      timeout.current = undefined;
+    }
+    if (pendingArgs.current) {
+      lastRun.current = Date.now();
+      callback(...pendingArgs.current);
+      pendingArgs.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => throttled.cancel();
+  }, [throttled]);
+
+  return throttled;
+}
+
 export const AgentChatPanel = ({
   model = AGENT_MODEL,
   className = "",
@@ -293,6 +363,40 @@ export const AgentChatPanel = ({
       }),
     []
   );
+
+  const throttledPersist = useThrottledCallback(
+    (key: string, data: unknown) => {
+      try {
+        const toStore = Array.isArray(data) ? data.slice(-100) : data;
+        sessionStorage.setItem(key, JSON.stringify(toStore));
+      } catch (e) {
+        console.warn("[sessionStorage] Write failed:", e);
+      }
+    },
+    1000
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const flushOnUnload = () => {
+      throttledPersist.flush();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        throttledPersist.flush();
+      }
+    };
+
+    window.addEventListener("beforeunload", flushOnUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", flushOnUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [throttledPersist]);
 
   useEffect(() => {
     if (typeof window === "undefined" || hasHydratedRef.current) return;
@@ -351,27 +455,27 @@ export const AgentChatPanel = ({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      const eventsToPersist = prepareEventsForPersistence(events);
-      const metadata = sessionMetadataRef.current ?? {
-        threadId,
-        runId,
-      };
-      sessionStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({
-          events: eventsToPersist,
-          threadId: metadata.threadId,
-          runId: metadata.runId,
-          parentRunId: metadata.parentRunId,
-          currentTurn,
-          agentState: agentStateRef.current,
-        })
-      );
-    } catch (persistError) {
-      logger.warn("Unable to persist agent chat session", persistError);
-    }
-  }, [events, threadId, runId, currentTurn]);
+    const eventsToPersist = prepareEventsForPersistence(events);
+    const metadata = sessionMetadataRef.current ?? {
+      threadId,
+      runId,
+    };
+    throttledPersist(SESSION_STORAGE_KEY, {
+      events: eventsToPersist,
+      threadId: metadata.threadId,
+      runId: metadata.runId,
+      parentRunId: metadata.parentRunId,
+      currentTurn,
+      agentState: agentStateRef.current,
+    });
+  }, [events, threadId, runId, currentTurn, throttledPersist]);
+
+  useEffect(() => {
+    return () => {
+      throttledPersist.flush();
+      throttledPersist.cancel();
+    };
+  }, [throttledPersist]);
 
   useEffect(() => {
     setIsInitialized(true);

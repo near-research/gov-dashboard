@@ -3,6 +3,7 @@
  */
 
 import { servicesConfig } from "@/config/services";
+import { logger } from "@/lib/logger";
 import {
   discourseLatestTopics,
   discourseSearch,
@@ -455,6 +456,13 @@ export async function handleSearchDiscourse(args: {
       },
     };
   } catch (error) {
+    logger.error("[discourse/searchTopics] Request failed", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      endpoint: "discourseSearch",
+      query: query.trim(),
+      limit: boundedLimit,
+    });
     return {
       result: {
         error:
@@ -519,6 +527,12 @@ export async function handleGetDiscourseTopic(args: {
       },
     };
   } catch (error) {
+    logger.error("[discourse/fetchTopic] Request failed", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      endpoint: "discourseTopic",
+      topicId,
+    });
     return {
       result: {
         error: error instanceof Error ? error.message : "Failed to fetch topic",
@@ -591,6 +605,15 @@ export async function handleGetLatestTopics(
       },
     };
   } catch (error) {
+    logger.error("[discourse/fetchLatestTopics] Request failed", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      endpoint: "discourseLatestTopics",
+      limit: parsed.data.limit ?? 10,
+      categoryId: parsed.data.categoryId,
+      order: parsed.data.order ?? "default",
+      page: parsed.data.page ?? 0,
+    });
     return {
       result: {
         error:
@@ -615,8 +638,9 @@ export async function handleSummarizeDiscussion(
 
   const { topic_id } = parsed.data;
 
+  let summaryUrl: URL | undefined;
   try {
-    const summaryUrl = new URL(
+    summaryUrl = new URL(
       `/api/discourse/topics/${encodeURIComponent(topic_id)}/summarize`,
       runtimeBaseUrl
     );
@@ -644,6 +668,12 @@ export async function handleSummarizeDiscussion(
       },
     };
   } catch (error) {
+    logger.error("[discourse/summarizeDiscussion] Request failed", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      endpoint: summaryUrl?.toString(),
+      topic_id,
+    });
     return {
       result: {
         error:
@@ -668,8 +698,9 @@ export async function handleSummarizeReply(
 
   const { post_id } = parsed.data;
 
+  let replyUrl: URL | undefined;
   try {
-    const replyUrl = new URL(
+    replyUrl = new URL(
       `/api/discourse/replies/${encodeURIComponent(post_id)}/summarize`,
       runtimeBaseUrl
     );
@@ -696,6 +727,12 @@ export async function handleSummarizeReply(
       },
     };
   } catch (error) {
+    logger.error("[discourse/summarizeReply] Request failed", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      endpoint: replyUrl?.toString(),
+      post_id,
+    });
     return {
       result: {
         error:

@@ -91,7 +91,11 @@ describe("discourse search handler", () => {
     await searchHandler(req, res);
 
     expect(res.statusCode).toBe(502);
-    expect(res.getBody()).toEqual({ error: "Plugin offline" });
+    expect(res.getBody()).toEqual({
+      error: "UPSTREAM_ERROR",
+      message: "Plugin offline",
+      statusCode: 502,
+    });
   });
 
   it("rejects unsupported parameters early", async () => {
@@ -101,7 +105,8 @@ describe("discourse search handler", () => {
     await searchHandler(req, res);
 
     expect(res.statusCode).toBe(400);
-    expect(res.getBody().error).toContain("Unsupported parameter(s)");
+    expect(res.getBody().error).toBe("VALIDATION_ERROR");
+    expect(res.getBody().message).toContain("Unsupported parameter(s)");
   });
 
   it("passes pagination metadata through to the plugin", async () => {

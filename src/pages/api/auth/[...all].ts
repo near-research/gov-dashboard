@@ -1,7 +1,9 @@
 import { auth } from "@/lib/auth";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Readable } from "stream";
+import type { ReadableStream as NodeReadableStream } from "stream/web";
 
 type AuthProxyRequestInit = RequestInit & {
   duplex?: "half";
@@ -37,7 +39,8 @@ export default async function handler(
 
     await forwardAuthResponse(response, res);
   } catch (error) {
-    handleProxyError(error, req, res);
+    const apiError = handleProxyError(error, req);
+    return respondWithError(res, apiError);
   }
 }
 
@@ -139,11 +142,7 @@ const forwardAuthResponse = async (
   res.status(response.status);
 
   if (response.body) {
-    const responseBody = response.body;
-    const nodeStream =
-      typeof Readable.fromWeb === "function"
-        ? Readable.fromWeb(responseBody as any)
-        : (responseBody as unknown as Readable);
+    const nodeStream = toNodeReadable(response.body);
 
     await new Promise<void>((resolve, reject) => {
       nodeStream.on("error", reject);
@@ -168,27 +167,61 @@ const forwardAuthResponse = async (
   res.send(text);
 };
 
-const handleProxyError = (
-  error: unknown,
-  req: NextApiRequest,
-  res: NextApiResponse
-) => {
+const handleProxyError = (error: unknown, req: NextApiRequest): ApiError => {
   logger.error("[Auth Proxy] request failed", {
     error,
     method: req.method,
     url: req.url,
   });
 
-  if (res.headersSent) {
-    return;
+  if (error instanceof ApiError) {
+    return error;
   }
 
-  res
-    .status(resolveErrorStatus(error))
-    .json({
-      error: "Authentication proxy error",
-      message: resolveErrorMessage(error),
-    });
+  return new ApiError(
+    ErrorCodes.UPSTREAM_ERROR,
+    resolveErrorMessage(error),
+    resolveErrorStatus(error),
+    {
+      details: error instanceof Error ? error.message : undefined,
+    }
+  );
+};
+
+const toNodeReadable = (body: ReadableStream<Uint8Array>): Readable => {
+  if (typeof Readable.fromWeb === "function") {
+    return Readable.fromWeb(
+      body as unknown as NodeReadableStream<Uint8Array>
+    );
+  }
+
+  const reader = body.getReader();
+
+  return new Readable({
+    async read() {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          this.push(null);
+          return;
+        }
+        if (value) {
+          this.push(Buffer.from(value));
+        } else {
+          this.push(Buffer.alloc(0));
+        }
+      } catch (error) {
+        this.destroy(error instanceof Error ? error : undefined);
+      }
+    },
+    destroy(error, callback) {
+      reader
+        .cancel()
+        .then(() => callback(error), (cancelErr) =>
+          callback(cancelErr ?? error)
+        );
+    },
+  });
 };
 
 const resolveErrorStatus = (error: unknown): number => {

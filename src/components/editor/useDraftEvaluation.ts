@@ -165,7 +165,18 @@ export function useDraftEvaluation({
       }
 
       const data = await parseEvaluationResponse(response);
+      console.log(
+        "[EVAL-DEBUG-1] Response parsed:",
+        JSON.stringify({
+          hasEvaluation: !!data?.evaluation,
+          overallPass: data?.evaluation?.overallPass,
+          evaluationKeys: data?.evaluation ? Object.keys(data.evaluation) : [],
+          ts: Date.now(),
+        })
+      );
+      console.log("[EVAL-DEBUG-2] Before dispatch");
       applyEvaluationResult(data);
+      console.log("[EVAL-DEBUG-3] After dispatch");
       trackSuccess(data);
     } catch (err: unknown) {
       handleUnexpectedError(err);

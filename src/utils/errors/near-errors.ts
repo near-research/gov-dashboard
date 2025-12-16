@@ -19,7 +19,107 @@ export interface NearOperationError {
   action?: "reconnect" | "retry" | "refresh_nonce";
 }
 
+type ErrorPayload = Record<string, unknown>;
+
+const parseJsonPayload = (value: string): ErrorPayload | null => {
+  try {
+    const parsed = JSON.parse(value);
+    if (typeof parsed === "object" && parsed !== null) {
+      return parsed as ErrorPayload;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+};
+
+const getErrorRecordFromString = (error: unknown): ErrorPayload | null => {
+  if (error instanceof Error && typeof error.message === "string") {
+    const parsed = parseJsonPayload(error.message);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  if (typeof error === "string") {
+    const parsed = parseJsonPayload(error);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const getErrorRecord = (error: unknown): ErrorPayload | null => {
+  const parsedPayload = getErrorRecordFromString(error);
+  if (parsedPayload) {
+    return parsedPayload;
+  }
+  if (error && typeof error === "object") {
+    return error as ErrorPayload;
+  }
+  return null;
+};
+
+const extractMessageFromRecord = (record: ErrorPayload): string | null => {
+  const messageCandidate = record.message ?? record.error ?? record.detail ?? record.description;
+  if (typeof messageCandidate === "string" && messageCandidate.length > 0) {
+    return messageCandidate;
+  }
+  const nested = record.json;
+  if (nested && typeof nested === "object") {
+    return extractMessageFromRecord(nested as ErrorPayload);
+  }
+  return null;
+};
+
+const extractCodeFromRecord = (record: ErrorPayload): string | number | undefined => {
+  if (record.code !== undefined) {
+    return record.code as string | number;
+  }
+
+  const data = record.data;
+  if (data && typeof data === "object") {
+    const dataRecord = data as ErrorPayload;
+    if (dataRecord.code !== undefined) {
+      return dataRecord.code as string | number;
+    }
+  }
+
+  const errorField = record.error;
+  if (errorField) {
+    if (typeof errorField === "string") {
+      return errorField;
+    }
+    if (typeof errorField === "object" && errorField !== null) {
+      const errorRecord = errorField as ErrorPayload;
+      if (errorRecord.code !== undefined) {
+        return errorRecord.code as string | number;
+      }
+    }
+  }
+
+  const nested = record.json;
+  if (nested && typeof nested === "object") {
+    const nestedRecord = nested as ErrorPayload;
+    if (nestedRecord.code !== undefined) {
+      return nestedRecord.code as string | number;
+    }
+    if (typeof nestedRecord.error === "string") {
+      return nestedRecord.error;
+    }
+  }
+
+  return undefined;
+};
+
 const getErrorMessage = (error: unknown): string => {
+  const record = getErrorRecord(error);
+  if (record) {
+    const structured = extractMessageFromRecord(record);
+    if (structured) {
+      return structured;
+    }
+  }
   if (error instanceof Error && error.message) {
     return error.message;
   }
@@ -30,13 +130,11 @@ const getErrorMessage = (error: unknown): string => {
 };
 
 const getErrorCode = (error: unknown): string | number | undefined => {
-  if (!error || typeof error !== "object") return undefined;
-  const record = error as Record<string, unknown>;
-  const candidate =
-    record.code ??
-    (record.data as Record<string, unknown> | undefined)?.code ??
-    (record.error as Record<string, unknown> | undefined)?.code;
-  return candidate as string | number | undefined;
+  const record = getErrorRecord(error);
+  if (record) {
+    return extractCodeFromRecord(record);
+  }
+  return undefined;
 };
 
 export function createNearOperationError(error: unknown): NearOperationError {

@@ -18,6 +18,7 @@ import {
   toolChoiceSchema,
 } from "@/lib/near-ai/request";
 import type { NormalizedChatCompletionRequest } from "@/lib/near-ai/request";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 
 type ChatMessage = {
   role: string;
@@ -127,8 +128,17 @@ export default async function handler(
 ) {
   // Only allow POST requests
   if (req.method !== "POST") {
-    return respondWithChatError(res, 405, "Method not allowed");
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.METHOD_NOT_ALLOWED,
+        "Only POST requests are allowed",
+        405
+      )
+    );
   }
+
+  try {
 
   // Basic payload size guardrail (after Next.js JSON parsing)
   const rawBody = JSON.stringify(req.body ?? {});
@@ -170,8 +180,6 @@ export default async function handler(
     tools,
     tool_choice,
   } = parsedBody.data;
-
-  try {
 
     const toolsArray = Array.isArray(tools) ? tools : undefined;
 
@@ -399,27 +407,20 @@ export default async function handler(
       }
     }
   } catch (error: unknown) {
-    logger.error("Proxy error:", error);
-
-    // Check if headers already sent
-    if (res.headersSent) {
-      logger.error("Cannot send error response - headers already sent");
-      return;
-    }
-
-    // Handle timeout
-    if (error instanceof Error && error.name === "AbortError") {
-      return respondWithChatError(
-        res,
-        504,
-        "The AI model took too long to respond"
-      );
-    }
-
-    const message =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    return respondWithChatError(res, 500, "Failed to proxy request", {
-      details: message,
+    logger.error("[chat/completions] Handler error", {
+      error: error instanceof Error ? error.message : String(error),
     });
+
+    if (error instanceof ApiError || error instanceof Error) {
+      return respondWithError(res, error);
+    }
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Chat completion failed",
+        500
+      )
+    );
   }
 }

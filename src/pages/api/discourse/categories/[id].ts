@@ -1,4 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { logger } from "@/lib/logger";
 import { discourseCategory } from "@/server/plugins/discourse-client";
 
 const parseIdOrSlug = (
@@ -17,20 +19,54 @@ export default async function handler(
   res: NextApiResponse<any>
 ) {
   if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.METHOD_NOT_ALLOWED,
+        "Only GET requests are allowed",
+        405
+      )
+    );
   }
 
-  const idOrSlug = parseIdOrSlug(req.query.id);
-  if (idOrSlug === null) {
-    return res.status(400).json({ error: "Invalid category id or slug" });
-  }
+  try {
+    const idOrSlug = parseIdOrSlug(req.query.id);
+    if (idOrSlug === null) {
+      throw new ApiError(
+        ErrorCodes.VALIDATION_ERROR,
+        "Invalid category id or slug",
+        400
+      );
+    }
 
-  const { data, error, status } = await discourseCategory({ idOrSlug });
-  if (error || !data) {
-    return res
-      .status(status ?? 500)
-      .json({ error: error ?? "Failed to fetch category" });
-  }
+    const { data, error, status } = await discourseCategory({ idOrSlug });
+    if (error || !data) {
+      const upstreamStatus = status ?? 502;
+      throw new ApiError(
+        ErrorCodes.UPSTREAM_ERROR,
+        error ?? "Failed to fetch category",
+        upstreamStatus >= 500 ? 502 : upstreamStatus
+      );
+    }
 
-  return res.status(200).json(data);
+    return res.status(200).json(data);
+  } catch (error) {
+    logger.error("[discourse/categories/id] Request failed", {
+      error: error instanceof Error ? error.message : String(error),
+      params: req.query,
+    });
+
+    if (error instanceof ApiError || error instanceof Error) {
+      return respondWithError(res, error);
+    }
+
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.INTERNAL_ERROR,
+        "Discourse request failed",
+        500
+      )
+    );
+  }
 }

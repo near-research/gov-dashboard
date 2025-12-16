@@ -155,8 +155,9 @@ describe("auth proxy", () => {
 
     expect(res.statusCode).toBe(502);
     expect(res.getBody()).toEqual({
-      error: "Authentication proxy error",
+      error: "UPSTREAM_ERROR",
       message: "Missing env",
+      statusCode: 502,
     });
   });
 
@@ -172,8 +173,9 @@ describe("auth proxy", () => {
 
     expect(res.statusCode).toBe(504);
     expect(res.getBody()).toEqual({
-      error: "Authentication proxy error",
+      error: "UPSTREAM_ERROR",
       message: "Request timeout",
+      statusCode: 504,
     });
   });
 

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { applyPatch, type Operation } from "fast-json-patch";
 import {
   EventType,
@@ -50,6 +56,69 @@ const generateMessageId = (prefix: string): string => {
   return `${prefix}_${timestamp}_${random}`;
 };
 
+function useThrottledCallback<T extends (...args: never[]) => void>(
+  callback: T,
+  delay: number
+): T & { cancel: () => void; flush: () => void } {
+  const lastRun = useRef(0);
+  const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pendingArgs = useRef<Parameters<T> | null>(null);
+
+  const throttled = useCallback(
+    (...args: Parameters<T>) => {
+      pendingArgs.current = args;
+      const now = Date.now();
+      const remaining = delay - (now - lastRun.current);
+
+      if (remaining <= 0) {
+        if (timeout.current) {
+          clearTimeout(timeout.current);
+          timeout.current = undefined;
+        }
+        lastRun.current = now;
+        pendingArgs.current = null;
+        callback(...args);
+      } else if (!timeout.current) {
+        timeout.current = setTimeout(() => {
+          lastRun.current = Date.now();
+          timeout.current = undefined;
+          if (pendingArgs.current) {
+            callback(...pendingArgs.current);
+            pendingArgs.current = null;
+          }
+        }, remaining);
+      }
+    },
+    [callback, delay]
+  ) as T & { cancel: () => void; flush: () => void };
+
+  throttled.cancel = () => {
+    if (timeout.current) {
+      clearTimeout(timeout.current);
+      timeout.current = undefined;
+    }
+    pendingArgs.current = null;
+  };
+
+  throttled.flush = () => {
+    if (timeout.current) {
+      clearTimeout(timeout.current);
+      timeout.current = undefined;
+    }
+    if (pendingArgs.current) {
+      lastRun.current = Date.now();
+      callback(...pendingArgs.current);
+      pendingArgs.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => throttled.cancel();
+  }, [throttled]);
+
+  return throttled;
+}
+
 export const useProposalChat = ({
   proposalState,
   setProposalState,
@@ -68,9 +137,51 @@ export const useProposalChat = ({
   addPendingDelta,
 }: UseProposalChatParams) => {
   const abortControllerRef = useRef<AbortController | null>(null);
+  const hydratedRef = useRef(false);
 
   const sessionKey =
     typeof window === "undefined" ? null : SESSION_STORAGE_KEY;
+
+  const throttledPersist = useThrottledCallback(
+    (key: string, data: unknown) => {
+      try {
+        const toStore = Array.isArray(data) ? data.slice(-100) : data;
+        sessionStorage.setItem(key, JSON.stringify(toStore));
+      } catch (e) {
+        console.warn("[sessionStorage] Write failed:", e);
+      }
+    },
+    1000
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const flushOnUnload = () => {
+      throttledPersist.flush();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        throttledPersist.flush();
+      }
+    };
+
+    window.addEventListener("beforeunload", flushOnUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", flushOnUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [throttledPersist]);
+
+  useEffect(() => {
+    return () => {
+      throttledPersist.flush();
+      throttledPersist.cancel();
+    };
+  }, [throttledPersist]);
 
   useEffect(() => {
     return () => {
@@ -105,13 +216,19 @@ export const useProposalChat = ({
   });
 
   useEffect(() => {
-    if (!sessionKey) return;
+    if (!sessionKey || hydratedRef.current) return;
+    hydratedRef.current = true;
 
     const stored = sessionStorage.getItem(sessionKey);
     if (!stored) return;
 
     try {
       const parsed = JSON.parse(stored);
+      console.log("[EVAL-DEBUG-6] Session RESTORE", {
+        hasData: Boolean(parsed),
+        evaluationOverallPass: parsed?.proposalState?.evaluation?.overallPass,
+        ts: Date.now(),
+      });
       if (Array.isArray(parsed?.messages)) {
         setMessages(parsed.messages);
       }
@@ -134,22 +251,19 @@ export const useProposalChat = ({
   useEffect(() => {
     if (!sessionKey) return;
 
-    try {
-      sessionStorage.setItem(
-        sessionKey,
-        JSON.stringify({
-          messages,
-          proposalState,
-          threadId: sessionMetadataRef.current.threadId,
-          runId: sessionMetadataRef.current.runId,
-          parentRunId: sessionMetadataRef.current.parentRunId,
-          currentTurn,
-        })
-      );
-    } catch (error) {
-      logger.warn("[useProposalChat] Unable to persist session:", error);
-    }
-  }, [messages, proposalState, sessionKey, currentTurn]);
+    console.log("[EVAL-DEBUG-7] Session PERSIST", {
+      evaluationOverallPass: proposalState.evaluation?.overallPass,
+      ts: Date.now(),
+    });
+    throttledPersist(sessionKey, {
+      messages,
+      proposalState,
+      threadId: sessionMetadataRef.current.threadId,
+      runId: sessionMetadataRef.current.runId,
+      parentRunId: sessionMetadataRef.current.parentRunId,
+      currentTurn,
+    });
+  }, [messages, proposalState, sessionKey, currentTurn, throttledPersist]);
 
   const finalizeCurrentMessage = useCallback(() => {
     setCurrentMessage((prev) => {

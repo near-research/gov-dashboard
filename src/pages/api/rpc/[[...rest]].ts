@@ -2,20 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { RPCHandler } from "@orpc/server/node";
 import { router } from "@/lib/router";
 import { createContext } from "@/lib/context";
+import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
-
-const toRecord = (value: unknown): Record<string, unknown> | null =>
-  typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
-
-const getErrorMessage = (error: unknown): string =>
-  error instanceof Error && error.message
-    ? error.message
-    : typeof error === "string" && error.length > 0
-    ? error
-    : "Unknown error";
-
 
 export const config = {
   api: {
@@ -27,6 +15,17 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  if (req.method !== "POST") {
+    return respondWithError(
+      res,
+      new ApiError(
+        ErrorCodes.METHOD_NOT_ALLOWED,
+        "Only POST requests are allowed",
+        405
+      )
+    );
+  }
+
   try {
     // Create handler with the router
     const handler = new RPCHandler(router);
@@ -45,22 +44,20 @@ export default async function handler(
 
     res.statusCode = 404;
     res.end("Not found");
-  } catch (error: unknown) {
-    logger.error("=== [oRPC] ERROR START ===");
-    logger.error("[oRPC] Error:", error);
-    logger.error("[oRPC] Message:", getErrorMessage(error));
-    if (error instanceof Error) {
-      logger.error("[oRPC] Stack:", error.stack);
-      logger.error("[oRPC] Cause:", error.cause);
-    }
-
-    const record = toRecord(error);
-    if (record?.data) {
-      logger.error("[oRPC] Data:", JSON.stringify(record.data, null, 2));
-    }
-    logger.error("[oRPC] Error:", error);
-
-    res.statusCode = 500;
-    res.end("Internal server error");
+  } catch (error) {
+    logger.error("[rpc] Handler error", {
+      error: error instanceof Error ? error.message : String(error),
+      path: req.url,
+    });
+    const normalizedError =
+      error instanceof ApiError || error instanceof Error
+        ? error
+        : new ApiError(
+            ErrorCodes.INTERNAL_ERROR,
+            "RPC handler failed",
+            500,
+            { details: error instanceof Error ? error.message : String(error) }
+          );
+    return respondWithError(res, normalizedError);
   }
 }
