@@ -36,7 +36,7 @@ export const StreamingBodyHelper = {
    * This enforces runtime validation instead of casting directly.
    */
   createStreamingBody(
-    source: Readable | NodeReadableStream<Uint8Array>
+    source: Readable | NodeReadableStream<Uint8Array> | ReadableStream<Uint8Array>
   ): BodyInit {
     const validatedStream = ensureReadableStream(source);
     if (validatedStream) {
