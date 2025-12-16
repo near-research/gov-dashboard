@@ -110,21 +110,14 @@ export default async function handler(
     }
 
     const rawData = parsed.data as DiscourseUserRawResponse;
-    if (!rawData.user?.id || !rawData.user?.username) {
+    const user = rawData.user;
+    if (!user || !user.id || !user.username) {
       return res.status(404).json({ error: "User not found" });
     }
 
     const response: DiscourseUserSuccessResponse = {
-      user: {
-        id: rawData.user.id,
-        username: rawData.user.username,
-        name: rawData.user.name ?? null,
-        avatarTemplate: rawData.user.avatar_template ?? "",
-        title: rawData.user.title,
-        admin: rawData.user.admin,
-        moderator: rawData.user.moderator,
-        trustLevel: rawData.user.trust_level,
-      },
+      ...rawData,
+      user,
     };
 
     return res.status(200).json(response);

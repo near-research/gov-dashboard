@@ -220,9 +220,9 @@ export interface DiscourseUser {
   trustLevel?: number;
 }
 
-export interface DiscourseUserSuccessResponse {
-  user: DiscourseUser;
-}
+export type DiscourseUserSuccessResponse = DiscourseUserRawResponse & {
+  user: NonNullable<DiscourseUserRawResponse["user"]>;
+};
 
 export type DiscourseUserResponse = DiscourseUserSuccessResponse | ApiErrorResponse;
 
