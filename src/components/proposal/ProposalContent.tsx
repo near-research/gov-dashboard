@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp, FileText, History } from "lucide-react";
+import { VerificationBadge } from "@/components/VerificationBadge";
 import type { ProposalFrontmatter } from "@/utils/metadata";
 import type { ProposalRevision } from "@/components/proposal/types/proposals";
 import type {
@@ -260,8 +261,16 @@ export default function ProposalContent({
         {proposalSummary && (
           <>
             <Alert className="bg-blue-50 border-blue-200">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center justify-between gap-2 mb-2">
                 <Badge variant="secondary">AI Summary</Badge>
+                <VerificationBadge
+                  verification={
+                    proposalSummary.verificationResult ??
+                    proposalSummary.verification ??
+                    null
+                  }
+                  className="text-[10px]"
+                />
               </div>
               <AlertDescription className="space-y-3">
                 <Markdown

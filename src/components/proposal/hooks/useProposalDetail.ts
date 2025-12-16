@@ -32,12 +32,14 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
   const [proposal, setProposal] = useState<ProposalDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [hasFetchedProposal, setHasFetchedProposal] = useState(false);
   const [screening, setScreening] = useState<ScreeningData | null>(null);
   const [screeningChecked, setScreeningChecked] = useState(false);
   const [screeningError, setScreeningError] = useState<string | null>(null);
   const [currentRevision, setCurrentRevision] = useState<number>(1);
   const [revisions, setRevisions] = useState<ProposalRevision[]>([]);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [lastAttemptedProposalId, setLastAttemptedProposalId] = useState<string | null>(null);
   const latestScreeningRequest = useRef<{ topicId: string; revision: number }>({
     topicId: "",
     revision: 0,
@@ -127,8 +129,11 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
       proposalAbortController.current?.abort();
       const controller = new AbortController();
       proposalAbortController.current = controller;
+      setLastAttemptedProposalId(id);
       setLoading(true);
       setError("");
+      setHasFetchedProposal(false);
+      setProposal(null);
       try {
         const response = await fetch(`/api/proposals/${id}`, { signal: controller.signal });
         if (controller.signal.aborted) return;
@@ -161,7 +166,11 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
           err instanceof Error ? err.message : "Failed to fetch proposal";
         setError(message);
       } finally {
+        if (controller.signal.aborted) {
+          return;
+        }
         setLoading(false);
+        setHasFetchedProposal(true);
       }
     },
     [fetchScreening]
@@ -208,6 +217,7 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
     setCurrentRevision(1);
     setError("");
     setLoading(true);
+    setHasFetchedProposal(false);
   }, [proposalId]);
 
   useEffect(
@@ -238,6 +248,8 @@ function useProposalData(proposalId: string | undefined, track: GovernanceTrackF
     fetchRevisions,
     fetchScreening,
     setScreeningChecked,
+    hasFetchedProposal,
+    lastAttemptedProposalId,
   };
 }
 
@@ -309,6 +321,8 @@ export function useProposalDetail({
     fetchScreening,
     fetchProposal,
     setScreeningChecked,
+    lastAttemptedProposalId,
+    hasFetchedProposal,
   } = useProposalData(proposalId, track);
 
   useEffect(() => {
@@ -376,5 +390,7 @@ export function useProposalDetail({
     fetchProposal,
     fetchRevisions,
     fetchScreening,
+    hasFetchedProposal,
+    lastAttemptedProposalId,
   };
 }

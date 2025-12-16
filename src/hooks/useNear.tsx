@@ -251,10 +251,7 @@ export function useNear() {
     return {
       signMessage(params: SignMessageParams) {
         const client = authClient.near.getNearClient();
-        return client.signMessage(
-          { message: params.message },
-          { signerId: signedAccountId }
-        );
+        return client.signMessage(params, { signerId: signedAccountId });
       },
     };
   }, [signedAccountId]);

@@ -1,7 +1,9 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EvaluationSummary } from "@/components/editor/EvaluationSummary";
+import { VerificationBadge } from "@/components/VerificationBadge";
 import type { Evaluation } from "@/types/evaluation";
+import type { VerificationMetadata } from "@/types/agui-events";
 
 export type EvaluationPanelProps = {
   evaluationError: string;
@@ -12,6 +14,8 @@ export type EvaluationPanelProps = {
   onToggleEvalDetails: () => void;
   remainingEvaluations: number | null;
   rateLimitResetSeconds: number | null;
+  evaluationVerification?: VerificationMetadata;
+  evaluationChatId?: string;
 };
 
 export function EvaluationPanel({
@@ -23,6 +27,7 @@ export function EvaluationPanel({
   onToggleEvalDetails,
   remainingEvaluations,
   rateLimitResetSeconds,
+  evaluationVerification,
 }: EvaluationPanelProps) {
   return (
     <div className="card" style={{ padding: "1.2rem" }}>
@@ -36,7 +41,11 @@ export function EvaluationPanel({
             <AlertDescription>{evaluationError}</AlertDescription>
           </Alert>
         )}
-        <Button onClick={evaluateDraft} disabled={evalLoading} className="w-full">
+        <Button
+          onClick={evaluateDraft}
+          disabled={evalLoading}
+          className="w-full"
+        >
           {evalLoading ? "Evaluating..." : "Run screening"}
         </Button>
         {evaluation && (
@@ -49,8 +58,20 @@ export function EvaluationPanel({
               marginTop: "0.35rem",
             }}
           >
-            <span>Result: {evaluation.overallPass ? "Pass" : "Needs work"}</span>
-            <Button variant="outline" size="sm" className="h-7" onClick={onToggleEvalDetails}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}
+            >
+              <VerificationBadge
+                verification={evaluationVerification ?? null}
+                className="text-[10px]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7"
+              onClick={onToggleEvalDetails}
+            >
               {showEvalDetails ? "Hide results" : "Show results"}
             </Button>
           </div>

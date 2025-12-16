@@ -13,6 +13,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, User, Calendar, X } from "lucide-react";
+import { VerificationBadge } from "@/components/VerificationBadge";
 import type { ProposalRevision } from "@/components/proposal/types/proposals";
 import type { ProposalRevisionSummaryResponse } from "@/components/proposal/types/summaries";
 
@@ -170,14 +171,24 @@ export default function VersionSelector({
                 >
                   Revision History Summary
                 </Badge>
-                <Button
-                  onClick={onHideSummary}
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs"
-                >
-                  Hide
-                </Button>
+                <div className="flex items-center gap-2">
+                  <VerificationBadge
+                    verification={
+                      revisionSummary?.verificationResult ??
+                      revisionSummary?.verification ??
+                      null
+                    }
+                    className="text-[10px]"
+                  />
+                  <Button
+                    onClick={onHideSummary}
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                  >
+                    Hide
+                  </Button>
+                </div>
               </div>
               <AlertDescription>
                 <Markdown

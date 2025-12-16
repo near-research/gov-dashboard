@@ -8,11 +8,18 @@ export function sha256sum(data: string): string {
 }
 
 /**
- * Extract chat completion ID from SSE streaming response
- * The ID appears in the first data line: data: {"id":"chatcmpl-xxx",...}
+ * Extract chat completion ID from response
+ * Handles both SSE streaming format and regular JSON
  */
 export function extractChatId(responseText: string): string | null {
   try {
+    // Try parsing as direct JSON first (non-streaming)
+    if (responseText.trimStart().startsWith("{")) {
+      const json = JSON.parse(responseText);
+      if (json.id) return json.id;
+    }
+
+    // Fall back to SSE streaming format
     const lines = responseText.split("\n");
     const firstDataLine = lines.find((line) => line.startsWith("data: {"));
 

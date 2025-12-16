@@ -165,6 +165,7 @@ export default async function handler(
         requestBodyString,
         writeEvent,
         captureToolCalls: true,
+        model: AGENT_MODEL,
       });
 
       if (result.finishReason === "error") {

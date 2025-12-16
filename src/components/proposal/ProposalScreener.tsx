@@ -23,6 +23,8 @@ import {
   TrendingUp,
   Eye,
 } from "lucide-react";
+import { VerificationBadge } from "@/components/VerificationBadge";
+import type { ChatVerificationResult } from "@/lib/near-ai/verification/types";
 
 export const ProposalScreener = () => {
   const [title, setTitle] = useState<string>("");
@@ -30,6 +32,9 @@ export const ProposalScreener = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<Evaluation | null>(null);
   const [error, setError] = useState<string>("");
+  const [verificationResult, setVerificationResult] = useState<
+    ChatVerificationResult | null
+  >(null);
 
   const evaluateProposal = async () => {
     if (!title.trim()) {
@@ -44,6 +49,7 @@ export const ProposalScreener = () => {
     setLoading(true);
     setError("");
     setResult(null);
+    setVerificationResult(null);
 
     try {
       const response = await fetch("/api/screen", {
@@ -67,12 +73,17 @@ export const ProposalScreener = () => {
         );
       }
 
-      const data: { evaluation: Evaluation } = await response.json();
+      const data: {
+        evaluation: Evaluation;
+        verificationResult?: ChatVerificationResult | null;
+      } = await response.json();
       setResult(data.evaluation);
+      setVerificationResult(data.verificationResult ?? null);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Failed to evaluate proposal";
       setError(message);
+      setVerificationResult(null);
     } finally {
       setLoading(false);
     }
@@ -183,11 +194,19 @@ export const ProposalScreener = () => {
                       <AlertTriangle className="h-6 w-6 text-yellow-600 mt-1" />
                     )}
                     <div className="flex-1 space-y-2">
-                      <div className="font-semibold text-lg">
+                  <div className="font-semibold text-lg">
+                    <div className="flex items-center gap-2">
+                      <span data-testid="screening-status">
                         {result.overallPass
                           ? "Ready for Submission"
                           : "Needs Improvement"}
-                      </div>
+                      </span>
+                      <VerificationBadge
+                        verification={verificationResult}
+                        className="text-[10px]"
+                      />
+                    </div>
+                  </div>
                       <div className="flex gap-6 text-sm">
                         <div className="flex items-center gap-1">
                           <TrendingUp className="h-4 w-4" />

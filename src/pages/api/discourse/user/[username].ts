@@ -4,16 +4,35 @@ import { servicesConfig } from "@/config/services";
 import { logger } from "@/lib/logger";
 import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 
+const discourseBadgeSchema = z
+  .object({
+    id: z.number(),
+    badge_id: z.number(),
+    badge: z
+      .object({
+        name: z.string().optional(),
+      })
+      .passthrough()
+      .optional()
+      .nullable(),
+  })
+  .passthrough();
+
 const discourseUserSchema = z
   .object({
+    user_badges: z.array(discourseBadgeSchema),
     user: z
       .object({
-        id: z.number(),
-        username: z.string(),
-        name: z.string().optional(),
         avatar_template: z.string().optional(),
+        trust_level: z.number().optional(),
+        badge_count: z.number().optional(),
+        post_count: z.number().optional(),
+        time_read: z.number().optional(),
+        last_seen_at: z.string().optional().nullable(),
+        created_at: z.string().optional().nullable(),
       })
-      .passthrough(),
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 

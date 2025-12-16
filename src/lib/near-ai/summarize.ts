@@ -13,7 +13,8 @@ export async function runSummaryFlow(options: SummaryFlowOptions) {
   const { request, serialized, hash } = prepareSummaryRequest(options);
   const { summary, chatId, responseText } = await streamChatCompletion(
     options.client,
-    request
+    request,
+    { serializedBody: serialized }
   );
 
   const verification = await finalizeSummaryVerification({

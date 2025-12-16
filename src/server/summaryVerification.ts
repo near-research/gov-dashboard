@@ -51,6 +51,7 @@ export async function finalizeSummaryVerification(
           signature: null,
           hashValidation: null,
           signatureValidation: null,
+          warnings: [],
           error: "Missing chat ID from NEAR AI response",
         };
 
@@ -63,11 +64,16 @@ export async function finalizeSummaryVerification(
       }
     : null;
 
+  const mappedWarnings = [
+    ...(verificationResult.warnings ?? []),
+    ...(verificationResult.error ? [verificationResult.error] : []),
+  ];
+
   const mappedResult: VerificationResult = {
     verified: verificationResult.verified,
     reasons: verificationResult.error ? [verificationResult.error] : [],
     status: verificationResult.verified ? "verified" : "failed",
-    warnings: verificationResult.error ? [verificationResult.error] : undefined,
+    warnings: mappedWarnings.length ? mappedWarnings : undefined,
     signature: signaturePayload,
     requestHash: verificationResult.requestHash,
     responseHash: verificationResult.responseHash,

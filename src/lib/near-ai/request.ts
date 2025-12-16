@@ -112,7 +112,6 @@ const normalizeValueForSerialization = (value: unknown): unknown => {
 
     const entries = Object.keys(objectValue)
       .filter((key) => typeof objectValue[key] !== "undefined")
-      .sort()
       .map<[string, unknown] | undefined>((key) => {
         const normalized = normalizeValueForSerialization(objectValue[key]);
         if (typeof normalized === "undefined") {

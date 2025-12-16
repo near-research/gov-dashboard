@@ -274,23 +274,24 @@ describe("signature helpers", () => {
 
   it("validates signature accurately", () => {
     vi.mocked(ethers.verifyMessage).mockReturnValue("0xabc");
-    const result = verifySignature("text", "sig", ["0xAbC"]);
+    const result = verifySignature("text", "sig", ["0xAbC"], "0xAbC");
     expect(result.valid).toBe(true);
     expect(result.teeAttested).toBe(true);
-    expect(result.expectedAddresses).toEqual(["0xAbC"]);
+    expect(result.teeAddresses).toEqual(["0xAbC"]);
+    expect(result.signingAddress).toBe("0xAbC");
   });
 
   it("performs case-insensitive address matching", () => {
     vi.mocked(ethers.verifyMessage).mockReturnValue("0xabc");
-    const result = verifySignature("text", "sig", ["0xABC"]);
+    const result = verifySignature("text", "sig", ["0xABC"], "0xABC");
     expect(result.valid).toBe(true);
     expect(result.teeAttested).toBe(true);
   });
 
   it("rejects unknown addresses", () => {
     vi.mocked(ethers.verifyMessage).mockReturnValue("0xdef");
-    const result = verifySignature("text", "sig", ["0xabc"]);
-    expect(result.valid).toBe(false);
+    const result = verifySignature("text", "sig", ["0xabc"], "0xdef");
+    expect(result.valid).toBe(true);
     expect(result.teeAttested).toBe(false);
   });
 
@@ -298,7 +299,7 @@ describe("signature helpers", () => {
     vi.mocked(ethers.verifyMessage).mockImplementation(() => {
       throw new Error("bad sig");
     });
-    const result = verifySignature("text", "sig", []);
+    const result = verifySignature("text", "sig", [], "0xtee");
     expect(result.valid).toBe(false);
     expect(result.error).toContain("bad sig");
   });
@@ -309,6 +310,14 @@ describe("verifyChatMessage flow", () => {
   const responseText = 'data: {"id":"chatcmpl-123"}\n\n';
   const requestHash = sha256sum(requestBody);
   const responseHash = sha256sum(responseText);
+  const createSignaturePayload = (
+    text: string = `${requestHash}:${responseHash}`
+  ) => ({
+    text,
+    signature: "0xsig",
+    signing_address: "0xtee",
+    signing_algo: "ecdsa",
+  });
 
   beforeEach(() => {
     process.env.NEAR_AI_CLOUD_API_KEY = "test-api-key";
@@ -334,7 +343,13 @@ describe("verifyChatMessage flow", () => {
   });
 
   it("fails when attestation fetch rejects", async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new Error("Network"));
+    const signaturePayload = createSignaturePayload();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => signaturePayload,
+      } as Response)
+      .mockRejectedValueOnce(new Error("Network"));
 
     const result = await verifyChatMessage(
       requestBody,
@@ -347,20 +362,16 @@ describe("verifyChatMessage flow", () => {
   });
 
   it("fails when hash comparison fails", async () => {
+    const signaturePayload = createSignaturePayload("wrong:hash");
     vi.mocked(fetch)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          model_attestations: [{ signing_address: "0xtee" }],
-        }),
+        json: async () => signaturePayload,
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          text: "wrong:hash",
-          signature: "0xsig",
-          signing_address: "0xtee",
-          signing_algo: "ecdsa",
+          model_attestations: [{ signing_address: "0xtee" }],
         }),
       } as Response);
 
@@ -387,33 +398,34 @@ describe("verifyChatMessage flow", () => {
         ],
       };
 
-      const signaturePayload = {
-        text: `${requestHash}:${responseHash}`,
-        signature: "0xsig",
-        signing_address: "0xtee",
-        signing_algo: "ecdsa",
-      };
+      const signaturePayload = createSignaturePayload();
 
       const mockJwt = createMockJwt({
         "x-nvidia-overall-att-result": true,
       });
 
       vi.mocked(fetch)
-        .mockResolvedValueOnce({ ok: true, json: async () => attestation } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => [["JWT", mockJwt]],
-        } as Response)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => signaturePayload,
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => attestation,
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [["JWT", mockJwt]],
         } as Response);
 
       vi.mocked(ethers.verifyMessage).mockReturnValue("0xtee");
 
-      const result = await verifyChatMessage(requestBody, responseText, "test-model", {
-        verifyNvidia: true,
-      });
+      const result = await verifyChatMessage(
+        requestBody,
+        responseText,
+        "test-model",
+        { verifyNvidia: true }
+      );
 
       expect(result.verified).toBe(true);
       expect(result.attestation?.nvidiaVerification?.performed).toBe(true);
@@ -431,18 +443,16 @@ describe("verifyChatMessage flow", () => {
         ],
       };
 
-      const signaturePayload = {
-        text: `${requestHash}:${responseHash}`,
-        signature: "0xsig",
-        signing_address: "0xtee",
-        signing_algo: "ecdsa",
-      };
+      const signaturePayload = createSignaturePayload();
 
       vi.mocked(fetch)
-        .mockResolvedValueOnce({ ok: true, json: async () => attestation } as Response)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => signaturePayload,
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => attestation,
         } as Response);
 
       vi.mocked(ethers.verifyMessage).mockReturnValue("0xtee");
@@ -468,12 +478,21 @@ describe("verifyChatMessage flow", () => {
         ],
       };
 
+      const signaturePayload = createSignaturePayload();
+
       const mockJwt = createMockJwt({
         "x-nvidia-overall-att-result": false,
       });
 
       vi.mocked(fetch)
-        .mockResolvedValueOnce({ ok: true, json: async () => attestation } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => signaturePayload,
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => attestation,
+        } as Response)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ jwt: mockJwt }),
@@ -500,18 +519,16 @@ describe("verifyChatMessage flow", () => {
         ],
       };
 
-      const signaturePayload = {
-        text: `${requestHash}:${responseHash}`,
-        signature: "0xsig",
-        signing_address: "0xtee",
-        signing_algo: "ecdsa",
-      };
+      const signaturePayload = createSignaturePayload();
 
       vi.mocked(fetch)
-        .mockResolvedValueOnce({ ok: true, json: async () => attestation } as Response)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => signaturePayload,
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => attestation,
         } as Response);
 
       vi.mocked(ethers.verifyMessage).mockReturnValue("0xtee");

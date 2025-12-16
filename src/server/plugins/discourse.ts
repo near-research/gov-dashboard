@@ -184,14 +184,6 @@ if (isTestEnvironment) {
     },
     secrets: { discourseApiKey },
   });
-  logger.debug(
-    "[discourse-plugin] loaded router keys",
-    Object.keys(plugin.router).sort()
-  );
-  logger.debug(
-    "[discourse-plugin] createPost type",
-    typeof (plugin.router as Record<string, unknown>).createPost
-  );
 
   discourseRouter = plugin.router;
   discourseClient = plugin.client;

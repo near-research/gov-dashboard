@@ -51,7 +51,12 @@ export async function fetchSignature(
       );
     }
 
-    return (await response.json()) as SignatureResponse;
+    const signatureData = (await response.json()) as SignatureResponse;
+    console.log(
+      "[DEBUG] Raw signature response from NEAR AI:",
+      JSON.stringify(signatureData)
+    );
+    return signatureData;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -88,39 +93,45 @@ export function compareHashes(
  * @param message - The signed message (signature.text)
  * @param signature - The ECDSA signature
  * @param teeAddresses - List of valid TEE signing addresses from attestation
+ * @param signingAddress - Claimed signer address from NEAR AI
  */
 export function verifySignature(
   message: string,
   signature: string,
-  teeAddresses: string[]
+  teeAddresses: string[],
+  signingAddress: string
 ): SignatureValidation {
   try {
     const recoveredAddress = ethers.verifyMessage(message, signature);
+    const normalizedSigningAddress = signingAddress
+      ? signingAddress.toLowerCase()
+      : "";
 
-    // Check if recovered address is in TEE addresses list (case-insensitive)
-    const teeAttested =
-      teeAddresses.length === 0
-        ? false
-        : teeAddresses.some(
-            (addr) => addr.toLowerCase() === recoveredAddress.toLowerCase()
-          );
+    // Cryptographic validity: did the recovered address match the claimed signer?
+    const signatureValid =
+      !!normalizedSigningAddress &&
+      recoveredAddress.toLowerCase() === normalizedSigningAddress;
 
-    // Signature is only valid if:
-    // 1. We have TEE addresses AND recovered address is in the list, OR
-    // 2. We have no TEE addresses (attestation skipped) - signature is technically valid but not TEE-attested
-    const valid = teeAddresses.length === 0 || teeAttested;
+    const teeAttested = Boolean(
+      normalizedSigningAddress &&
+        teeAddresses.some(
+          (addr) => addr.toLowerCase() === normalizedSigningAddress
+        )
+    );
 
     return {
-      valid,
+      valid: signatureValid,
       recoveredAddress,
-      expectedAddresses: teeAddresses,
+      signingAddress,
+      teeAddresses,
       teeAttested,
     };
   } catch (error) {
     return {
       valid: false,
       recoveredAddress: null,
-      expectedAddresses: teeAddresses,
+      signingAddress,
+      teeAddresses,
       teeAttested: false,
       error:
         error instanceof Error

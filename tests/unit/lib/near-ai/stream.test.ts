@@ -63,9 +63,9 @@ describe("streamChatCompletion", () => {
     expect(result.summary).toBe("Recovery");
   });
 
-  it("uses message content when delta content is absent", async () => {
+  it("handles delta-only SSE events", async () => {
     const chunks = [
-      'data: {"choices":[{"message":{"content":"Message only"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"Message only"}}]}\n\n',
       "data: [DONE]\n\n",
     ];
 
@@ -88,5 +88,40 @@ describe("streamChatCompletion", () => {
     await expect(
       streamChatCompletion(client, {} as ChatCompletionRequest)
     ).rejects.toThrow("NEAR AI stream response body is empty");
+  });
+
+  it("handles multiple SSE events and ignores verification-only chunks", async () => {
+    const streamText = [
+      'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+      'data: {"choices":[{"delta":{"content":" world"}}]}',
+      'data: {"verification":{"status":"failed"}}',
+      "",
+      "data: [DONE]",
+      "",
+      "",
+    ].join("\n");
+    const client = mockClientWithChunks([streamText]);
+    const result = await streamChatCompletion(
+      client,
+      {} as ChatCompletionRequest
+    );
+
+    expect(result.summary).toBe("Hello world");
+    expect(result.responseText).toBe(streamText);
+  });
+
+  it("handles streams where chunks arrive back-to-back without blank lines", async () => {
+    const streamText = [
+      'data: {"choices":[{"delta":{"content":"Packed"}}]}',
+      'data: {"verification":{"status":"failed"}}',
+      "data: [DONE]",
+    ].join("\n");
+    const client = mockClientWithChunks([streamText]);
+    const result = await streamChatCompletion(
+      client,
+      {} as ChatCompletionRequest
+    );
+
+    expect(result.summary).toBe("Packed");
   });
 });

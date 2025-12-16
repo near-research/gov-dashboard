@@ -13,6 +13,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { VerificationBadge, type VerificationInfo } from "@/components/VerificationBadge";
 import prompts from "@/lib/prompts";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type {
@@ -140,6 +141,7 @@ export default function SettingsPage() {
   const [result, setResult] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationInfo, setVerificationInfo] = useState<VerificationInfo | null>(null);
   const [customPromptText, setCustomPromptText] = useState("");
   const [proposalIdToLoad, setProposalIdToLoad] = useState("41688");
   const [replyPostNumberToLoad, setReplyPostNumberToLoad] = useState("");
@@ -454,6 +456,7 @@ export default function SettingsPage() {
     setLoading(true);
     setError(null);
     setResult("");
+    setVerificationInfo(null);
 
     try {
       const prompt =
@@ -480,6 +483,11 @@ export default function SettingsPage() {
 
       const data = await response.json();
       setResult(data.choices?.[0]?.message?.content || "No response");
+      const verificationPayload =
+        (data.verification as VerificationInfo | undefined) ??
+        (data.verificationResult as VerificationInfo | undefined) ??
+        null;
+      setVerificationInfo(verificationPayload);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Unexpected error";
@@ -674,7 +682,16 @@ export default function SettingsPage() {
               )}
 
               {result && (
-                <Alert>
+                <Alert className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Response
+                    </p>
+                    <VerificationBadge
+                      verification={verificationInfo}
+                      className="text-[10px]"
+                    />
+                  </div>
                   <AlertDescription>
                     <pre className="whitespace-pre-wrap text-sm">{result}</pre>
                   </AlertDescription>

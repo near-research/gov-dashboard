@@ -9,11 +9,23 @@ import type { NvidiaVerificationInfo } from "./types";
  */
 
 export interface ModelAttestation {
-  signing_address: string;
+  signing_address?: string;
   nvidia_payload?: string;
+  intel_quote?: string;
+  event_log?: unknown;
+  info?: {
+    signing_address?: string;
+    signingAddress?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface GatewayAttestation {
+  signing_address?: string;
 }
 
 export interface AttestationReport {
+  gateway_attestation?: GatewayAttestation;
   model_attestations?: ModelAttestation[];
 }
 
@@ -23,6 +35,12 @@ export interface AttestationResult {
   nvidiaPayloads: string[];
   nvidiaVerification?: NvidiaVerificationInfo;
   report: AttestationReport;
+  raw: AttestationReport;
+}
+
+interface AddressSource {
+  address: string;
+  path: string;
 }
 
 /**
@@ -34,6 +52,7 @@ export async function fetchAttestation(
     baseUrl?: string;
     apiKey?: string;
     timeout?: number;
+    bypassCache?: boolean;
     verifyNvidia?: boolean;
   }
 ): Promise<AttestationResult> {
@@ -48,6 +67,8 @@ export async function fetchAttestation(
   const url = `${baseUrl}/v1/attestation/report?model=${encodeURIComponent(
     model
   )}&signing_algo=ecdsa`;
+
+  console.log("[DEBUG] Attestation endpoint URL:", url);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(
@@ -71,25 +92,82 @@ export async function fetchAttestation(
       );
     }
 
-    const report: AttestationReport = await response.json();
+    const data: AttestationReport = await response.json();
+
+    const rawData: AttestationReport = data;
+    const modelAttestations = data.model_attestations || [];
+
+    console.log("[DEBUG] Attestation response structure:", {
+      rootKeys: Object.keys(data),
+      gatewayHasSigningAddress: Boolean(
+        data.gateway_attestation?.signing_address
+      ),
+      modelAttestationCount: modelAttestations.length,
+    });
 
     // Extract unique signing addresses
     const teeAddresses: string[] = [];
+    const signingAddressesFound: string[] = [];
+    const addressSources: AddressSource[] = [];
+
+    const recordSigningAddress = (address?: string) => {
+      if (address && !signingAddressesFound.includes(address)) {
+        signingAddressesFound.push(address);
+      }
+    };
+
+    const addAddressFromPath = (address: string, path: string) => {
+      addressSources.push({ address, path });
+      recordSigningAddress(address);
+      if (!teeAddresses.includes(address)) {
+        teeAddresses.push(address);
+      }
+    };
+
+    if (data.gateway_attestation?.signing_address) {
+      addAddressFromPath(
+        data.gateway_attestation.signing_address,
+        "gateway_attestation.signing_address"
+      );
+    }
     let hasNvidiaPayload = false;
     const nvidiaPayloads: string[] = [];
 
-    for (const attestation of report.model_attestations || []) {
-      if (
-        attestation.signing_address &&
-        !teeAddresses.includes(attestation.signing_address)
-      ) {
-        teeAddresses.push(attestation.signing_address);
+    for (const [index, attestation] of modelAttestations.entries()) {
+      const signingAddressPath =
+        attestation.signing_address !== undefined
+          ? {
+              address: attestation.signing_address,
+              path: `model_attestations[${index}].signing_address`,
+            }
+          : attestation.info?.signing_address
+          ? {
+              address: attestation.info.signing_address,
+              path: `model_attestations[${index}].info.signing_address`,
+            }
+          : attestation.info?.signingAddress
+          ? {
+              address: attestation.info.signingAddress,
+              path: `model_attestations[${index}].info.signingAddress`,
+            }
+          : null;
+
+      if (signingAddressPath) {
+        addAddressFromPath(signingAddressPath.address, signingAddressPath.path);
       }
+
       if (attestation.nvidia_payload) {
         hasNvidiaPayload = true;
         nvidiaPayloads.push(attestation.nvidia_payload);
       }
     }
+
+    console.log("[DEBUG] TEE addresses:", teeAddresses);
+    console.log("[DEBUG] Signing addresses found:", signingAddressesFound);
+    const compactAddressSources = addressSources.map(
+      (source) => `${source.address.slice(0, 10)}...@${source.path}`
+    );
+    console.log("[DEBUG] Address sources:", compactAddressSources);
 
     let nvidiaVerification: NvidiaVerificationInfo | undefined;
 
@@ -134,7 +212,8 @@ export async function fetchAttestation(
       hasNvidiaPayload,
       nvidiaPayloads,
       nvidiaVerification,
-      report,
+      report: data,
+      raw: rawData,
     };
   } finally {
     clearTimeout(timeoutId);

@@ -376,6 +376,59 @@ export const useProposalChat = ({
           });
           return;
 
+        case EventType.VERIFICATION: {
+          if (!event.verification) {
+            return;
+          }
+          const mergeVerification = (base?: VerificationMetadata) => ({
+            ...(base ?? {
+              source: "near-ai-cloud",
+              status: "pending",
+            }),
+            ...event.verification,
+          });
+
+          const targetId = event.messageId;
+          setMessages((prev) => {
+            let updated = false;
+            const next = prev.map((msg, index) => {
+              if (
+                updated ||
+                msg.role !== "assistant" ||
+                (targetId
+                  ? msg.id !== targetId && msg.remoteId !== targetId
+                  : index !== prev.length - 1)
+              ) {
+                return msg;
+              }
+              updated = true;
+              return {
+                ...msg,
+                verification: mergeVerification(msg.verification),
+              };
+            });
+            return updated ? next : prev;
+          });
+
+          setCurrentMessage((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            if (
+              targetId &&
+              prev.remoteId !== targetId &&
+              prev.id !== targetId
+            ) {
+              return prev;
+            }
+            return {
+              ...prev,
+              verification: mergeVerification(prev.verification),
+            };
+          });
+          return;
+        }
+
         case EventType.TOOL_CALL_START:
           setActiveToolCalls((prev) => {
             const updated = new Map(prev);

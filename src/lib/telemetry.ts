@@ -11,8 +11,7 @@ class Telemetry {
 
   constructor() {
     this.enabled = process.env.TELEMETRY_ENABLED !== "false";
-    this.shouldDebug =
-      process.env.NODE_ENV === "development" || process.env.DEBUG === "true";
+    this.shouldDebug = process.env.TELEMETRY_DEBUG === "true";
   }
 
   track(name: string, properties: Record<string, unknown> = {}) {

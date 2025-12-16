@@ -37,8 +37,9 @@ import {
   logNearError,
   type NearOperationError,
 } from "@/utils/errors/near-errors";
-import { SIWN_RECIPIENT } from "@/constants/near";
+import { siwnRecipient } from "@/config/siwn";
 import { logger } from "@/lib/logger";
+import { VerificationBadge } from "@/components/VerificationBadge";
 
 interface DiscussionSectionProps {
   discourseBaseUrl: string;
@@ -147,7 +148,7 @@ export function DiscussionSection({
         SIGNING_MESSAGES.replyToProposal(topicId),
         {
           signer: walletSigner,
-          recipient: SIWN_RECIPIENT,
+          recipient: siwnRecipient,
         }
       );
 
@@ -282,8 +283,16 @@ export function DiscussionSection({
       <CardContent className="pt-6 space-y-6">
         {discussionSummary && discussionSummaryVisible && (
           <Alert className="bg-blue-50 border-blue-200">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center justify-between mb-2">
               <Badge variant="secondary">Discussion Summary</Badge>
+              <VerificationBadge
+                verification={
+                  discussionSummary.verificationResult ??
+                  discussionSummary.verification ??
+                  null
+                }
+                className="text-[10px]"
+              />
             </div>
             <AlertDescription className="space-y-4">
               <Markdown

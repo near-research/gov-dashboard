@@ -5,6 +5,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { SIGNING_MESSAGES } from "@/constants/signing-messages";
 import { DiscussionSection } from "@/components/proposal/DiscussionSection";
+import { siwnRecipient } from "@/config/siwn";
 
 const { signMock } = vi.hoisted(() => ({
   signMock: vi.fn(),
@@ -249,13 +250,13 @@ describe("DiscussionSection", () => {
       fireEvent.click(button);
 
       await waitFor(() =>
-        expect(signMock).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({
-            signer: mockWalletSigner,
-            recipient: "social.near",
-          })
-        )
+          expect(signMock).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+              signer: mockWalletSigner,
+              recipient: siwnRecipient,
+            })
+          )
       );
     });
 

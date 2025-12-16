@@ -17,7 +17,7 @@ import {
   type NearOperationError,
 } from "@/utils/errors/near-errors";
 import { logger } from "@/lib/logger";
-import { SIWN_RECIPIENT } from "@/constants/near";
+import { siwnRecipient } from "@/config/siwn";
 
 interface UseProposalPublishingParams {
   client: OrpcClient;
@@ -138,7 +138,7 @@ export const useProposalPublishing = ({
       const { sign } = await import("near-sign-verify");
       const authToken = await sign(SIGNING_MESSAGES.DISCOURSE_LINK, {
         signer: walletSigner,
-        recipient: SIWN_RECIPIENT,
+        recipient: siwnRecipient,
       });
       await client.discourse.completeLink({
         payload: linkPayload.trim(),
@@ -212,7 +212,7 @@ export const useProposalPublishing = ({
       const { sign } = await import("near-sign-verify");
       const authToken = await sign(SIGNING_MESSAGES.DISCOURSE_PUBLISH, {
         signer: walletSigner,
-        recipient: SIWN_RECIPIENT,
+        recipient: siwnRecipient,
       });
 
       const userApiKey =

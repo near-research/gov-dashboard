@@ -8,6 +8,7 @@ import {
 import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 
 import { classifyNearError, useNear } from "@/hooks/useNear";
+import { siwnRecipient } from "@/config/siwn";
 
 const {
   signMessageMock,
@@ -184,15 +185,20 @@ describe("useNear", () => {
       const { result } = renderHook(() => useNear());
       await waitFor(() => expect(result.current.loading).toBe(false));
       expect(result.current.walletSigner).not.toBeNull();
+      const nonce = new TextEncoder().encode("nonce");
       await act(async () => {
         await result.current.walletSigner!.signMessage({
           message: "hi",
-          recipient: "social.near",
-          nonce: new TextEncoder().encode("nonce"),
+          recipient: siwnRecipient,
+          nonce,
         });
       });
       expect(mockNearClient.signMessage).toHaveBeenCalledWith(
-        { message: "hi" },
+        expect.objectContaining({
+          message: "hi",
+          recipient: siwnRecipient,
+          nonce,
+        }),
         { signerId: signedAccount }
       );
     });

@@ -4,6 +4,7 @@ import type { MessageRole } from "@/types/agui-events";
 import type { DisplayRole } from "@/types/agent-ui";
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
+import { VerificationBadge, type VerificationInfo } from "@/components/VerificationBadge";
 
 interface MessageProps {
   role: DisplayRole;
@@ -13,6 +14,7 @@ interface MessageProps {
   displayContent?: string;
   timestamp: Date;
   markdown: MarkdownIt;
+  verification?: VerificationInfo | null;
 }
 
 const renderMarkdownContent = (
@@ -30,6 +32,7 @@ export const Message = ({
   displayContent,
   timestamp,
   markdown,
+  verification,
 }: MessageProps) => {
   const normalizedRole = role;
   const displayLabel = providedLabel
@@ -64,6 +67,11 @@ export const Message = ({
       ? "text-white/80"
       : "text-muted-foreground text-xs";
 
+  const timeClass =
+    normalizedRole === "user"
+      ? "text-[10px] text-white/60"
+      : "text-[10px] text-muted-foreground";
+
   return (
     <div className={`flex ${alignment}`}>
       <div
@@ -76,12 +84,20 @@ export const Message = ({
           >
             {displayLabel}
           </p>
-          <span className="text-[10px] text-white/60">
-            {timestamp.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
+          <div className="flex items-center gap-2">
+            {verification && (
+              <VerificationBadge
+                verification={verification}
+                className="text-[10px]"
+              />
+            )}
+            <span className={timeClass}>
+              {timestamp.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
         </div>
         <div
           className={proseClass}

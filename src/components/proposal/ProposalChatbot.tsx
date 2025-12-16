@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { VerificationBadge, type VerificationInfo } from "@/components/VerificationBadge";
 import { ChevronDown, ChevronUp, Send, Wrench } from "lucide-react";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 import type {
@@ -20,6 +21,7 @@ interface Message {
   timestamp: Date;
   messageId?: string;
   toolCalls?: ToolCall[];
+  verification?: VerificationInfo | null;
 }
 
 interface ToolCall {
@@ -276,7 +278,8 @@ Respond in plain text only. No markdown formatting.`,
     content: string,
     role: "user" | "assistant",
     messageId?: string,
-    toolCalls?: ToolCall[]
+    toolCalls?: ToolCall[],
+    verification?: VerificationInfo | null
   ): Message => {
     const newMessage: Message = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -285,6 +288,7 @@ Respond in plain text only. No markdown formatting.`,
       timestamp: new Date(),
       messageId,
       toolCalls,
+      verification: verification ?? null,
     };
     setMessages((prev) => [...prev, newMessage]);
     return newMessage;
@@ -292,8 +296,11 @@ Respond in plain text only. No markdown formatting.`,
 
   const updateLastMessage = (
     content: string,
-    messageId?: string,
-    toolCalls?: ToolCall[]
+    options?: {
+      messageId?: string;
+      toolCalls?: ToolCall[];
+      verification?: VerificationInfo | null;
+    }
   ) => {
     setMessages((prev) => {
       const updated = [...prev];
@@ -301,8 +308,14 @@ Respond in plain text only. No markdown formatting.`,
         updated[updated.length - 1] = {
           ...updated[updated.length - 1],
           content,
-          messageId: messageId || updated[updated.length - 1].messageId,
-          toolCalls: toolCalls || updated[updated.length - 1].toolCalls,
+          messageId:
+            options?.messageId ?? updated[updated.length - 1].messageId,
+          toolCalls:
+            options?.toolCalls ?? updated[updated.length - 1].toolCalls,
+          verification:
+            options?.verification ??
+            updated[updated.length - 1].verification ??
+            null,
         };
       }
       return updated;
@@ -328,11 +341,13 @@ Respond in plain text only. No markdown formatting.`,
       content: string;
       toolCalls: ToolCall[];
       messageId?: string;
+      verification?: VerificationInfo | null;
     }> => {
       if (stream) {
         let fullContent = "";
         let messageId: string | undefined;
         const toolCallBuffers: Record<number, ToolCall> = {};
+        let latestVerification: VerificationInfo | null = null;
 
         const requestBody = {
           model,
@@ -380,6 +395,17 @@ Respond in plain text only. No markdown formatting.`,
 
             try {
               const parsed = JSON.parse(data);
+              const verificationPayload = parsed.verification as
+                | VerificationInfo
+                | undefined;
+              if (verificationPayload) {
+                latestVerification = verificationPayload;
+                updateLastMessage(fullContent, {
+                  messageId,
+                  toolCalls: Object.values(toolCallBuffers),
+                  verification: latestVerification,
+                });
+              }
               if (!messageId && parsed.id) {
                 messageId = parsed.id;
               }
@@ -410,11 +436,11 @@ Respond in plain text only. No markdown formatting.`,
               const content = delta?.content;
               if (content) {
                 fullContent += content;
-                updateLastMessage(
-                  fullContent,
+                updateLastMessage(fullContent, {
                   messageId,
-                  Object.values(toolCallBuffers)
-                );
+                  toolCalls: Object.values(toolCallBuffers),
+                  verification: latestVerification,
+                });
               }
             } catch {
               // Ignore malformed JSON chunks
@@ -426,6 +452,7 @@ Respond in plain text only. No markdown formatting.`,
           content: fullContent,
           toolCalls: Object.values(toolCallBuffers),
           messageId,
+          verification: latestVerification,
         };
       } else {
         const response = await fetch("/api/chat/completions", {
@@ -467,10 +494,14 @@ Respond in plain text only. No markdown formatting.`,
           })
         );
 
+        const verificationPayload =
+          (data.verification as VerificationInfo | undefined) ?? null;
+
         return {
           content: message.content || "",
           toolCalls: formattedToolCalls,
           messageId: choice?.id,
+          verification: verificationPayload,
         };
       }
     };
@@ -480,24 +511,23 @@ Respond in plain text only. No markdown formatting.`,
       let useStreaming = true;
 
       while (needsResponse) {
-        const { content, toolCalls, messageId } = await runCompletion(
-          useStreaming
-        );
+        const { content, toolCalls, messageId, verification } =
+          await runCompletion(useStreaming);
         useStreaming = false;
 
         if (toolCalls.length === 0) {
-          updateLastMessage(content || "", messageId);
+          updateLastMessage(content || "", { messageId, verification });
           conversationHistoryRef.current.push({
             role: "assistant",
             content,
           });
           needsResponse = false;
         } else {
-          updateLastMessage(
-            content || "Using analysis tools...",
+          updateLastMessage(content || "Using analysis tools...", {
             messageId,
-            toolCalls
-          );
+            toolCalls,
+            verification,
+          });
 
           conversationHistoryRef.current.push({
             role: "assistant",
@@ -635,9 +665,19 @@ Respond in plain text only. No markdown formatting.`,
                           : "bg-muted text-foreground rounded-bl-sm"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap leading-relaxed">
-                        {formatMessageContent(msg.content)}
-                      </p>
+                      <div className="flex flex-col gap-2">
+                        <p className="whitespace-pre-wrap leading-relaxed">
+                          {formatMessageContent(msg.content)}
+                        </p>
+                        {msg.role !== "user" && msg.verification && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <VerificationBadge
+                              verification={msg.verification}
+                              className="text-[10px]"
+                            />
+                          </div>
+                        )}
+                      </div>
                       {msg.toolCalls && msg.toolCalls.length > 0 && (
                         <Badge variant="outline" className="mt-2 text-xs gap-1">
                           <Wrench className="h-3 w-3" />

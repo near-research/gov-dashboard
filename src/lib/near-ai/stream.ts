@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type {
   ChatCompletionRequest,
   ChatCompletionOptions,
@@ -12,65 +11,66 @@ export interface StreamChatResult {
   summary: string;
 }
 
-const nearAIStreamChunkSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        delta: z
-          .object({
-            content: z.string().optional(),
-            reasoning_content: z.string().optional(),
-          })
-          .optional(),
-        message: z
-          .object({
-            content: z.string().optional(),
-          })
-          .optional(),
-      })
-    )
-    .optional(),
-});
+export function parseStreamedSummary(text: string): {
+  summary: string;
+  chatId: string | null;
+  responseText: string;
+} {
+  console.log("[DEBUG] [parseStreamedSummary] Input length:", text.length);
 
-const parseStreamedSummary = (streamText: string): string => {
-  const lines = streamText.split(/\r?\n/);
-  let content = "";
+  let summary = "";
+  let chatId: string | null = null;
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line.startsWith("data:")) continue;
-    const payload = line.slice(5).trim();
-    if (!payload || payload === "[DONE]") continue;
+  const events = text.split("\n\n");
 
-    try {
-      const parsedJson = JSON.parse(payload);
-      const parsedChunk = nearAIStreamChunkSchema.safeParse(parsedJson);
-      if (!parsedChunk.success) continue;
-      const chunk = parsedChunk.data;
-      const choice = chunk?.choices?.[0];
-      if (!choice) continue;
+  for (const event of events) {
+    if (!event.trim()) continue;
 
-      const deltaContent =
-        typeof choice.delta?.content === "string" ? choice.delta.content : "";
-      if (deltaContent) {
-        content += deltaContent;
-        continue;
+    const lines = event.split("\n");
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+
+      const data = line.slice(6);
+
+      if (data === "[DONE]") continue;
+
+      try {
+        const parsed = JSON.parse(data);
+
+        if (parsed.verification && !parsed.choices) continue;
+
+        if (parsed.id && !chatId) {
+          chatId = parsed.id;
+        }
+
+        const content = parsed.choices?.[0]?.delta?.content;
+        if (content) {
+          summary += content;
+          console.log(
+            "[DEBUG] [parseStreamedSummary] Added content:",
+            content.substring(0, 30)
+          );
+        }
+      } catch {
+        console.log(
+          "[DEBUG] [parseStreamedSummary] Failed to parse:",
+          data.substring(0, 50)
+        );
       }
-
-      const messageContent =
-        typeof choice.message?.content === "string"
-          ? choice.message.content
-          : "";
-      if (messageContent) {
-        content += messageContent;
-      }
-    } catch {
-      // ignore malformed chunks
     }
   }
 
-  return content;
-};
+  console.log(
+    "[DEBUG] [parseStreamedSummary] Final summary length:",
+    summary.length
+  );
+  console.log(
+    "[DEBUG] [parseStreamedSummary] Final summary preview:",
+    summary.substring(0, 100)
+  );
+
+  return { summary, chatId, responseText: text };
+}
 
 const readStreamToString = async (
   stream: ReadableStream<Uint8Array>
@@ -111,8 +111,8 @@ export const streamChatCompletion = async (
   }
 
   const responseText = await readStreamToString(response.body);
-  const summary = parseStreamedSummary(responseText);
-  const chatId = extractChatId(responseText);
+  const { summary, chatId: parsedChatId } = parseStreamedSummary(responseText);
+  const chatId = parsedChatId ?? extractChatId(responseText);
 
   return { summary, chatId, responseText };
 };

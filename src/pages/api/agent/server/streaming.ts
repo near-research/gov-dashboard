@@ -8,6 +8,7 @@ import { generateId } from "./ids";
 import { AI_COMPLETION_TIMEOUT_MS } from "@/constants/agent";
 import { logger } from "@/lib/logger";
 import type { NearAIClient } from "@/lib/near-ai/client";
+import { verifyChatMessage } from "@/lib/near-ai/verification/verify";
 
 type ToolCallDelta = {
   index?: number;
@@ -77,10 +78,14 @@ export async function consumeStream({
   response,
   writeEvent,
   captureToolCalls = false,
+  requestBodyString,
+  model,
 }: {
   response: Response;
   writeEvent: (event: AGUIEvent) => void;
   captureToolCalls?: boolean;
+  requestBodyString?: string;
+  model?: string;
 }): Promise<StreamResult> {
   const reader = response.body?.getReader();
   if (!reader) {
@@ -381,6 +386,33 @@ export async function consumeStream({
         arguments: state.args,
       },
     }));
+
+  if (requestBodyString && model && rawSseText) {
+    try {
+      const verificationResult = await verifyChatMessage(
+        requestBodyString,
+        rawSseText,
+        model
+      );
+      const verificationMetadata: VerificationMetadata = {
+        source: "near-ai-cloud",
+        status: verificationResult.verified ? "verified" : "failed",
+        messageId: assistantMessageId,
+        requestHash: verificationResult.requestHash,
+        responseHash: verificationResult.responseHash,
+        chatId: verificationResult.chatId || undefined,
+        error: verificationResult.error ?? undefined,
+      };
+      writeEvent({
+        type: EventType.VERIFICATION,
+        verification: verificationMetadata,
+        messageId: assistantMessageId,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      logger.warn("[Agent] Verification failed", error);
+    }
+  }
 
   return {
     content: assistantContent,

@@ -66,15 +66,19 @@ export class NearAIClient {
       const headers = this.buildHeaders(apiKey, requestId);
 
       try {
+        const body =
+          options?.serializedBody ??
+          JSON.stringify({
+            ...request,
+            stream: false,
+          });
+
         const response = await fetchWithTimeout(
           `${this.baseUrl}/v1/chat/completions`,
           {
             method: "POST",
             headers,
-            body: JSON.stringify({
-              ...request,
-              stream: false,
-            }),
+            body,
           },
           timeout
         );
@@ -151,10 +155,11 @@ export class NearAIClient {
     );
 
     try {
-      const bodyString =
+      const body =
         typeof request === "string"
           ? request
-          : JSON.stringify({
+          : options?.serializedBody ??
+            JSON.stringify({
               ...request,
               stream: true,
             });
@@ -164,7 +169,7 @@ export class NearAIClient {
         {
           method: "POST",
           headers,
-          body: bodyString,
+          body,
         },
         timeout
       );

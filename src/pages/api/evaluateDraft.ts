@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import type { Evaluation } from "@/types/evaluation";
+import type { VerificationMetadata, VerificationStatus } from "@/lib/near-ai";
 import {
   sanitizeProposalInput,
   verifyNearAuth,
@@ -115,10 +116,28 @@ export default async function handler(
       )}%`
     );
 
+    let evaluationVerification: VerificationMetadata | undefined;
+    if (verificationResult || verificationId) {
+      const status: VerificationStatus = verificationResult
+        ? verificationResult.verified
+          ? "verified"
+          : "failed"
+        : "pending";
+      evaluationVerification = {
+        source: "near-ai-cloud",
+        status,
+        chatId: verificationResult?.chatId ?? verificationId ?? undefined,
+        messageId: verificationResult?.chatId ?? verificationId ?? undefined,
+        requestHash: verificationResult?.requestHash ?? undefined,
+        responseHash: verificationResult?.responseHash ?? undefined,
+        error: verificationResult?.error ?? undefined,
+      };
+    }
+
     return res.status(200).json({
       evaluation,
       authenticatedAs: accountId,
-      verificationResult,
+      verification: evaluationVerification,
       verificationId,
       model,
     });

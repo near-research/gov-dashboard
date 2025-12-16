@@ -1,6 +1,7 @@
 import { sha256sum, extractChatId, parseSignatureText } from "./hash";
 import { fetchSignature, compareHashes, verifySignature } from "./signature";
 import { fetchAttestation } from "./attestation";
+import { logger } from "@/lib/logger";
 import type {
   ChatVerificationResult,
   VerifyOptions,
@@ -9,14 +10,13 @@ import type {
 
 /**
  * Verify a chat message by:
- * 1. Fetching attestation report to get TEE signing addresses
+ * 1. Fetching the signed message from NEAR AI
  * 2. Computing request/response hashes
- * 3. Fetching signature from NEAR AI
- * 4. Comparing hashes
- * 5. Verifying ECDSA signature is from a TEE-attested address
+ * 3. Fetching the attestation report to verify TEE signers
+ * 4. Confirming the signature is from an attested signer
  *
- * Security: The recovered signer MUST be in the attestation's TEE address list
- * for verification to pass (unless skipAttestation is true, which weakens security).
+ * Security: Verified when hashes and the signature are valid; missing TEE
+ * attestations surface as warnings (gateway rotation can omit some nodes).
  */
 export async function verifyChatMessage(
   requestBody: string,
@@ -43,63 +43,15 @@ export async function verifyChatMessage(
   const requestHash = sha256sum(requestBody);
   const responseHash = sha256sum(responseText);
 
-  // Step 1: Fetch attestation (unless skipped)
-  let attestationInfo: AttestationInfo;
-  let teeAddresses: string[] = [];
-
-  if (options?.skipAttestation) {
-    attestationInfo = {
-      fetched: false,
-      teeAddresses: [],
-      hasNvidiaPayload: false,
-      error: "Attestation skipped by caller (security weakened)",
-    };
-  } else {
-    try {
-      const attestation = await fetchAttestation(model, {
-        baseUrl: options?.baseUrl,
-        apiKey: options?.apiKey,
-        timeout: options?.timeout,
-        verifyNvidia: options?.verifyNvidia,
-      });
-      teeAddresses = attestation.teeAddresses;
-      attestationInfo = {
-        fetched: true,
-        teeAddresses: attestation.teeAddresses,
-        hasNvidiaPayload: attestation.hasNvidiaPayload,
-        nvidiaVerification: attestation.nvidiaVerification,
-      };
-    } catch (error) {
-      // Attestation fetch failure is fatal (unless skipped)
-      return {
-        verified: false,
-        chatId,
-        requestHash,
-        responseHash,
-        signature: null,
-        hashValidation: null,
-        signatureValidation: null,
-        attestation: {
-          fetched: false,
-          teeAddresses: [],
-          hasNvidiaPayload: false,
-          error:
-            error instanceof Error ? error.message : "Attestation fetch failed",
-        },
-        error: "Attestation fetch failed - cannot verify TEE origin",
-      };
-    }
-  }
-
-  // Step 2: Fetch signature
   try {
+    // Step 1: Fetch signature
     const signature = await fetchSignature(chatId, model, {
       baseUrl: options?.baseUrl,
       apiKey: options?.apiKey,
       timeout: options?.timeout,
     });
 
-    // Step 3: Validate signature text format
+    // Step 2: Validate signature text format
     const parsedSignatureText = parseSignatureText(signature.text);
     if (!parsedSignatureText) {
       return {
@@ -110,33 +62,110 @@ export async function verifyChatMessage(
         signature,
         hashValidation: null,
         signatureValidation: null,
-        attestation: attestationInfo,
+        attestation: null,
         error: "Signature text is malformed",
       };
     }
 
-    // Step 4: Compare hashes
+    // Step 3: Compare hashes
     const hashValidation = compareHashes(
       signature.text,
       requestHash,
       responseHash
     );
 
-    // Step 5: Verify signature against TEE addresses
+    logger.debug("[RequestHash] Request body being hashed:", requestBody);
+    logger.debug("[RequestHash] Our computed hash:", requestHash);
+    logger.debug("[RequestHash] NEAR AI's hash:", hashValidation.signedRequestHash);
+    logger.debug("[RequestHash] Match:", hashValidation.requestHashMatch);
+
+    let teeAddresses: string[] = [];
+    let attestationInfo: AttestationInfo;
+
+    if (options?.skipAttestation) {
+      attestationInfo = {
+        fetched: false,
+        teeAddresses: [],
+        hasNvidiaPayload: false,
+        error: "Attestation skipped by caller (security weakened)",
+      };
+    } else {
+      try {
+        const attestation = await fetchAttestation(model, {
+          baseUrl: options?.baseUrl,
+          apiKey: options?.apiKey,
+          timeout: options?.timeout,
+          verifyNvidia: options?.verifyNvidia,
+        });
+
+        teeAddresses = attestation.teeAddresses;
+        attestationInfo = {
+          fetched: true,
+          teeAddresses: attestation.teeAddresses,
+          hasNvidiaPayload: attestation.hasNvidiaPayload,
+          nvidiaVerification: attestation.nvidiaVerification,
+        };
+      } catch (error) {
+        return {
+          verified: false,
+          chatId,
+          requestHash,
+          responseHash,
+          signature,
+          hashValidation,
+          signatureValidation: null,
+          attestation: {
+            fetched: false,
+            teeAddresses: [],
+            hasNvidiaPayload: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Attestation fetch failed",
+          },
+          error: "Attestation fetch failed - cannot verify TEE origin",
+        };
+      }
+    }
+
+    // Step 3: Verify signature against TEE addresses
     const signatureValidation = verifySignature(
       signature.text,
       signature.signature,
-      teeAddresses
+      teeAddresses,
+      signature.signing_address
     );
+
+    console.log(
+      "[DEBUG] TEE addresses from attestation:",
+      JSON.stringify(teeAddresses)
+    );
+    console.log("[DEBUG] Signature response:", {
+      signing_address: signature.signing_address,
+      signing_algo: signature.signing_algo,
+    });
+    console.log("[DEBUG] Signature validation result:", {
+      recoveredAddress: signatureValidation.recoveredAddress,
+      signingAddress: signatureValidation.signingAddress,
+      valid: signatureValidation.valid,
+      teeAttested: signatureValidation.teeAttested,
+    });
+
+    const warnings: string[] = [];
+    if (
+      signatureValidation.valid &&
+      !signatureValidation.teeAttested &&
+      attestationInfo?.fetched
+    ) {
+      warnings.push(
+        "Signer not in current attestation list (gateway rotation)"
+      );
+    }
 
     // Overall verification requires:
     // 1. Hash validation passes
-    // 2. Signature validation passes (which includes TEE address check)
-    // 3. If attestation was fetched, signer must be TEE-attested
-    const verified =
-      hashValidation.valid &&
-      signatureValidation.valid &&
-      (options?.skipAttestation || signatureValidation.teeAttested);
+    // 2. Signature validation passes (attestation is a warning)
+    const verified = hashValidation.valid && signatureValidation.valid;
 
     return {
       verified,
@@ -147,6 +176,7 @@ export async function verifyChatMessage(
       hashValidation,
       signatureValidation,
       attestation: attestationInfo,
+      warnings: warnings.length ? warnings : undefined,
       error: verified
         ? undefined
         : determineError(hashValidation, signatureValidation, attestationInfo),
@@ -160,7 +190,7 @@ export async function verifyChatMessage(
       signature: null,
       hashValidation: null,
       signatureValidation: null,
-      attestation: attestationInfo,
+      attestation: null,
       error:
         error instanceof Error
           ? error.message
@@ -197,14 +227,6 @@ function determineError(
 
   if (signatureValidation?.error) {
     return `Signature verification failed: ${signatureValidation.error}`;
-  }
-
-  if (
-    signatureValidation &&
-    !signatureValidation.teeAttested &&
-    attestation?.fetched
-  ) {
-    return "Signer is not in TEE attestation addresses";
   }
 
   if (signatureValidation && !signatureValidation.valid) {

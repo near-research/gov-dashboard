@@ -147,6 +147,7 @@ describe("POST /api/chat/completions", () => {
       stream: false,
     };
     const req = createRequest(reqBody);
+    const requestBodyString = serializeChatCompletionRequest(reqBody);
     const res = createResponse();
     const verificationResult = createMockVerificationResult({
       chatId: "abc",
@@ -157,10 +158,11 @@ describe("POST /api/chat/completions", () => {
 
     expect(chatSpy).toHaveBeenCalledWith(reqBody, {
       timeout: undefined,
+      serializedBody: requestBodyString,
     });
     const responseText = JSON.stringify({ id: "abc", choices: [] });
     expect(verifyChatMessageMock).toHaveBeenCalledWith(
-      serializeChatCompletionRequest(reqBody),
+      requestBodyString,
       responseText,
       "m"
     );
@@ -221,21 +223,33 @@ describe("POST /api/chat/completions", () => {
       messages: [{ role: "user", content: "hi" }],
       stream: true,
     };
+    const requestBodyString = serializeChatCompletionRequest(requestBody);
 
     const req = createRequest(requestBody);
     const res = createResponse();
+    const expectedVerificationResult = createMockVerificationResult();
+    verifyChatMessageMock.mockResolvedValueOnce(expectedVerificationResult);
 
     await handler(req as any, res as any);
 
-    expect(streamSpy).toHaveBeenCalledWith(requestBody);
+    expect(streamSpy).toHaveBeenCalledWith(requestBody, {
+      serializedBody: requestBodyString,
+    });
     expect(res.headers["Content-Type"]).toContain("text/event-stream");
     expect(res.headers["Cache-Control"]).toBe("no-cache, no-transform");
     expect(res.headers["Connection"]).toBe("keep-alive");
     expect(res.headers["X-Accel-Buffering"]).toBe("no");
-    expect(res.getBody()).toBe("data: one\n\ndata: two\n\n");
+    const verificationChunk = JSON.stringify({
+      verification: expectedVerificationResult,
+    });
+    expect(res.getBody()).toBe(
+      "data: one\n\ndata: two\n\n" +
+        `data: ${verificationChunk}\n\n` +
+        "data: [DONE]\n\n"
+    );
 
     expect(verifyChatMessageMock).toHaveBeenCalledWith(
-      serializeChatCompletionRequest(requestBody),
+      requestBodyString,
       "data: one\n\ndata: two\n\n",
       "m"
     );

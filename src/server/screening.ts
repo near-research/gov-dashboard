@@ -267,7 +267,9 @@ export async function requestEvaluation(
   const requestBodyString = serializeChatCompletionRequest(normalizedRequest);
 
   try {
-    const data = await client.chatCompletions(normalizedRequest);
+    const data = await client.chatCompletions(normalizedRequest, {
+      serializedBody: requestBodyString,
+    });
     const responseText = JSON.stringify(data);
     const contentText = data.choices?.[0]?.message?.content;
 

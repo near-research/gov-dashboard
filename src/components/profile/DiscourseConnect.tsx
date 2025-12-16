@@ -34,7 +34,7 @@ import {
   logNearError,
   type NearOperationError,
 } from "@/utils/errors/near-errors";
-import { SIWN_RECIPIENT } from "@/constants/near";
+import { siwnRecipient } from "@/config/siwn";
 import { NONCE_FRESHNESS_CHECK_MS } from "@/constants/auth";
 import { logger } from "@/lib/logger";
 
@@ -217,7 +217,7 @@ export const DiscourseConnect = ({
       assertSigningReady(walletSigner, signedAccountId);
       const authToken = await sign(SIGNING_MESSAGES.DISCOURSE_LINK, {
         signer: walletSigner,
-        recipient: SIWN_RECIPIENT,
+        recipient: siwnRecipient,
       });
 
       setStep("completing");

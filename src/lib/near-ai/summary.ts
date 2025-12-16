@@ -5,6 +5,7 @@ import {
   type NormalizedChatCompletionRequest,
 } from "./request";
 import { sha256sum } from "./verification/hash";
+import { logger } from "@/lib/logger";
 
 export interface SummaryRequestOptions {
   model: string;
@@ -48,6 +49,10 @@ export function prepareSummaryRequest(
 
   const serialized = serializeChatCompletionRequest(request);
   const hash = sha256sum(serialized);
+
+  logger.debug("[RequestHash] Normalized request payload for hashing", request);
+  logger.debug("[RequestHash] Serialized request body for hashing", serialized);
+  logger.debug("[RequestHash] Request hash (serialized payload)", hash);
 
   return { request, serialized, hash };
 }

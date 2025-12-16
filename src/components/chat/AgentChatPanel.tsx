@@ -829,6 +829,13 @@ export const AgentChatPanel = ({
             break;
           case EventType.TEXT_MESSAGE_END:
             break;
+          case EventType.VERIFICATION:
+            if (event.verification) {
+              updateMessageEvent(assistantEventId, {
+                verification: event.verification,
+              });
+            }
+            break;
           case EventType.STATE_DELTA:
             if (Array.isArray(event.delta)) {
               try {

@@ -31,7 +31,8 @@ export interface HashValidation {
 export interface SignatureValidation {
   valid: boolean;
   recoveredAddress: string | null;
-  expectedAddresses: string[];
+  signingAddress: string | null;
+  teeAddresses: string[];
   /** Whether the recovered address is in the TEE attestation list */
   teeAttested: boolean;
   error?: string;
@@ -93,6 +94,8 @@ export interface ChatVerificationResult {
   signatureValidation: SignatureValidation | null;
   /** Attestation information */
   attestation: AttestationInfo | null;
+  /** Informational warnings (e.g., attestation missing) */
+  warnings?: string[];
   /** Error message if verification failed */
   error?: string;
 }

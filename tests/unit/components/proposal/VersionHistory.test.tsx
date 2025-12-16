@@ -2,6 +2,7 @@ import "../../../vi-compat";
 import type { Evaluation } from "@/types/evaluation";
 import type { DiscourseRevisionResponse } from "@/types/discourse";
 import VersionHistory from "@/components/proposal/revisions/VersionHistory";
+import { siwnRecipient } from "@/config/siwn";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -444,7 +445,7 @@ describe("VersionHistory", () => {
           expect.any(String),
           expect.objectContaining({
             signer: mockWalletSigner,
-            recipient: "social.near",
+            recipient: siwnRecipient,
           })
         )
       );

@@ -46,7 +46,8 @@ const createSignatureValidation = (
     {
       valid: true,
       recoveredAddress: "0x1234",
-      expectedAddresses: ["0x1234"],
+      signingAddress: "0x1234",
+      teeAddresses: ["0x1234"],
       teeAttested: true,
     },
     overrides
@@ -65,6 +66,7 @@ beforeEach(() => {
     hasNvidiaPayload: false,
     nvidiaPayloads: [],
     report: {},
+    raw: {},
   });
 
   fetchSignatureMock.mockResolvedValue({
@@ -107,7 +109,8 @@ describe("NEAR AI verification edge cases", () => {
       createSignatureValidation({
         valid: true,
         recoveredAddress: "0xWRONG",
-        expectedAddresses: ["0x1234"],
+        signingAddress: "0xWRONG",
+        teeAddresses: ["0x1234"],
         teeAttested: false,
       })
     );
@@ -118,10 +121,11 @@ describe("NEAR AI verification edge cases", () => {
       "model"
     );
 
-    expect(result.verified).toBe(false);
-    expect(result.error).toEqual(
-      expect.stringContaining("TEE")
+    expect(result.verified).toBe(true);
+    expect(result.warnings).toContain(
+      "Signer not in current attestation list (gateway rotation)"
     );
+    expect(result.error).toBeUndefined();
   });
 
   it("fails when the attestation fetch errors", async () => {

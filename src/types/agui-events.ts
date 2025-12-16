@@ -37,6 +37,9 @@ export enum EventType {
   ACTIVITY_SNAPSHOT = "ACTIVITY_SNAPSHOT",
   ACTIVITY_DELTA = "ACTIVITY_DELTA",
 
+  // Verification Events
+  VERIFICATION = "verification",
+
   // Special Events
   RAW = "RAW",
   CUSTOM = "CUSTOM",
@@ -268,6 +271,15 @@ export interface ActivityDeltaEvent extends BaseEvent {
   patch: JSONPatchOperation[];
 }
 
+/**
+ * Attaches verification metadata to a resolved message
+ */
+export interface VerificationEvent extends BaseEvent {
+  type: EventType.VERIFICATION;
+  verification: VerificationMetadata;
+  messageId?: string;
+}
+
 // ============================================================================
 // Special Events
 // ============================================================================
@@ -315,6 +327,7 @@ export type AGUIEvent =
   | StateSnapshotEvent
   | StateDeltaEvent
   | MessagesSnapshotEvent
+  | VerificationEvent
   | RawEvent
   | CustomEvent;
 
@@ -356,6 +369,12 @@ export function isToolCallArgsEvent(
 
 export function isStateDeltaEvent(event: AGUIEvent): event is StateDeltaEvent {
   return event.type === EventType.STATE_DELTA;
+}
+
+export function isVerificationEvent(
+  event: AGUIEvent
+): event is VerificationEvent {
+  return event.type === EventType.VERIFICATION;
 }
 
 // ============================================================================

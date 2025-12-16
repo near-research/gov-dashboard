@@ -325,19 +325,20 @@ export const ChatMessages = ({
             "Proposal results:"
           : event.content;
 
-        return (
-          <Fragment key={event.id}>
-            {!isAssistantPlaceholder && (
-              <Message
-                role={displayRoleMeta?.role ?? "assistant"}
-                label={displayRoleMeta?.label}
-                rawRole={event.role}
-                content={event.content}
-                displayContent={sanitizedContent}
-                timestamp={event.timestamp}
-                markdown={markdown}
-              />
-            )}
+              return (
+                <Fragment key={event.id}>
+                  {!isAssistantPlaceholder && (
+                    <Message
+                      role={displayRoleMeta?.role ?? "assistant"}
+                      label={displayRoleMeta?.label}
+                      rawRole={event.role}
+                      content={event.content}
+                      displayContent={sanitizedContent}
+                      timestamp={event.timestamp}
+                      markdown={markdown}
+                      verification={event.verification ?? null}
+                    />
+                  )}
             {proposalListElement}
             {toolHistoryElement}
           </Fragment>

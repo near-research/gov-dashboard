@@ -58,6 +58,8 @@ export default function ProposalDetail() {
     handleToggleRevisions,
     fetchScreening,
     fetchProposal,
+    hasFetchedProposal,
+    lastAttemptedProposalId,
   } = useProposalDetail({
     proposalId: id as string | undefined,
     track,
@@ -108,6 +110,8 @@ export default function ProposalDetail() {
     }
   }, [isDesktop]);
 
+  const currentProposalId = id as string | undefined;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -126,7 +130,11 @@ export default function ProposalDetail() {
     );
   }
 
-  if (error || !proposal) {
+  if (
+    !loading &&
+    lastAttemptedProposalId === currentProposalId &&
+    (error || (hasFetchedProposal && !proposal))
+  ) {
     return (
       <div className="min-h-screen bg-background">
         <div className="max-w-7xl mx-auto p-8">
@@ -136,6 +144,10 @@ export default function ProposalDetail() {
         </div>
       </div>
     );
+  }
+
+  if (!proposal) {
+    return null;
   }
 
   const daysSinceActivity = getDaysSinceActivity(proposal.last_posted_at);

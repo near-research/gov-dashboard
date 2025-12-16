@@ -116,6 +116,20 @@ const appendRawEvent = <T extends AgentUIEvent>(
   rawEvents: [...(event.rawEvents ?? []), raw],
 });
 
+const mergeMessageVerification = (
+  event: MessageUIEvent,
+  verification: VerificationMetadata
+): MessageUIEvent => ({
+  ...event,
+  verification: {
+    ...(event.verification ?? {
+      source: verification.source ?? "near-ai-cloud",
+      status: verification.status ?? "pending",
+    }),
+    ...verification,
+  },
+});
+
 const findLastIndex = <T>(
   list: T[],
   predicate: (value: T) => boolean
@@ -229,7 +243,13 @@ export const reduceAguiEventsToUiEvents = (
     updater: (event: T) => T
   ) => {
     const existing = nextEvents[index] as T;
-    const updated = appendRawEvent<T>(updater(existing), newEvent);
+    let updated = appendRawEvent<T>(updater(existing), newEvent);
+    if (newEvent.verification && updated.kind === "message") {
+      updated = mergeMessageVerification(
+        updated as MessageUIEvent,
+        newEvent.verification
+      ) as T;
+    }
     nextEvents[index] = updated;
     changed = true;
     return updated;
@@ -338,6 +358,11 @@ export const reduceAguiEventsToUiEvents = (
         status: "completed",
         timestamp,
       }));
+      break;
+    }
+    case EventType.VERIFICATION: {
+      const index = ensureMessageEventIndex(newEvent.messageId);
+      updateEventAt<MessageUIEvent>(index, (existing) => ({ ...existing }));
       break;
     }
     case EventType.TOOL_CALL_START: {

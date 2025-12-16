@@ -8,6 +8,7 @@ export type CompletionParams = {
   requestBodyString: string;
   writeEvent: (event: AGUIEvent) => void;
   captureToolCalls: boolean;
+  model: string;
 };
 
 export async function runCompletion({
@@ -15,6 +16,7 @@ export async function runCompletion({
   requestBodyString,
   writeEvent,
   captureToolCalls,
+  model,
 }: CompletionParams): Promise<StreamResult> {
   const response = await getStreamingResponse(client, {
     requestBodyString,
@@ -24,5 +26,7 @@ export async function runCompletion({
     response,
     writeEvent,
     captureToolCalls,
+    requestBodyString,
+    model,
   });
 }

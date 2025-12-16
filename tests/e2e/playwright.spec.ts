@@ -25,8 +25,9 @@ describeSpec("Playwright regression flows", () => {
       "This mock proposal includes objectives and measurable KPIs."
     );
     await page.click("button:has-text('Screen Proposal')");
+    const statusAlert = page.getByRole("alert").first();
     await expect(
-      page.getByText("Ready for Submission", { exact: true })
+      statusAlert.getByTestId("screening-status")
     ).toBeVisible({
       timeout: 10000,
     });

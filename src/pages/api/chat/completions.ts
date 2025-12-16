@@ -236,7 +236,9 @@ export default async function handler(
     if (stream) {
       let response;
       try {
-        response = await client.chatCompletionsStream(requestBody);
+        response = await client.chatCompletionsStream(requestBody, {
+          serializedBody: requestBodyString,
+        });
       } catch (error) {
         logger.error("NEAR AI Cloud API error:", error);
         const errorMessage =
@@ -279,6 +281,50 @@ export default async function handler(
       let loggedLength = 0;
       let totalBytes = 0;
       let aborted = false;
+      const DONE_MARKER = "data: [DONE]";
+
+      const stripDoneEvents = (text: string) => {
+        if (!isEventStream || !text.includes(DONE_MARKER)) {
+          return text;
+        }
+        let cursor = 0;
+        let result = "";
+        while (cursor < text.length) {
+          const doneIndex = text.indexOf(DONE_MARKER, cursor);
+          if (doneIndex === -1) {
+            result += text.slice(cursor);
+            break;
+          }
+          result += text.slice(cursor, doneIndex);
+          cursor = doneIndex + DONE_MARKER.length;
+          while (
+            cursor < text.length &&
+            (text[cursor] === "\n" || text[cursor] === "\r")
+          ) {
+            cursor++;
+          }
+        }
+        return result;
+      };
+
+      const writeStreamChunk = (chunkText: string, buffer?: Uint8Array) => {
+        if (isEventStream) {
+          if (!chunkText) {
+            return;
+          }
+          const filteredChunk = stripDoneEvents(chunkText);
+          if (filteredChunk) {
+            res.write(filteredChunk);
+          }
+          return;
+        }
+
+        if (buffer) {
+          res.write(buffer);
+        } else if (chunkText) {
+          res.write(chunkText);
+        }
+      };
 
       const abortReader = async () => {
         aborted = true;
@@ -313,8 +359,7 @@ export default async function handler(
               loggedLength = rawResponseBuffer.length;
             }
 
-            // Write exact bytes without modification
-            res.write(value);
+            writeStreamChunk(chunkText, value);
           }
 
           if (done) break;
@@ -328,7 +373,7 @@ export default async function handler(
             rawResponseBuffer += finalChunk.slice(0, remaining);
             loggedLength = rawResponseBuffer.length;
           }
-          res.write(finalChunk);
+          writeStreamChunk(finalChunk);
         }
 
         if (!aborted) {
@@ -342,6 +387,14 @@ export default async function handler(
               logger.debug("[verification] Stream verification result:", {
                 verificationResult,
               });
+            }
+
+            if (isEventStream) {
+              const verificationChunk = JSON.stringify({
+                verification: verificationResult,
+              });
+              res.write(`data: ${verificationChunk}\n\n`);
+              res.write("data: [DONE]\n\n");
             }
           } catch (streamVerificationError) {
             logger.warn(
@@ -366,6 +419,7 @@ export default async function handler(
       try {
         const responseData = await client.chatCompletions(requestBody, {
           timeout: parsedBody.data?.timeout,
+          serializedBody: requestBodyString,
         });
 
         const responseText = JSON.stringify(responseData);

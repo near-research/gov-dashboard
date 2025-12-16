@@ -4,6 +4,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 import { SIGNING_MESSAGES } from "@/constants/signing-messages";
 import { getDiscourseUserApiKey } from "@/utils/discourse";
+import { siwnRecipient } from "@/config/siwn";
 import { useProposalPublishing } from "@/components/editor/useProposalPublishing";
 
 type OrpcClient = typeof import("@/lib/orpc").client;
@@ -148,7 +149,7 @@ describe("useProposalPublishing", () => {
 
       expect(signMock).toHaveBeenCalledWith(SIGNING_MESSAGES.DISCOURSE_LINK, {
         signer: walletSigner,
-        recipient: "social.near",
+        recipient: siwnRecipient,
       });
       openSpy.mockRestore();
     });
@@ -213,7 +214,7 @@ describe("useProposalPublishing", () => {
 
       expect(signMock).toHaveBeenCalledWith(SIGNING_MESSAGES.DISCOURSE_PUBLISH, {
         signer: walletSigner,
-        recipient: "social.near",
+        recipient: siwnRecipient,
       });
       expect(createPostMock).toHaveBeenCalledWith({
         authToken: "auth-token",

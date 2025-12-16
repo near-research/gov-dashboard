@@ -1,5 +1,5 @@
 import type { WalletInterface } from "near-sign-verify";
-import { SIWN_RECIPIENT } from "@/constants/near";
+import { siwnRecipient } from "@/config/siwn";
 import { SIGNING_MESSAGES } from "@/constants/signing-messages";
 import { assertSigningReady } from "@/utils/wallet/guards";
 import { readJsonSafe } from "@/utils/json";
@@ -32,7 +32,7 @@ export async function screenProposalRevision({
 
   const authToken = await sign(SIGNING_MESSAGES.screenProposal(proposalId), {
     signer: walletSigner,
-    recipient: SIWN_RECIPIENT,
+    recipient: siwnRecipient,
   });
 
   const response = await fetch(`/api/saveAnalysis/${proposalId}`, {

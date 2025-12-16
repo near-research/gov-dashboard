@@ -64,4 +64,5 @@ export interface ChatCompletionOptions {
   verificationNonce?: string;
   retryAttempts?: number;
   retryBaseDelayMs?: number;
+  serializedBody?: string;
 }

@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Markdown } from "@/components/proposal/Markdown";
 import type { ProposalReply } from "@/components/proposal/types/proposals";
 import type { ReplySummaryResponse } from "@/components/proposal/types/summaries";
+import { VerificationBadge } from "@/components/VerificationBadge";
 
 interface ReplyCardProps {
   reply: ProposalReply;
@@ -202,20 +203,28 @@ export function ReplyCard({
             )}
           </>
         ) : (
-          <Alert className="bg-orange-50 border-orange-200 mt-3">
+            <Alert className="bg-orange-50 border-orange-200 mt-3">
             <AlertDescription>
-              <div className="flex justify-between items-center mb-2">
+              <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold text-orange-900 text-xs">
                   Summary
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs"
-                  onClick={onHideSummary}
-                >
-                  Hide
-                </Button>
+                <div className="flex items-center gap-2">
+                  <VerificationBadge
+                    verification={
+                      summary.verificationResult ?? summary.verification ?? null
+                    }
+                    className="text-[10px]"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={onHideSummary}
+                  >
+                    Hide
+                  </Button>
+                </div>
               </div>
               <Markdown content={summary.summary} className="text-xs" />
               <p className="text-xs text-muted-foreground mt-2">
