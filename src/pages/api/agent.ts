@@ -9,13 +9,13 @@ import {
   type AGUIEvent,
 } from "@/types/agui-events";
 import { AGENT_MODEL, buildAgentRequest } from "@/server/tools";
-import { getNearAIClient } from "@/lib/near-ai";
-import { executeToolCallsWithEvents } from "./agent/server/tools";
-import { buildCompletionRequest } from "./agent/server/verification-flow";
-import { runCompletion } from "./agent/server/completion";
-import { startSseSession, createEventWriter } from "./agent/server/sse";
-import { validateAgentRequest } from "./agent/server/validation";
-import type { StreamResult, ToolMessage } from "./agent/server/types";
+import { getNearAIClient, NearAIError } from "@/lib/near-ai";
+import { executeToolCallsWithEvents } from "@/server/agent/tools";
+import { buildCompletionRequest } from "@/server/agent/verification-flow";
+import { runCompletion } from "@/server/agent/completion";
+import { startSseSession, createEventWriter } from "@/server/agent/sse";
+import { validateAgentRequest } from "@/server/agent/validation";
+import type { StreamResult, ToolMessage } from "@/server/agent/types";
 import { telemetry } from "@/lib/telemetry";
 import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
@@ -36,7 +36,7 @@ const extractStatusCode = (value: unknown): number => {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<void>
 ) {
   let writeEvent = createEventWriter(res, null);
   let closeStream = () => {
@@ -252,6 +252,13 @@ export default async function handler(
 
     closeStream();
   } catch (error: unknown) {
+    if (error instanceof NearAIError) {
+      logger.error("[Agent] NEAR AI request failed", {
+        statusCode: error.statusCode,
+        details: error.details,
+      });
+    }
+
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     if (runId) {

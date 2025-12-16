@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type { NextApiRequest } from "next";
-import { validateAgentRequest } from "@/pages/api/agent/server/validation";
+import { validateAgentRequest } from "@/server/agent/validation";
 
 const ORIGINAL_APP_BASE_URL = process.env.APP_BASE_URL;
 const RESTORABLE_ENV = process.env as Record<string, string | undefined>;

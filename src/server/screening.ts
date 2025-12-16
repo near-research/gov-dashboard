@@ -5,6 +5,7 @@ import { buildScreeningPrompt } from "@/lib/prompts/screenProposal";
 import {
   getNearAIClient,
   verifyChatMessage,
+  NearAIError,
   type ChatVerificationResult,
 } from "@/lib/near-ai";
 import {
@@ -17,6 +18,7 @@ import {
   type VerifyOptions,
 } from "near-sign-verify";
 import { NEAR_AI_MODELS } from "@/utils/model-utils";
+import { sha256sum } from "@/lib/near-ai/verification/hash";
 import { siwnRecipient } from "@/config/siwn";
 import { logger } from "@/lib/logger";
 import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
@@ -24,7 +26,7 @@ import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 type ScreeningErrorDetails = {
   code?: string;
   message?: string;
-  details?: string;
+  details?: unknown;
   body?: string;
   status?: number;
   statusText?: string;
@@ -236,6 +238,42 @@ export interface EvaluationRequestResult {
   responseText: string;
 }
 
+const SCREENING_CACHE_TTL_MS = 5 * 60 * 1000;
+type EvaluationCacheEntry = {
+  result: EvaluationRequestResult;
+  expiresAt: number;
+};
+
+const screeningCache = new Map<string, EvaluationCacheEntry>();
+
+const buildScreeningCacheKey = (title: string, content: string): string =>
+  sha256sum(`${title}\n${content}`);
+
+export function clearScreeningCache(): void {
+  screeningCache.clear();
+}
+
+function getScreeningCache(key: string): EvaluationRequestResult | null {
+  const entry = screeningCache.get(key);
+  if (!entry) {
+    return null;
+  }
+
+  if (entry.expiresAt <= Date.now()) {
+    screeningCache.delete(key);
+    return null;
+  }
+
+  return entry.result;
+}
+
+function cacheScreeningResult(key: string, result: EvaluationRequestResult): void {
+  screeningCache.set(key, {
+    result,
+    expiresAt: Date.now() + SCREENING_CACHE_TTL_MS,
+  });
+}
+
 const buildFailedVerificationResult = (
   message: string
 ): ChatVerificationResult => ({
@@ -254,6 +292,17 @@ export async function requestEvaluation(
   title: string,
   content: string
 ): Promise<EvaluationRequestResult> {
+  const cacheKey = buildScreeningCacheKey(title, content);
+  const cached = getScreeningCache(cacheKey);
+  if (cached) {
+    logger.debug("[Screening] Returning cached evaluation", {
+      cacheKey,
+      titleLength: title.length,
+      contentLength: content.length,
+    });
+    return cached;
+  }
+
   const client = getNearAIClient();
   const prompt = buildScreeningPrompt(title, content);
 
@@ -290,7 +339,7 @@ export async function requestEvaluation(
       ? await verifyChatMessage(requestBodyString, responseText, model)
       : buildFailedVerificationResult("Missing chat ID from NEAR AI response");
 
-    return {
+    const result: EvaluationRequestResult = {
       evaluation,
       verificationResult,
       model,
@@ -299,9 +348,39 @@ export async function requestEvaluation(
       requestBody: requestBodyString,
       responseText,
     };
+
+    cacheScreeningResult(cacheKey, result);
+    logger.debug("[Screening] Cached evaluation result", {
+      cacheKey,
+      titleLength: title.length,
+      contentLength: content.length,
+    });
+
+    return result;
   } catch (error) {
     if (error instanceof ScreeningError) {
       throw error;
+    }
+
+    if (error instanceof NearAIError) {
+      logger.error("[Screening] NEAR AI request failed", {
+        statusCode: error.statusCode,
+        details: error.details,
+      });
+      throw new ScreeningError(
+        502,
+        "AI evaluation unavailable",
+        {
+          cause: error,
+          statusCode: error.statusCode,
+          details: error.details
+            ? typeof error.details === "string"
+              ? error.details
+              : JSON.stringify(error.details)
+            : undefined,
+        },
+        ErrorCodes.UPSTREAM_ERROR
+      );
     }
 
     if (error instanceof Error) {

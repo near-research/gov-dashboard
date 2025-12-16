@@ -1,52 +1,45 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
 import { discourseCategories } from "@/server/plugins/discourse-client";
+import { ErrorCodes } from "@/lib/api/errors";
+import type { ApiErrorResponse } from "@/types/api";
+import type { CategoriesResponse } from "@/types/api/discourse";
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<any>
+  res: NextApiResponse<CategoriesResponse>
 ) {
   if (req.method !== "GET") {
-    return respondWithError(
-      res,
-      new ApiError(
-        ErrorCodes.METHOD_NOT_ALLOWED,
-        "Only GET requests are allowed",
-        405
-      )
-    );
+    return res.status(405).json({
+      error: "Only GET requests are allowed",
+      code: ErrorCodes.METHOD_NOT_ALLOWED,
+    });
   }
 
   try {
     const { data, error, status } = await discourseCategories();
     if (error || !data) {
       const upstreamStatus = status ?? 502;
-      throw new ApiError(
-        ErrorCodes.UPSTREAM_ERROR,
-        error ?? "Failed to fetch categories",
-        upstreamStatus >= 500 ? 502 : upstreamStatus
-      );
+      const statusCode = upstreamStatus >= 500 ? 502 : upstreamStatus;
+      const payload: ApiErrorResponse = {
+        error: error ?? "Failed to fetch categories",
+        code: ErrorCodes.UPSTREAM_ERROR,
+      };
+      return res.status(statusCode).json(payload);
     }
 
     return res.status(200).json(data);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logger.error("[discourse/categories] Request failed", {
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
       query: req.query,
     });
-
-    if (error instanceof ApiError || error instanceof Error) {
-      return respondWithError(res, error);
-    }
-
-    return respondWithError(
-      res,
-      new ApiError(
-        ErrorCodes.INTERNAL_ERROR,
-        "Discourse request failed",
-        500
-      )
-    );
+    const payload: ApiErrorResponse = {
+      error: "Discourse request failed",
+      code: ErrorCodes.INTERNAL_ERROR,
+      details: message,
+    };
+    return res.status(500).json(payload);
   }
 }

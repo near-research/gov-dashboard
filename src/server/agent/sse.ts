@@ -8,7 +8,8 @@ import { logger } from "@/lib/logger";
 
 
 export const createEventWriter =
-  (res: NextApiResponse, stream: PassThrough | null) => (event: AGUIEvent) => {
+  (res: NextApiResponse<void>, stream: PassThrough | null) =>
+  (event: AGUIEvent) => {
     const payload = `data: ${JSON.stringify(event)}\n\n`;
     if (stream) {
       stream.write(payload);
@@ -23,7 +24,7 @@ export function startSseSession({
   validated,
 }: {
   req: NextApiRequest;
-  res: NextApiResponse;
+  res: NextApiResponse<void>;
   validated: Extract<ValidatedAgentRequest, { ok: true }>;
 }) {
   let stream: PassThrough | null = new PassThrough();

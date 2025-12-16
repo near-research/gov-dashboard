@@ -3,6 +3,11 @@ import { z } from "zod";
 import { servicesConfig } from "@/config/services";
 import { logger } from "@/lib/logger";
 import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import type {
+  ApiErrorResponse,
+  DiscourseUserRawResponse,
+  DiscourseUserSuccessResponse,
+} from "@/types/api";
 
 const discourseBadgeSchema = z
   .object({
@@ -18,9 +23,9 @@ const discourseBadgeSchema = z
   })
   .passthrough();
 
-const discourseUserSchema = z
+const discourseUserSchema: z.ZodType<DiscourseUserRawResponse> = z
   .object({
-    user_badges: z.array(discourseBadgeSchema),
+    user_badges: z.array(discourseBadgeSchema).optional(),
     user: z
       .object({
         avatar_template: z.string().optional(),
@@ -38,7 +43,7 @@ const discourseUserSchema = z
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<DiscourseUserSuccessResponse | ApiErrorResponse>
 ) {
   try {
     const { username } = req.query;
@@ -104,7 +109,25 @@ export default async function handler(
       );
     }
 
-    return res.status(200).json(parsed.data);
+    const rawData = parsed.data as DiscourseUserRawResponse;
+    if (!rawData.user?.id || !rawData.user?.username) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const response: DiscourseUserSuccessResponse = {
+      user: {
+        id: rawData.user.id,
+        username: rawData.user.username,
+        name: rawData.user.name ?? null,
+        avatarTemplate: rawData.user.avatar_template ?? "",
+        title: rawData.user.title,
+        admin: rawData.user.admin,
+        moderator: rawData.user.moderator,
+        trustLevel: rawData.user.trust_level,
+      },
+    };
+
+    return res.status(200).json(response);
   } catch (error) {
     logger.error("Failed to proxy discourse user data:", error);
     if (error instanceof Error) {

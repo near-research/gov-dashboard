@@ -10,6 +10,10 @@ import type {
   ChatCompletionOptions,
 } from "./types";
 import { NearAIError, NearAITimeoutError, NearAIConfigurationError } from "./errors";
+import {
+  chatCompletionResponseSchema,
+  nearAIErrorResponseSchema,
+} from "./schemas";
 import { randomUUID } from "crypto";
 
 const DEFAULT_BASE_URL = "https://cloud-api.near.ai";
@@ -83,26 +87,75 @@ export class NearAIClient {
           timeout
         );
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          let errorDetails: unknown = errorText;
+        const { payload, rawText } = await parseResponseBody(response);
 
-          try {
-            const errorJson = JSON.parse(errorText);
-            errorDetails = errorJson.error || errorJson.message || errorText;
-          } catch {
-            // Keep original text if not JSON
+        if (!response.ok) {
+        if (payload !== undefined) {
+          const apiErrorResult = nearAIErrorResponseSchema.safeParse(payload);
+          if (apiErrorResult.success) {
+            throw new NearAIError(
+              `NEAR AI API error: ${apiErrorResult.data.error.message}`,
+              response.status,
+              apiErrorResult.data.error
+            );
           }
+        }
+
+        throw new NearAIError(
+          `NEAR AI API error: ${response.status}`,
+          response.status,
+          payload ?? rawText ?? `HTTP ${response.status}`
+        );
+        }
+
+        if (payload === undefined) {
+          const preview = formatPayloadPreview(payload, rawText);
+          console.error("NEAR AI response validation failed:", {
+            status: response.status,
+            errors: [],
+            payload: preview,
+          });
 
           throw new NearAIError(
-            `NEAR AI API error: ${response.status}`,
+            "NEAR AI returned an unexpected response format",
             response.status,
-            errorDetails
+            {
+              validationErrors: "Response could not be parsed as JSON",
+              payload: preview,
+            }
           );
         }
 
-        const data = await response.json();
-        return data as ChatCompletionResponse;
+        const errorResult = nearAIErrorResponseSchema.safeParse(payload);
+        if (errorResult.success) {
+          const { message: errorMessage, type, code } = errorResult.data.error;
+          throw new NearAIError(
+            `NEAR AI API error: ${errorMessage}`,
+            response.status,
+            { message: errorMessage, type, code }
+          );
+        }
+
+        const result = chatCompletionResponseSchema.safeParse(payload);
+        if (!result.success) {
+          const preview = formatPayloadPreview(payload, rawText);
+          console.error("NEAR AI response validation failed:", {
+            status: response.status,
+            errors: result.error.flatten(),
+            payload: preview,
+          });
+
+          throw new NearAIError(
+            "NEAR AI returned an unexpected response format",
+            response.status,
+            {
+              validationErrors: result.error.flatten(),
+              payload: preview,
+            }
+          );
+        }
+
+        return result.data;
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           throw new NearAITimeoutError(`Request timeout after ${timeout}ms`);
@@ -225,6 +278,37 @@ export class NearAIClient {
       timeout: this.defaultTimeout,
     };
   }
+}
+
+type ParsedResponseBody = {
+  payload?: unknown;
+  rawText?: string;
+};
+
+async function parseResponseBody(response: Response): Promise<ParsedResponseBody> {
+  try {
+    return { payload: await response.clone().json() };
+  } catch {
+    return { rawText: await response.text() };
+  }
+}
+
+function formatPayloadPreview(
+  payload?: unknown,
+  rawText?: string
+): string {
+  const source = payload ?? rawText ?? "";
+  const asString =
+    typeof source === "string"
+      ? source
+      : (() => {
+          try {
+            return JSON.stringify(source);
+          } catch {
+            return String(source);
+          }
+        })();
+  return asString.slice(0, 500);
 }
 
 async function fetchWithTimeout(

@@ -5,7 +5,7 @@
 export class NearAIError extends Error {
   constructor(
     message: string,
-    public readonly statusCode?: number,
+    public readonly statusCode: number = 500,
     public readonly details?: unknown
   ) {
     super(message);
@@ -26,4 +26,3 @@ export class NearAIConfigurationError extends NearAIError {
     this.name = "NearAIConfigurationError";
   }
 }
-

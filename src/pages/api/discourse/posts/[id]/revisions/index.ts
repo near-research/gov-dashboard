@@ -1,59 +1,100 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { servicesConfig } from "@/config/services";
-import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { ErrorCodes } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
+import type { ApiErrorResponse } from "@/types/api";
+import type {
+  RevisionsResponse,
+  RevisionEntry,
+} from "@/types/api/discourse";
 
-/**
- * GET /api/discourse/topics/[id]/revisions
- *
- * Fetches all revisions for a topic's first post (the proposal).
- * Public endpoint - no authentication required.
- *
- * Returns:
- * - post_id: The ID of the first post
- * - revisions: Array of all revisions with changes
- * - total_revisions: Count of revisions
- * - current_version: Latest version number
- */
+const parseTopicId = (value: string | string[] | undefined): string | null => {
+  if (!value || Array.isArray(value)) {
+    return null;
+  }
+  return value.trim().length > 0 ? value : null;
+};
+
+const formatBodyChanges = (value: unknown): string | undefined => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "object" && value !== null) {
+    const candidateKeys = [
+      "inline",
+      "side_by_side",
+      "side_by_side_markdown",
+    ] as const;
+    for (const key of candidateKeys) {
+      const candidate = (value as Record<string, unknown>)[key];
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+};
+
+const buildRevisionSummary = (revision: Record<string, unknown>): RevisionEntry => ({
+  version:
+    typeof revision.current_version === "number"
+      ? revision.current_version
+      : typeof revision.version === "number"
+      ? revision.version
+      : 0,
+  createdAt:
+    typeof revision.created_at === "string"
+      ? revision.created_at
+      : "",
+  username:
+    typeof revision.username === "string"
+      ? revision.username
+      : "unknown",
+  bodyChanges: formatBodyChanges(revision.body_changes),
+});
+
+const errorResponse = (
+  message: string,
+  code?: string,
+  details?: unknown
+): ApiErrorResponse => ({
+  error: message,
+  code,
+  details,
+});
+
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<RevisionsResponse>
 ) {
   if (req.method !== "GET") {
-    return respondWithError(
-      res,
-      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
+    return res.status(405).json(
+      errorResponse("Method not allowed", ErrorCodes.METHOD_NOT_ALLOWED)
     );
   }
 
-  const { id } = req.query;
-
-  if (!id || typeof id !== "string") {
-    return respondWithError(
-      res,
-      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid proposal ID", 400)
+  const topicId = parseTopicId(req.query.id);
+  if (!topicId) {
+    return res.status(400).json(
+      errorResponse("Invalid proposal ID", ErrorCodes.VALIDATION_ERROR)
     );
   }
 
   try {
     const DISCOURSE_URL = servicesConfig.discourseBaseUrl;
-
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
 
-    // Get the topic to find the first post
-    const topicResponse = await fetch(`${DISCOURSE_URL}/t/${id}.json`, {
+    const topicResponse = await fetch(`${DISCOURSE_URL}/t/${topicId}.json`, {
       headers,
     });
 
     if (!topicResponse.ok) {
-      return respondWithError(
-        res,
-        new ApiError(
-          ErrorCodes.UPSTREAM_ERROR,
+      return res.status(topicResponse.status).json(
+        errorResponse(
           "Failed to fetch topic",
-          topicResponse.status,
+          ErrorCodes.UPSTREAM_ERROR,
           { status: topicResponse.status }
         )
       );
@@ -63,29 +104,26 @@ export default async function handler(
     const firstPost = topicData.post_stream?.posts?.[0];
 
     if (!firstPost) {
-      return respondWithError(
-        res,
-        new ApiError(ErrorCodes.NOT_FOUND, "Post not found", 404)
+      return res.status(404).json(
+        errorResponse("Post not found", ErrorCodes.NOT_FOUND)
       );
     }
 
     const postId = firstPost.id;
-    const version = firstPost.version || 1;
+    const version = firstPost.version ?? 1;
 
     logger.debug(`[Revisions] Post ${postId} is at version ${version}`);
 
-    // If version is 1, no edits have been made
     if (version <= 1) {
-      return res.status(200).json({
-        post_id: postId,
+      const payload: RevisionsResponse = {
+        postId,
         revisions: [],
-        total_revisions: 0,
-        current_version: version,
-      });
+      };
+      return res.status(200).json(payload);
     }
 
-    // Fetch all revisions (they always start at version 2)
-    const revisions = [];
+    const revisions: RevisionEntry[] = [];
+
     for (let i = 2; i <= version; i++) {
       try {
         const revUrl = `${DISCOURSE_URL}/posts/${postId}/revisions/${i}.json`;
@@ -93,16 +131,7 @@ export default async function handler(
 
         if (revResponse.ok) {
           const revData = await revResponse.json();
-
-          revisions.push({
-            version: revData.current_version || i,
-            created_at: revData.created_at,
-            username: revData.username,
-            edit_reason: revData.edit_reason || "",
-            body_changes: revData.body_changes,
-            title_changes: revData.title_changes,
-          });
-
+          revisions.push(buildRevisionSummary(revData));
           logger.debug(`[Revisions] Fetched revision ${i}/${version}`);
         } else {
           logger.warn(
@@ -111,26 +140,22 @@ export default async function handler(
         }
       } catch (err) {
         logger.error(`[Revisions] Error fetching revision ${i}:`, err);
-        // Continue fetching other revisions
       }
     }
 
-    return res.status(200).json({
-      post_id: postId,
+    const payload: RevisionsResponse = {
+      postId,
       revisions,
-      total_revisions: revisions.length,
-      current_version: version,
-    });
-  } catch (error: unknown) {
+    };
+
+    return res.status(200).json(payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to fetch revisions";
     logger.error("[Revisions] Error:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch revisions";
-    return respondWithError(
-      res,
-      new ApiError(
-        ErrorCodes.INTERNAL_ERROR,
+    return res.status(500).json(
+      errorResponse(
         "Failed to fetch revisions",
-        500,
+        ErrorCodes.INTERNAL_ERROR,
         { message }
       )
     );

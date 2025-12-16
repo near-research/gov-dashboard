@@ -4,14 +4,59 @@ import {
   createNearAIClient,
   getNearAIClient,
   resetNearAIClient,
-} from "@/lib/near-ai";
-import {
   NearAIConfigurationError,
   NearAIError,
   NearAITimeoutError,
 } from "@/lib/near-ai";
+import type { ChatCompletionResponse } from "@/lib/near-ai";
 
 const requestPayload = { model: "test-model", messages: [] };
+
+const buildValidResponse = (
+  overrides: Partial<ChatCompletionResponse> = {}
+): ChatCompletionResponse => {
+  const baseResponse: ChatCompletionResponse = {
+    id: "chatcmpl-123",
+    object: "chat.completion",
+    created: 1,
+    model: "near-ai-model",
+    choices: [
+      {
+        index: 0,
+        message: { role: "assistant", content: "Hello" },
+        finish_reason: "stop",
+      },
+    ],
+  };
+
+  return {
+    ...baseResponse,
+    ...overrides,
+    choices: overrides.choices ?? baseResponse.choices,
+  };
+};
+
+const createMockResponse = ({
+  payload,
+  ok = true,
+  status = 200,
+  text,
+}: {
+  payload: unknown;
+  ok?: boolean;
+  status?: number;
+  text?: string;
+}) => ({
+  ok,
+  status,
+  json: async () => payload,
+  clone: () => ({
+    json: async () => payload,
+  }),
+  text: async () =>
+    text ??
+    (typeof payload === "string" ? payload : JSON.stringify(payload)),
+});
 
 describe("NearAIClient", () => {
   const originalFetch = global.fetch;
@@ -56,11 +101,9 @@ describe("NearAIClient", () => {
   });
 
   it("sends authorization and request id headers", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ choices: [] }),
-    });
+    fetchMock.mockResolvedValue(
+      createMockResponse({ payload: buildValidResponse() })
+    );
 
     const client = new NearAIClient({
       apiKey: "key-123",
@@ -77,11 +120,9 @@ describe("NearAIClient", () => {
   });
 
   it("generates a request id when none provided", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ choices: [] }),
-    });
+    fetchMock.mockResolvedValue(
+      createMockResponse({ payload: buildValidResponse() })
+    );
 
     const client = new NearAIClient({
       apiKey: "key-123",
@@ -95,18 +136,22 @@ describe("NearAIClient", () => {
   });
 
   it("parses non-200 responses into NearAIError", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 429,
-      text: async () => '{"error":"rate limited"}',
-    });
+    fetchMock.mockResolvedValue(
+      createMockResponse({
+        payload: { error: { message: "Rate limited" } },
+        ok: false,
+        status: 429,
+      })
+    );
 
     const client = new NearAIClient({ apiKey: "key-123" });
     const result = client.chatCompletions(requestPayload);
 
     await expect(result).rejects.toMatchObject({
       statusCode: 429,
-      details: "rate limited",
+      details: {
+        message: "Rate limited",
+      },
     });
   });
 
@@ -125,11 +170,19 @@ describe("NearAIClient", () => {
     vi.useRealTimers();
     fetchMock
       .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ choices: [{ message: { content: "ok" } }] }),
-      });
+      .mockResolvedValueOnce(
+        createMockResponse({
+          payload: buildValidResponse({
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+          }),
+        })
+      );
 
     const client = new NearAIClient({
       apiKey: "key-123",
@@ -150,11 +203,9 @@ describe("NearAIClient", () => {
     vi.useRealTimers();
     fetchMock
       .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ choices: [] }),
-      });
+      .mockResolvedValueOnce(
+        createMockResponse({ payload: buildValidResponse() })
+      );
 
     const client = getNearAIClient({
       apiKey: "key-123",
@@ -172,11 +223,9 @@ describe("NearAIClient", () => {
 
     fetchMock
       .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ choices: [] }),
-      });
+      .mockResolvedValueOnce(
+        createMockResponse({ payload: buildValidResponse() })
+      );
 
     await client.chatCompletions(requestPayload, {
       retryAttempts: 1,
@@ -191,6 +240,65 @@ describe("NearAIClient", () => {
       NearAIError
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe("response validation", () => {
+    it("accepts valid chat completion response", async () => {
+      const payload = buildValidResponse();
+      fetchMock.mockResolvedValue(createMockResponse({ payload }));
+
+      const client = new NearAIClient({ apiKey: "key-123" });
+      const result = await client.chatCompletions(requestPayload);
+
+      expect(result).toEqual(payload);
+    });
+
+    it("rejects malformed response", async () => {
+      fetchMock.mockResolvedValue(
+        createMockResponse({ payload: { unexpected: "shape" } })
+      );
+
+      const client = new NearAIClient({ apiKey: "key-123" });
+      await expect(client.chatCompletions(requestPayload)).rejects.toThrow(
+        "unexpected response format"
+      );
+    });
+
+    it("handles API error response", async () => {
+      fetchMock.mockResolvedValue(
+        createMockResponse({
+          payload: {
+            error: { message: "Rate limited", type: "rate_limit" },
+          },
+          ok: false,
+          status: 429,
+        })
+      );
+
+      const client = new NearAIClient({ apiKey: "key-123" });
+      await expect(client.chatCompletions(requestPayload)).rejects.toThrow(
+        "NEAR AI API error: Rate limited"
+      );
+    });
+
+    it("handles partial/incomplete response", async () => {
+      fetchMock.mockResolvedValue(
+        createMockResponse({
+          payload: {
+            id: "chatcmpl-partial",
+            object: "chat.completion",
+            created: 1,
+            model: "near-ai-model",
+          },
+          status: 200,
+        })
+      );
+
+      const client = new NearAIClient({ apiKey: "key-123" });
+      await expect(client.chatCompletions(requestPayload)).rejects.toThrow(
+        "unexpected response format"
+      );
+    });
   });
 
   it("streams responses with verification headers and enforces the stream flag", async () => {

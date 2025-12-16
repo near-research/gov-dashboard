@@ -34,7 +34,7 @@ import {
 import type { DiscourseLinkage } from "@/types/discourse-linkage";
 
 type DiscourseUserResponse = {
-  user_badges: Array<{
+  user_badges?: Array<{
     id: number;
     badge_id: number;
     badge?: { name?: string } | null;
@@ -215,7 +215,7 @@ export default function Profile() {
           throw new Error(`Failed to fetch badges (${response.status})`);
         }
         const data = (await response.json()) as DiscourseUserResponse;
-        const badgeNames = data.user_badges
+        const badgeNames = (data.user_badges ?? [])
           .map((entry) => entry.badge?.name)
           .filter((name): name is string => Boolean(name));
         setBadges(badgeNames);

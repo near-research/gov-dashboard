@@ -9,6 +9,7 @@ import { AI_COMPLETION_TIMEOUT_MS } from "@/constants/agent";
 import { logger } from "@/lib/logger";
 import type { NearAIClient } from "@/lib/near-ai/client";
 import { verifyChatMessage } from "@/lib/near-ai/verification/verify";
+import { NearAIError } from "@/lib/near-ai";
 
 type ToolCallDelta = {
   index?: number;
@@ -60,6 +61,14 @@ export async function getStreamingResponse(
     }
     return response;
   } catch (error) {
+    if (error instanceof NearAIError) {
+      logger.error("[Agent] NEAR AI request failed", {
+        statusCode: error.statusCode,
+        details: error.details,
+      });
+      throw error;
+    }
+
     logger.error("[Agent] NEAR AI API error:", error);
     const statusCode =
       error instanceof Error && "statusCode" in error

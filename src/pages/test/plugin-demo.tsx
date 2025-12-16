@@ -1,7 +1,23 @@
-"use client";
+ "use client";
 
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import { isApiError } from "@/types/api";
+import type { ApiErrorResponse } from "@/types/api";
+import type {
+  CategoriesResponse,
+  CategoriesSuccessResponse,
+  CategoryDetailResponse,
+  CategoryDetailSuccessResponse,
+  PostsResponse,
+  PostsSuccessResponse,
+  RepliesResponse,
+  RepliesSuccessResponse,
+  TagsResponse,
+  TagsSuccessResponse,
+  TopicsListResponse,
+  TopicsListSuccessResponse,
+} from "@/types/api/discourse";
 
 type ApiState = {
   loading: boolean;
@@ -10,9 +26,11 @@ type ApiState = {
   url?: string;
 };
 
-const fetchJson = async (path: string) => {
+const fetchJson = async <TResponse = unknown>(path: string): Promise<TResponse> => {
   const response = await fetch(path);
-  const payload = await response.json().catch(() => null);
+  const payload = (await response.json().catch(() => null)) as
+    | Record<string, unknown>
+    | null;
   if (!response.ok) {
     const message =
       payload && typeof payload === "object" && "error" in payload
@@ -21,7 +39,21 @@ const fetchJson = async (path: string) => {
         : undefined;
     throw new Error(message ?? `Request failed (${response.status})`);
   }
-  return payload;
+  return payload as TResponse;
+};
+
+const fetchDiscourseResponse = async <
+  TResponse,
+  TApiResponse extends TResponse | ApiErrorResponse
+>(path: string): Promise<TResponse> => {
+  const response = await fetch(path);
+  const payload = (await response.json()) as TApiResponse;
+
+  if (isApiError(payload)) {
+    throw new Error(payload.error);
+  }
+
+  return payload as TResponse;
 };
 
 const JsonViewer = ({ value }: { value?: unknown }) => {
@@ -163,8 +195,11 @@ export default function DiscourseTestPage() {
     const url = `/api/discourse/topics/${encodeURIComponent(topicId)}`;
     setTopicState({ loading: true, url });
     try {
-      const data = await fetchJson(url);
-      setTopicState({ loading: false, data: data ?? null, url });
+      const data = await fetchDiscourseResponse<
+        TopicsListSuccessResponse,
+        TopicsListResponse
+      >(url);
+      setTopicState({ loading: false, data, url });
     } catch (error) {
       setTopicState({
         loading: false,
@@ -182,11 +217,16 @@ export default function DiscourseTestPage() {
     }
     const params = new URLSearchParams();
     if (postIncludeRaw) params.set("include_raw", "true");
-    const url = `/api/discourse/posts/${encodeURIComponent(postId)}?${params.toString()}`;
+    const url = `/api/discourse/posts/${encodeURIComponent(
+      postId
+    )}?${params.toString()}`;
     setPostState({ loading: true, url });
     try {
-      const data = await fetchJson(url);
-      setPostState({ loading: false, data: data ?? null, url });
+      const data = await fetchDiscourseResponse<
+        PostsSuccessResponse,
+        PostsResponse
+      >(url);
+      setPostState({ loading: false, data, url });
     } catch (error) {
       setPostState({
         loading: false,
@@ -202,11 +242,16 @@ export default function DiscourseTestPage() {
       setRepliesState({ loading: false, error: "Post ID is required" });
       return;
     }
-    const url = `/api/discourse/posts/${encodeURIComponent(repliesId)}/replies`;
+    const url = `/api/discourse/posts/${encodeURIComponent(
+      repliesId
+    )}/replies`;
     setRepliesState({ loading: true, url });
     try {
-      const data = await fetchJson(url);
-      setRepliesState({ loading: false, data: data ?? null, url });
+      const data = await fetchDiscourseResponse<
+        RepliesSuccessResponse,
+        RepliesResponse
+      >(url);
+      setRepliesState({ loading: false, data, url });
     } catch (error) {
       setRepliesState({
         loading: false,
@@ -220,8 +265,11 @@ export default function DiscourseTestPage() {
     const url = `/api/discourse/categories`;
     setCategoriesState({ loading: true, url });
     try {
-      const data = await fetchJson(url);
-      setCategoriesState({ loading: false, data: data ?? null, url });
+      const data = await fetchDiscourseResponse<
+        CategoriesSuccessResponse,
+        CategoriesResponse
+      >(url);
+      setCategoriesState({ loading: false, data, url });
     } catch (error) {
       setCategoriesState({
         loading: false,
@@ -243,8 +291,11 @@ export default function DiscourseTestPage() {
     const url = `/api/discourse/categories/${encodeURIComponent(categoryKey)}`;
     setCategoryDetailState({ loading: true, url });
     try {
-      const data = await fetchJson(url);
-      setCategoryDetailState({ loading: false, data: data ?? null, url });
+      const data = await fetchDiscourseResponse<
+        CategoryDetailSuccessResponse,
+        CategoryDetailResponse
+      >(url);
+      setCategoryDetailState({ loading: false, data, url });
     } catch (error) {
       setCategoryDetailState({
         loading: false,
@@ -258,8 +309,10 @@ export default function DiscourseTestPage() {
     const url = `/api/discourse/tags`;
     setTagsState({ loading: true, url });
     try {
-      const data = await fetchJson(url);
-      setTagsState({ loading: false, data: data ?? null, url });
+      const data = await fetchDiscourseResponse<TagsSuccessResponse, TagsResponse>(
+        url
+      );
+      setTagsState({ loading: false, data, url });
     } catch (error) {
       setTagsState({
         loading: false,

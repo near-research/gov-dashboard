@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
+import { ErrorCodes } from "@/lib/api/errors";
 import { discoursePost } from "@/server/plugins/discourse-client";
+import type { ApiErrorResponse } from "@/types/api";
+import type { PostsResponse } from "@/types/api/discourse";
 
 const parseId = (value: string | string[] | undefined): number | null => {
   if (value === undefined) return null;
@@ -20,33 +22,29 @@ const parseBoolean = (value: string | string[] | undefined): boolean | null => {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<any>
+  res: NextApiResponse<PostsResponse>
 ) {
   if (req.method !== "GET") {
-    return respondWithError(
-      res,
-      new ApiError(ErrorCodes.METHOD_NOT_ALLOWED, "Method not allowed", 405)
-    );
+    return res.status(405).json({
+      error: "Method not allowed",
+      code: ErrorCodes.METHOD_NOT_ALLOWED,
+    });
   }
 
   const postId = parseId(req.query.id);
   if (!postId) {
-    return respondWithError(
-      res,
-      new ApiError(ErrorCodes.VALIDATION_ERROR, "Invalid post id", 400)
-    );
+    return res.status(400).json({
+      error: "Invalid post id",
+      code: ErrorCodes.VALIDATION_ERROR,
+    });
   }
 
   const includeRaw = parseBoolean(req.query.include_raw) ?? undefined;
   if (req.query.include_raw !== undefined && includeRaw === null) {
-    return respondWithError(
-      res,
-      new ApiError(
-        ErrorCodes.VALIDATION_ERROR,
-        "Invalid `include_raw` parameter",
-        400
-      )
-    );
+    return res.status(400).json({
+      error: "Invalid `include_raw` parameter",
+      code: ErrorCodes.VALIDATION_ERROR,
+    });
   }
 
   const { data, error, status } = await discoursePost({
@@ -55,14 +53,13 @@ export default async function handler(
   });
 
   if (error || !data) {
-    return respondWithError(
-      res,
-      new ApiError(
-        ErrorCodes.UPSTREAM_ERROR,
-        error ?? "Failed to fetch post",
-        status ?? 500
-      )
-    );
+    const upstreamStatus = status ?? 502;
+    const statusCode = upstreamStatus >= 500 ? 502 : upstreamStatus;
+    const payload: ApiErrorResponse = {
+      error: error ?? "Failed to fetch post",
+      code: ErrorCodes.UPSTREAM_ERROR,
+    };
+    return res.status(statusCode).json(payload);
   }
 
   return res.status(200).json(data);

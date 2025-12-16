@@ -16,6 +16,19 @@ const { describe: describeSpec } = createPlaywrightGuard("profile.spec.ts");
 const nearAccountId = "playwright.testnet";
 
 const respondOrpc = (payload: unknown) => JSON.stringify({ json: payload });
+const respondOrpcError = (options: {
+  code: string;
+  message: string;
+  status?: number;
+  data?: unknown;
+}) =>
+  JSON.stringify({
+    defined: true,
+    code: options.code,
+    status: options.status ?? 400,
+    message: options.message,
+    data: options.data,
+  });
 
 const ensurePlausibleSpy = async (page: Page) => {
   await page.addInitScript(() => {
@@ -368,7 +381,10 @@ describeSpec("Profile journeys", () => {
       route.fulfill({
         status: 400,
         headers: { "Content-Type": "application/json" },
-        body: respondOrpc({ code: "BAD_REQUEST", message: "invalid key" }),
+        body: respondOrpcError({
+          code: "BAD_REQUEST",
+          message: "invalid key",
+        }),
       });
     });
     await page.addInitScript(() => {

@@ -229,7 +229,7 @@ export const DiscoursePostSchema = z.object({
   username: z.string(),
   cooked: z.string(),
   created_at: z.string(),
-  like_count: z.number().optional(),
+  like_count: z.number().nullable().optional(),
   actions_summary: z.array(DiscourseActionSummarySchema).optional(),
   reply_count: z.number().optional(),
   reply_to_post_number: z.number().nullable().optional(),
@@ -239,10 +239,10 @@ export const DiscoursePostSchema = z.object({
   topic_id: z.number().optional(),
   topic_title: z.string().optional(),
   topic_slug: z.string().optional(),
-  topic_posts_count: z.number().optional(),
-  topic_reply_count: z.number().optional(),
-  topic_views: z.number().optional(),
-  topic_bumped_at: z.string().optional(),
+  topic_posts_count: z.number().nullable().optional(),
+  topic_reply_count: z.number().nullable().optional(),
+  topic_views: z.number().nullable().optional(),
+  topic_bumped_at: z.string().nullable().optional(),
 });
 
 export const DiscoursePostStreamSchema = z.object({

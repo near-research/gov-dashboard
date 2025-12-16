@@ -19,7 +19,7 @@ export interface DiscoursePost {
   username: string;
   cooked: string;
   created_at: string;
-  like_count?: number;
+  like_count?: number | null;
   actions_summary?: DiscourseActionSummary[];
   reply_count?: number;
   reply_to_post_number?: number | null;
@@ -29,10 +29,10 @@ export interface DiscoursePost {
   topic_id?: number;
   topic_title?: string;
   topic_slug?: string;
-  topic_posts_count?: number;
-  topic_reply_count?: number;
-  topic_views?: number;
-  topic_bumped_at?: string;
+  topic_posts_count?: number | null;
+  topic_reply_count?: number | null;
+  topic_views?: number | null;
+  topic_bumped_at?: string | null;
 }
 
 export interface DiscoursePostStream {

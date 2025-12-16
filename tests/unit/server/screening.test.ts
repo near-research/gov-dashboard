@@ -9,6 +9,7 @@ import {
   verifyNearAuth,
   requestEvaluation,
   respondWithScreeningError,
+  clearScreeningCache,
 } from "@/server/screening";
 import { ErrorCodes } from "@/lib/api/errors";
 import type { Evaluation } from "@/types/evaluation";
@@ -26,7 +27,11 @@ vi.mock("@/lib/near-ai", async () => {
 });
 
 import { verify } from "near-sign-verify";
-import { getNearAIClient, verifyChatMessage } from "@/lib/near-ai";
+import {
+  getNearAIClient,
+  verifyChatMessage,
+  NearAIError,
+} from "@/lib/near-ai";
 
 const evaluationTemplate = (): Evaluation => ({
   complete: { pass: true, reason: "complete" },
@@ -45,7 +50,16 @@ const evaluationTemplate = (): Evaluation => ({
 
 const createChatResponse = (content: string, includeId = true) => ({
   id: includeId ? "chat-123" : undefined,
-  choices: [{ message: { content } }],
+  object: "chat.completion",
+  created: 1,
+  model: "screening-model",
+  choices: [
+    {
+      index: 0,
+      message: { role: "assistant", content },
+      finish_reason: "stop",
+    },
+  ],
 });
 
 const createVerificationResult = (
@@ -69,6 +83,7 @@ const verifyMock = vi.mocked(verify);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearScreeningCache();
   getNearAIClientMock.mockReturnValue(
     nearAiClientMock as unknown as NearAIClient
   );
@@ -147,6 +162,19 @@ describe("requestEvaluation", () => {
     expect(JSON.parse(result.responseText)).toEqual(responseData);
   });
 
+  it("reuses cached evaluations for identical inputs", async () => {
+    const responseData = createChatResponse(evaluationJson);
+    nearAiClientMock.chatCompletions.mockResolvedValue(responseData);
+
+    const firstResult = await requestEvaluation("My title", "My content");
+    const secondResult = await requestEvaluation("My title", "My content");
+
+    expect(nearAiClientMock.chatCompletions).toHaveBeenCalledTimes(1);
+    expect(verifyChatMessageMock).toHaveBeenCalledTimes(1);
+    expect(secondResult).toBe(firstResult);
+    expect(secondResult.verificationResult).toBe(firstResult.verificationResult);
+  });
+
   it("uses failed verification when chat id is missing", async () => {
     const responseData = createChatResponse(evaluationJson, false);
     nearAiClientMock.chatCompletions.mockResolvedValue(responseData);
@@ -162,6 +190,9 @@ describe("requestEvaluation", () => {
   it("throws when AI returns no content", async () => {
     nearAiClientMock.chatCompletions.mockResolvedValue({
       id: "chat-123",
+      object: "chat.completion",
+      created: 1,
+      model: "screening-model",
       choices: [],
     });
 
@@ -173,12 +204,12 @@ describe("requestEvaluation", () => {
 
   it("wraps NEAR AI errors", async () => {
     nearAiClientMock.chatCompletions.mockRejectedValue(
-      new Error("504 Gateway Timeout")
+      new NearAIError("Rate limited", 429, { code: "rate_limit" })
     );
 
     await expect(requestEvaluation("Title", "Content")).rejects.toMatchObject({
       statusCode: 502,
-      message: expect.stringContaining("NEAR AI timed out"),
+      message: "AI evaluation unavailable",
     });
   });
 
