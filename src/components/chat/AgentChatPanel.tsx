@@ -28,6 +28,7 @@ import {
   type AGUIEvent,
   type AgentState,
   type VerificationMetadata,
+  type VerificationStatus,
 } from "@/types/agui-events";
 import {
   reduceAguiEventsToUiEvents,
@@ -69,6 +70,58 @@ const mapMessageRoleToAgentRole = (
   const meta = mapRoleToDisplayRoleMeta(role);
   return meta.role;
 };
+
+const verificationStatuses: VerificationStatus[] = [
+  "pending",
+  "verified",
+  "failed",
+  "unknown",
+];
+
+const isVerificationStatus = (value: unknown): value is VerificationStatus =>
+  typeof value === "string" && verificationStatuses.includes(value as VerificationStatus);
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === "string" ? value : undefined;
+
+type VerificationPayload = Record<string, unknown> & {
+  stage?: "initial_reasoning" | "final_synthesis";
+  verificationId?: unknown;
+  requestHash?: unknown;
+  responseHash?: unknown;
+  nonce?: unknown;
+  messageId?: unknown;
+};
+
+const isVerificationPayload = (
+  value: unknown
+): value is VerificationPayload => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const stage = (value as VerificationPayload).stage;
+  return (
+    typeof stage === "undefined" ||
+    stage === "initial_reasoning" ||
+    stage === "final_synthesis"
+  );
+};
+
+const toVerificationMetadata = (
+  payload: VerificationPayload,
+  defaultStatus: VerificationStatus = "verified"
+): VerificationMetadata => ({
+  source: "near-ai-cloud",
+  status: isVerificationStatus(payload.status)
+    ? payload.status
+    : defaultStatus,
+  messageId: asString(payload.messageId),
+  requestHash: asString(payload.requestHash),
+  responseHash: asString(payload.responseHash),
+  chatId: asString(payload.chatId),
+  error: asString(payload.error),
+});
 
 export type EventsState = {
   byId: Record<string, AgentUIEvent>;
@@ -696,8 +749,8 @@ export const AgentChatPanel = ({
       let buffer = "";
 
       const handleCustomVerification = (value: unknown) => {
-        if (!value || typeof value !== "object") return;
-        const payload = value as Record<string, unknown>;
+        if (!isVerificationPayload(value)) return;
+        const payload = value;
 
         const stage = payload.stage as
           | "initial_reasoning"
@@ -737,7 +790,7 @@ export const AgentChatPanel = ({
           proof: {
             ...(isSynthesis ? synthesisProofData : initialProofData),
           },
-          verification: payload as unknown as VerificationMetadata,
+          verification: toVerificationMetadata(payload),
         });
       };
 

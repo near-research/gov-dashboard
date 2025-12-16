@@ -39,7 +39,8 @@ export function createPublicKey(jwk: JsonWebKey): KeyObject {
   try {
     // Node accepts the JsonWebKey directly even if DOM typings differ
     const impl = getCryptoImpl().createPublicKey ?? nodeCreatePublicKey;
-    const nodeJwk = jwk as unknown as NodeJsonWebKey;
+    // DOM Web Crypto's JsonWebKey matches Node's shape at runtime.
+    const nodeJwk = jwk as NodeJsonWebKey;
     return impl({ key: nodeJwk, format: "jwk" });
   } catch (error) {
     throw new Error(

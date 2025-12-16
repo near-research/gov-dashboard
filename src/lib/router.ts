@@ -133,7 +133,7 @@ const persistDiscourseLinkage = async (
   });
 };
 
-const resolvePath = (obj: unknown, path: string[]) =>
+const resolvePath = (obj: unknown, path: readonly string[]) =>
   path.reduce<unknown | undefined>(
     (value, key) =>
       value && typeof value === "object"
@@ -142,12 +142,29 @@ const resolvePath = (obj: unknown, path: string[]) =>
     obj
   );
 
+type GlobalWithRouterLogFlag = typeof globalThis & {
+  __discourseRouterKeysLogged?: boolean;
+};
+
+/**
+ * Guard that ensures the global object can carry the temporary logging flag.
+ * This prevents unsafe casts while still letting us store the flag on the runtime global.
+ */
+const isGlobalWithRouterLogFlag = (
+  target: unknown
+): target is GlobalWithRouterLogFlag =>
+  typeof target === "object" && target !== null;
+
 const logRouterShape = () => {
-  const globalAny = globalThis as unknown as Record<string, unknown>;
-  if (globalAny.__discourseRouterKeysLogged) {
+  const globalCandidate: unknown = globalThis;
+  if (!isGlobalWithRouterLogFlag(globalCandidate)) {
     return;
   }
-  globalAny.__discourseRouterKeysLogged = true;
+
+  if (globalCandidate.__discourseRouterKeysLogged) {
+    return;
+  }
+  globalCandidate.__discourseRouterKeysLogged = true;
 
   logger.debug("discourseRouter keys", {
     keys: Object.keys(discourseRouter).sort(),
@@ -303,7 +320,7 @@ const callAuthRoute = async (
   ] as const;
 
   for (const path of candidatePaths) {
-    const candidate = resolvePath(discourseRouter, path as unknown as string[]);
+    const candidate = resolvePath(discourseRouter, path);
     if (!candidate) {
       continue;
     }

@@ -39,17 +39,32 @@ const mockBalance = {
   block_hash: "00000000000000000000000000000000",
 };
 
-const createMockNearClient = (wallet: PlaywrightMockWallet): Near =>
-  ({
-    view: async () => {
-      return {};
-    },
-    call: async () => {
-      return {};
-    },
-    signMessage: (params: SignMessageParams) => wallet.signMessage(params),
-    getBalance: async () => mockBalance,
-  } as unknown as Near);
+type NearStub = Pick<Near, "view" | "call" | "signMessage" | "getBalance">;
+type NearCallOptions = NonNullable<Parameters<Near["call"]>[3]>;
+type NearCallGas = NonNullable<NearCallOptions["gas"]>;
+type NearCallDeposit = NonNullable<NearCallOptions["attachedDeposit"]>;
+
+const createMockNearClient = (wallet: PlaywrightMockWallet): NearStub => {
+  const view: Near["view"] = async function () {
+    return undefined;
+  };
+
+  const call: Near["call"] = async function <T = unknown>() {
+    return {} as T;
+  };
+
+  const signMessage: Near["signMessage"] = (params) =>
+    wallet.signMessage(params as SignMessageParams);
+
+  const getBalance: Near["getBalance"] = async () => mockBalance.amount;
+
+  return {
+    view,
+    call,
+    signMessage,
+    getBalance,
+  };
+};
 
 export interface ViewFunctionParams {
   contractId: string;
@@ -61,8 +76,8 @@ export interface CallFunctionParams {
   contractId: string;
   method: string;
   args?: Record<string, unknown>;
-  gas?: string;
-  deposit?: string;
+  gas?: NearCallOptions["gas"];
+  deposit?: NearCallOptions["attachedDeposit"];
 }
 
 type WindowWithPlaywrightWalletAccount = Window & {
@@ -127,7 +142,7 @@ export function useNear() {
   const { data: session, isPending, refetch: refetchSession } = useSession();
 
   const mockWalletAccount = getPlaywrightWalletAccount();
-  const [nearClient, setNearClient] = useState<Near | null>(null);
+  const [nearClient, setNearClient] = useState<NearStub | null>(null);
   const [walletAccountId, setWalletAccountId] = useState<string>(
     mockWalletAccount ?? ""
   );
@@ -196,7 +211,7 @@ export function useNear() {
     };
   }, []);
 
-  const getSafeNearClient = useCallback(() => {
+  const getSafeNearClient = useCallback((): NearStub | null => {
     if (nearClient) {
       return nearClient;
     }
@@ -354,18 +369,18 @@ export function useNear() {
       contractId,
       method,
       args = {},
-      gas = "30 Tgas",
-      deposit = "0",
+    gas = "30 Tgas" as NearCallGas,
+    deposit = BigInt(0) as NearCallDeposit,
     }: CallFunctionParams) => {
-      const client = getSafeNearClient();
-      if (!client) {
-        throw new Error("NEAR client not initialized");
-      }
+    const client = getSafeNearClient();
+    if (!client) {
+      throw new Error("NEAR client not initialized");
+    }
 
-      try {
-        return client.call(contractId, method, args, {
-          gas,
-          attachedDeposit: deposit,
+    try {
+      return client.call(contractId, method, args, {
+        gas,
+        attachedDeposit: deposit,
         });
       } catch (err) {
         const classified = classifyNearError(err);

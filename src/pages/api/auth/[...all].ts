@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Readable } from "stream";
 import type { ReadableStream as NodeReadableStream } from "stream/web";
+import { StreamingBodyHelper } from "@/utils/streaming-body";
 
 type AuthProxyRequestInit = RequestInit & {
   duplex?: "half";
@@ -60,9 +61,13 @@ const normalizeRequestBody = (req: NextApiRequest): BodyInit | undefined => {
 
   if (incoming === null || typeof incoming === "undefined") {
     if (hasReadableBody) {
-      return typeof Readable.toWeb === "function"
-        ? (Readable.toWeb(req) as BodyInit)
-        : ((req as unknown as BodyInit) ?? undefined);
+      const streamingBody = tryCreateStreamingBody(req);
+      if (streamingBody) {
+        return streamingBody;
+      }
+      logger.warn(
+        "[Auth Proxy] readable stream body could not be wrapped; falling back to no body"
+      );
     }
     return undefined;
   }
@@ -73,17 +78,15 @@ const normalizeRequestBody = (req: NextApiRequest): BodyInit | undefined => {
       : new Uint8Array(incoming);
   }
 
-  if (
-    typeof ReadableStream !== "undefined" &&
-    incoming instanceof ReadableStream
-  ) {
+  if (StreamingBodyHelper.isReadableStream(incoming)) {
     return incoming;
   }
 
   if (incoming instanceof Readable) {
-    return typeof Readable.toWeb === "function"
-      ? (Readable.toWeb(incoming) as BodyInit)
-      : (incoming as unknown as BodyInit);
+    const streamingBody = tryCreateStreamingBody(incoming);
+    if (streamingBody) {
+      return streamingBody;
+    }
   }
 
   if (
@@ -142,14 +145,19 @@ const forwardAuthResponse = async (
   res.status(response.status);
 
   if (response.body) {
-    const nodeStream = toNodeReadable(response.body);
-
-    await new Promise<void>((resolve, reject) => {
-      nodeStream.on("error", reject);
-      nodeStream.on("end", resolve);
-      nodeStream.pipe(res);
-    });
-    return;
+    try {
+      const nodeStream = toNodeReadable(response.body);
+      await pipeStreamToResponse(nodeStream, res);
+      return;
+    } catch (streamError) {
+      logger.error("[Auth Proxy] streaming response failed", streamError);
+      if (!res.headersSent) {
+        res
+          .status(502)
+          .send("Upstream authentication stream interrupted unexpectedly");
+        return;
+      }
+    }
   }
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -189,10 +197,11 @@ const handleProxyError = (error: unknown, req: NextApiRequest): ApiError => {
 };
 
 const toNodeReadable = (body: ReadableStream<Uint8Array>): Readable => {
-  if (typeof Readable.fromWeb === "function") {
-    return Readable.fromWeb(
-      body as unknown as NodeReadableStream<Uint8Array>
-    );
+  if (
+    typeof Readable.fromWeb === "function" &&
+    StreamingBodyHelper.isReadableStream(body)
+  ) {
+    return Readable.fromWeb(body as NodeReadableStream<Uint8Array>);
   }
 
   const reader = body.getReader();
@@ -247,9 +256,51 @@ const resolveErrorMessage = (error: unknown): string => {
   return "Unknown error";
 };
 
+const tryCreateStreamingBody = (
+  source: Readable | NodeReadableStream<Uint8Array>
+): BodyInit | undefined => {
+  try {
+    return StreamingBodyHelper.createStreamingBody(source);
+  } catch (error) {
+    logger.warn("[Auth Proxy] streaming body conversion failed", {
+      error,
+      source: source?.constructor?.name,
+    });
+    return undefined;
+  }
+};
+
+const pipeStreamToResponse = (
+  nodeStream: Readable,
+  res: NextApiResponse
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const handleError = (error: unknown) => {
+      nodeStream.off("error", handleError);
+      nodeStream.off("end", handleEnd);
+      res.off("error", handleError);
+      reject(error);
+    };
+
+    const handleEnd = () => {
+      nodeStream.off("error", handleError);
+      nodeStream.off("end", handleEnd);
+      res.off("error", handleError);
+      resolve();
+    };
+
+    nodeStream.on("error", handleError);
+    nodeStream.on("end", handleEnd);
+    res.on("error", handleError);
+    nodeStream.pipe(res);
+  });
+};
+
 export const config = {
   api: {
     // Disable Next.js body parsing so we can forward the raw stream to auth handler.
+    // The raw stream passthrough keeps Better Auth's multi-value headers,
+    // chunked bodies, and SIWN flow intact without buffering.
     bodyParser: false,
   },
 };

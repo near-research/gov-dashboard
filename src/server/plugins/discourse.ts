@@ -109,7 +109,7 @@ const createFallbackDiscourseRouter = (): DiscourseRouter =>
     linkageStore: {
       unlink: async () => null,
     },
-  } as unknown as DiscourseRouter);
+  } satisfies DiscourseRouter);
 
 const createFallbackDiscourseClient = (): DiscourseClient =>
   ({
@@ -121,7 +121,7 @@ const createFallbackDiscourseClient = (): DiscourseClient =>
     categories: async () => ({ error: "discourse-mock" }),
     category: async () => ({ error: "discourse-mock" }),
     tags: async () => ({ error: "discourse-mock" }),
-  } as unknown as DiscourseClient);
+  } satisfies DiscourseClient);
 
 const getTestRouter = (): DiscourseRouter =>
   getGlobalMock<DiscourseRouter>("__mockDiscourseRouter") ??
