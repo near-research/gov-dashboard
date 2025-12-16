@@ -21,13 +21,11 @@ const nearAIStreamChunkSchema = z.object({
             content: z.string().optional(),
             reasoning_content: z.string().optional(),
           })
-          .partial()
           .optional(),
         message: z
           .object({
             content: z.string().optional(),
           })
-          .partial()
           .optional(),
       })
     )

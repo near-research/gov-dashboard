@@ -86,11 +86,6 @@ function reducer(state: ProposalEditorState, action: ProposalEditorAction): Prop
       return { ...state, proposal: action.payload };
     case "UPDATE_PROPOSAL": {
       const updatedProposal = action.payload(state.proposal);
-      console.log("[EVAL-DEBUG-4] Reducer UPDATE_PROPOSAL", {
-        hasEvaluation: Boolean(updatedProposal.evaluation),
-        overallPass: updatedProposal.evaluation?.overallPass,
-        ts: Date.now(),
-      });
       return { ...state, proposal: updatedProposal };
     }
     case "SET_LOCAL_TITLE":

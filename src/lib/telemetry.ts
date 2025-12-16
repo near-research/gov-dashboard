@@ -7,9 +7,12 @@ type TelemetryEvent = {
 
 class Telemetry {
   private enabled: boolean;
+  private shouldDebug: boolean;
 
   constructor() {
     this.enabled = process.env.TELEMETRY_ENABLED !== "false";
+    this.shouldDebug =
+      process.env.NODE_ENV === "development" || process.env.DEBUG === "true";
   }
 
   track(name: string, properties: Record<string, unknown> = {}) {
@@ -25,11 +28,8 @@ class Telemetry {
       timestamp: Date.now(),
     };
 
-    if (
-      process.env.NODE_ENV === "development" ||
-      process.env.TELEMETRY_DEBUG === "true"
-    ) {
-      logger.debug(JSON.stringify({ type: "telemetry", ...event }));
+    if (this.shouldDebug) {
+      logger.debug("Telemetry event", event);
     }
   }
 

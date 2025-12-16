@@ -58,13 +58,6 @@ export const useProposalFlowState = ({
 
   const evaluation = proposalState.evaluation;
   const isPassing = evaluation?.overallPass === true;
-  console.log("[EVAL-DEBUG-5] isPassing check", {
-    hasProposalState: Boolean(proposalState),
-    hasEvaluation: Boolean(evaluation),
-    overallPass: evaluation?.overallPass,
-    isPassing,
-    ts: Date.now(),
-  });
 
   const {
     publishLoading,

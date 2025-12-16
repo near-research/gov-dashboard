@@ -158,6 +158,7 @@ export const ChatInput = ({
             </span>
           </div>
           <Button
+            data-testid="chat-send-button"
             onClick={handleSend}
             disabled={isLoading || !inputValue.trim() || disabled}
             size="icon"
@@ -171,6 +172,7 @@ export const ChatInput = ({
             )}
           </Button>
           <Button
+            data-testid="chat-clear-button"
             variant="outline"
             size="icon"
             onClick={onClear}

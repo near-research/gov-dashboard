@@ -24,9 +24,7 @@ const getInputByLabel = (page: Page, label: string) =>
 
 const ensureSettingsLabAvailable = async (page: Page) => {
   const labTab = page.getByText(/Lab|Prompts|Laboratory/i);
-  if (!(await labTab.isVisible({ timeout: 3000 }).catch(() => false))) {
-    test.skip(true, "Settings lab UI not available");
-  }
+  await labTab.isVisible({ timeout: 3000 });
 };
 
 const stubChatCompletion = (

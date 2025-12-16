@@ -224,11 +224,6 @@ export const useProposalChat = ({
 
     try {
       const parsed = JSON.parse(stored);
-      console.log("[EVAL-DEBUG-6] Session RESTORE", {
-        hasData: Boolean(parsed),
-        evaluationOverallPass: parsed?.proposalState?.evaluation?.overallPass,
-        ts: Date.now(),
-      });
       if (Array.isArray(parsed?.messages)) {
         setMessages(parsed.messages);
       }
@@ -251,10 +246,6 @@ export const useProposalChat = ({
   useEffect(() => {
     if (!sessionKey) return;
 
-    console.log("[EVAL-DEBUG-7] Session PERSIST", {
-      evaluationOverallPass: proposalState.evaluation?.overallPass,
-      ts: Date.now(),
-    });
     throttledPersist(sessionKey, {
       messages,
       proposalState,
