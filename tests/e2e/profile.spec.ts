@@ -248,7 +248,6 @@ describeSpec("Profile journeys", () => {
     await stubDiscourseLinkage(page, {
       payload: {
         discourseUsername: "playwright",
-        userApiKey: "api-key",
       },
     });
     await page.unroute("**/api/discourse/user/**");
@@ -269,7 +268,6 @@ describeSpec("Profile journeys", () => {
     await stubDiscourseLinkage(page, {
       payload: {
         discourseUsername: "shopper",
-        userApiKey: "key",
       },
     });
     await stubDiscourseBadge(page, { success: true, badges: [] });
@@ -305,7 +303,6 @@ describeSpec("Profile journeys", () => {
     });
     await stubDiscourseRpc(page, "completeLink", {
       discourseUsername: "playwright",
-      userApiKey: "key",
     });
     await page.addInitScript(() => {
       const popup = {
@@ -422,9 +419,9 @@ describeSpec("Profile journeys", () => {
     await page.getByRole("button", { name: "Complete Link" }).click();
 
     // Verify error is shown
-    await expect(
-      page.getByText(/Failed|error|invalid|try again/i).first()
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId("near-error-alert").first()).toBeVisible({
+      timeout: 5000,
+    });
 
     // Button should still be enabled for retry
     await expect(

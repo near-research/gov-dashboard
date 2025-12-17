@@ -1,5 +1,5 @@
 import "../../../vi-compat";
-import React from "react";
+import React, { type ComponentProps } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
@@ -66,10 +66,6 @@ vi.mock("@/components/proposal/ReplyCard", () => ({
   ReplyCard: () => <div data-testid="reply-card" />,
 }));
 
-vi.mock("@/utils/discourse", () => ({
-  getDiscourseUserApiKey: vi.fn(() => "user-api-key"),
-}));
-
 const replies = [
   {
     id: 1,
@@ -83,7 +79,12 @@ const replies = [
   },
 ];
 
-const defaultProps = {
+const replyTextareaPlaceholder =
+  /Write a reply to the discussion\.\.\./i;
+
+type DiscussionSectionProps = ComponentProps<typeof DiscussionSection>;
+
+const defaultProps: DiscussionSectionProps = {
   discourseBaseUrl: "gov.near",
   replies,
   discussionSummary: null,
@@ -100,9 +101,29 @@ const defaultProps = {
   onHideReplySummary: vi.fn(),
   topicId: 123,
   onReplyPosted: vi.fn(),
+  topicAuthor: "alice",
 };
 
-const renderComponent = () => render(<DiscussionSection {...defaultProps} />);
+const renderDiscussionSection = (
+  override: Partial<DiscussionSectionProps> = {}
+) => {
+  const props = { ...defaultProps, ...override };
+  render(<DiscussionSection {...props} />);
+  return { props };
+};
+
+const renderDiscussionSectionWithReplies = (
+  override: Partial<DiscussionSectionProps> = {}
+) => renderDiscussionSection({ showReplies: true, ...override });
+
+const getPrimaryReplyTextarea = () =>
+  screen.getAllByPlaceholderText(replyTextareaPlaceholder)[0];
+
+const getPrimaryPostReplyButton = () =>
+  screen.getAllByRole("button", { name: /Post reply/i })[0];
+
+const findPrimaryPostReplyButton = async () =>
+  (await screen.findAllByRole("button", { name: /Post reply/i }))[0];
 
 const setNearState = (
   account: string | null,
@@ -128,63 +149,67 @@ describe("DiscussionSection", () => {
   describe("rendering", () => {
     it("renders reply form when authenticated and linked", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
       await waitFor(() =>
         expect(
-          screen.getByText(/You're linked and ready to reply\./i)
+          screen.getAllByText(/You're linked and ready to reply\./i)[0]
         ).toBeInTheDocument()
       );
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "Ready to reply" } });
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
     });
 
     it("shows connect wallet prompt when not authenticated", async () => {
       setNearState(null, null);
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
       await waitFor(() =>
         expect(
-          screen.getByText(/Connect your NEAR wallet to reply\./i)
+          screen.getAllByText(/Connect your NEAR wallet to reply\./i)[0]
         ).toBeInTheDocument()
       );
     });
 
     it("shows link Discourse prompt when authenticated but not linked", async () => {
       getLinkageMock.mockResolvedValue(null);
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
       await waitFor(() =>
         expect(
-          screen.getByText(/Link your Discourse account on the/i)
+          screen.getAllByText(/Link your Discourse account on the/i)[0]
         ).toBeInTheDocument()
       );
+    });
+
+    it("still renders the reply form when there are no replies yet", async () => {
+      getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
+      renderDiscussionSectionWithReplies({ replies: [] });
+
+      await waitFor(() =>
+        expect(screen.getByText(/No replies yet/i)).toBeInTheDocument()
+      );
+      expect(getPrimaryReplyTextarea()).toBeInTheDocument();
     });
   });
 
   describe("validation", () => {
     it("disables submit button when reply is empty", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
       await waitFor(() =>
-        expect(
-          screen.getByRole("button", { name: /Post reply/i })
-        ).toBeDisabled()
+        expect(getPrimaryPostReplyButton()).toBeDisabled()
       );
     });
 
     it("prevents submitting empty replies", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const button = screen.getByRole("button", { name: /Post reply/i });
+      const button = getPrimaryPostReplyButton();
       expect(button).toBeDisabled();
 
       fireEvent.click(button);
@@ -198,16 +223,12 @@ describe("DiscussionSection", () => {
 
     it("enables submit button with valid reply text", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "Valid reply" } });
 
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
     });
   });
@@ -215,15 +236,11 @@ describe("DiscussionSection", () => {
   describe("reply submission", () => {
     it("calls sign with message format 'Reply to proposal {topicId}'", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "Hello" } });
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
       fireEvent.click(button);
 
@@ -237,15 +254,11 @@ describe("DiscussionSection", () => {
 
     it("calls sign with walletSigner and correct recipient", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "Hello" } });
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
       fireEvent.click(button);
 
@@ -263,17 +276,12 @@ describe("DiscussionSection", () => {
     it("calls client.discourse.createPost with auth token and reply content", async () => {
       getLinkageMock.mockResolvedValue({
         discourseUsername: "alice",
-        userApiKey: "api-key",
       });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "  Trimmed reply  " } });
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
       fireEvent.click(button);
 
@@ -281,7 +289,6 @@ describe("DiscussionSection", () => {
         expect(createPostMock).toHaveBeenCalledWith({
           authToken: "auth-token",
           username: "alice",
-          userApiKey: "api-key",
           nearAccount: mockSignedAccountId,
           raw: "Trimmed reply",
           topicId: defaultProps.topicId,
@@ -292,15 +299,11 @@ describe("DiscussionSection", () => {
 
     it("clears form and shows success toast on successful submission", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "Great insights" } });
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
       fireEvent.click(button);
 
@@ -309,10 +312,16 @@ describe("DiscussionSection", () => {
       );
       expect(textarea).toHaveValue("");
       expect(trackMock).toHaveBeenCalledWith("discussion_reply_started", {
-        props: { topic_id: defaultProps.topicId },
+        props: {
+          topic_id: defaultProps.topicId,
+          reply_to_post_number: 1,
+        },
       });
       expect(trackMock).toHaveBeenCalledWith("discussion_reply_succeeded", {
-        props: { topic_id: defaultProps.topicId },
+        props: {
+          topic_id: defaultProps.topicId,
+          reply_to_post_number: 1,
+        },
       });
       expect(defaultProps.onReplyPosted).toHaveBeenCalled();
     });
@@ -322,51 +331,41 @@ describe("DiscussionSection", () => {
     it("handles sign rejection gracefully", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
       signMock.mockRejectedValue(new Error("Signing rejected"));
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "Error reply" } });
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
       fireEvent.click(button);
 
-      expect(await screen.findByText(/Signing rejected/i)).toBeInTheDocument();
+      const [signRejected] = await screen.findAllByText(/Signing rejected/i);
+      expect(signRejected).toBeInTheDocument();
       await waitFor(() =>
         expect(trackMock).toHaveBeenCalledWith("discussion_reply_failed", {
           props: expect.objectContaining({ topic_id: defaultProps.topicId }),
         })
       );
       await waitFor(() =>
-        expect(
-          screen.getByRole("button", { name: /Post reply/i })
-        ).toBeEnabled()
+        expect(getPrimaryPostReplyButton()).toBeEnabled()
       );
     });
 
     it("shows error message on createPost failure", async () => {
       getLinkageMock.mockResolvedValue({ discourseUsername: "alice" });
       createPostMock.mockRejectedValue(new Error("Create failed"));
-      renderComponent();
+      renderDiscussionSectionWithReplies();
 
-      const textarea = screen.getByPlaceholderText(
-        /Write a reply to the discussion\.\.\./i
-      );
+      const textarea = getPrimaryReplyTextarea();
       fireEvent.change(textarea, { target: { value: "Another reply" } });
-      const button = await screen.findByRole("button", {
-        name: /Post reply/i,
-      });
+      const button = await findPrimaryPostReplyButton();
       await waitFor(() => expect(button).toBeEnabled());
       fireEvent.click(button);
 
-      expect(await screen.findByText(/Create failed/i)).toBeInTheDocument();
+      const [createFailed] = await screen.findAllByText(/Create failed/i);
+      expect(createFailed).toBeInTheDocument();
       await waitFor(() =>
-        expect(
-          screen.getByRole("button", { name: /Post reply/i })
-        ).toBeEnabled()
+        expect(getPrimaryPostReplyButton()).toBeEnabled()
       );
     });
   });

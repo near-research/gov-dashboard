@@ -389,7 +389,7 @@ export async function handleSearchDiscourse(args: {
     );
   }
 
-  const { query, limit: rawLimit, userApiKey, ...searchParams } = parsed.data;
+  const { query, limit: rawLimit, ...searchParams } = parsed.data;
 
   const limit = rawLimit ?? 5;
   const boundedLimit = Math.min(Math.max(limit, 1), 30);
@@ -399,7 +399,6 @@ export async function handleSearchDiscourse(args: {
     const { data, error, status } = await discourseSearch({
       ...searchParams,
       category: searchParams.category ?? PROPOSALS_CATEGORY_ID.toString(),
-      userApiKey,
       query: query.trim(),
       limit: boundedLimit,
     });

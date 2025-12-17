@@ -42,7 +42,8 @@ const logRouteHit = (label: string, route: Route) => {
   console.debug(`[playwright mock] ${label} ${request.method()} ${request.url()}`);
 };
 
-const apiRoute = (path: string) => `**${path}`;
+export const apiRoute = (path: string) => `**${path}`;
+export const agentApiRoute = apiRoute("/api/agent");
 
 const respondWithJson = (route: Route, payload: unknown) => {
   route.fulfill({
@@ -187,9 +188,14 @@ export const registerMockVerificationSessionsForEvents = (
   });
 };
 
+export interface PlaywrightMockOptions {
+  skipChatCompletionsStream?: boolean;
+  skipAgentStream?: boolean;
+}
+
 export const registerPlaywrightMocks = (
   page: Page,
-  options?: { skipChatCompletionsStream?: boolean }
+  options?: PlaywrightMockOptions
 ) => {
   verificationSessions.clear();
   const pageWithAuthOverride = page as PageWithAuthOverride;
@@ -440,14 +446,17 @@ export const registerPlaywrightMocks = (
     ];
   };
 
-  page.route(apiRoute("/api/agent"), (route) => {
-    logRouteHit("api/agent", route);
-    route.fulfill({
-      status: 200,
-      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
-      body: createSsePayload(buildDefaultAgentEvents()),
+  const skipAgentStream = options?.skipAgentStream ?? false;
+  if (!skipAgentStream) {
+    page.route(agentApiRoute, (route) => {
+      logRouteHit("api/agent", route);
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+        body: createSsePayload(buildDefaultAgentEvents()),
+      });
     });
-  });
+  }
 
   page.route(apiRoute("/api/verification/proof"), (route) => {
     logRouteHit("api/verification/proof", route);

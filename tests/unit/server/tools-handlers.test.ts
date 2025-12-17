@@ -154,7 +154,6 @@ describe("server tools handlers", () => {
           page: 2,
           tags: ["tag1", "tag2"],
           category: expect.any(String),
-          userApiKey: undefined,
         })
       );
       expect((result as any).type).toBe("proposal_list");

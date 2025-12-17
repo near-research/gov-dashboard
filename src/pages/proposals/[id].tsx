@@ -309,6 +309,7 @@ export default function ProposalDetail() {
                       fetchProposal(id);
                     }
                   }}
+                  topicAuthor={proposal.username}
                 />
             </div>
 

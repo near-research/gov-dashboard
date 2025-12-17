@@ -10,14 +10,6 @@ const { describe: describeSpec } = createPlaywrightGuard(
 describeSpec("Verification Flow", () => {
   test("chat message triggers verification session", async ({ page }) => {
     await registerPlaywrightMocks(page);
-    await page.unroute("**/api/verification/session");
-    await page.unroute("**/api/verification/proof");
-
-    const verificationSessionPromise = page.waitForResponse(
-      (response) =>
-        response.url().endsWith("/api/verification/session") &&
-        response.request().method() === "POST"
-    );
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
@@ -26,9 +18,28 @@ describeSpec("Verification Flow", () => {
     const chatInput = page.getByTestId("chat-input");
     await expect(chatInput).toBeVisible({ timeout: 15_000 });
     await chatInput.fill("Test message for verification flow");
+
+    const verificationRequestPromise = page.waitForRequest(
+      (request) =>
+        request.url().endsWith("/api/verification/session") &&
+        request.method() === "POST"
+    );
+
+    const verificationSessionPromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/verification/session") &&
+        response.request().method() === "POST"
+    );
+
     await page.keyboard.press("Enter");
 
+    const verificationRequest = await verificationRequestPromise;
     const sessionResponse = await verificationSessionPromise;
+    const requestBody = JSON.parse(
+      verificationRequest.postData() ?? "{}"
+    );
+    expect(requestBody).toHaveProperty("verificationId");
+
     expect(sessionResponse.status()).toBe(200);
     const sessionData = await sessionResponse.json();
     expect(sessionData).toHaveProperty("verificationId");

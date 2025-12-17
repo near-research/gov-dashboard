@@ -6,7 +6,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
 import type { LatestPostsResponse } from "@/types/discourse";
 import { useGovernanceAnalytics } from "@/lib/analytics";
-import { getDiscourseUserApiKey } from "@/utils/discourse";
 
 type Post = LatestPostsResponse["latest_posts"][number] & {
   near_wallet?: string;
@@ -40,14 +39,10 @@ export default function ProposalsPage() {
     track("home_latest_proposals_requested");
 
     try {
-      const userApiKey = getDiscourseUserApiKey();
       const params = new URLSearchParams({
         per_page: String(perPage),
         page: String(page),
       });
-      if (userApiKey) {
-        params.set("userApiKey", userApiKey);
-      }
 
       const response = await fetch(`/api/discourse/latest?${params.toString()}`);
 

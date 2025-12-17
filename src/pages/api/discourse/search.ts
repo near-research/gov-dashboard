@@ -22,7 +22,6 @@ const SUPPORTED_PARAMS = new Set([
   "order",
   "status",
   "in",
-  "userApiKey",
 ]);
 
 const parsePositiveInt = (
@@ -126,15 +125,6 @@ export default async function handler(
 
     const limit = clampPageSize(limitParam);
     const renderLimit = clampRenderLimit(limitParam);
-    const headers = req.headers ?? {};
-    const userApiKey =
-      typeof req.query.userApiKey === "string" &&
-      req.query.userApiKey.trim().length > 0
-        ? req.query.userApiKey
-        : typeof headers["x-discourse-user-api-key"] === "string"
-        ? headers["x-discourse-user-api-key"]
-        : undefined;
-
     const { data, error, status } = await discourseSearch({
       query: trimmedQuery,
       limit,
@@ -209,10 +199,9 @@ export default async function handler(
               | "tracking"
               | "bookmarks"
               | "first"
-              | "pinned"
-              | "wiki")
+          | "pinned"
+          | "wiki")
           : undefined,
-      userApiKey,
     });
 
     if (error || !data) {

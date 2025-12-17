@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +35,6 @@ import { sign } from "near-sign-verify";
 import { useNear } from "@/hooks/useNear";
 import { client } from "@/lib/orpc";
 import { useGovernanceAnalytics } from "@/lib/analytics";
-import { getDiscourseUserApiKey } from "@/utils/discourse";
 import { SIGNING_MESSAGES } from "@/constants/signing-messages";
 import { assertSigningReady } from "@/utils/wallet/guards";
 import { NearErrorAlert } from "@/components/ui/NearErrorAlert";
@@ -58,7 +64,18 @@ interface DiscussionSectionProps {
   onHideReplySummary: (replyId: number) => void;
   topicId: number;
   onReplyPosted?: () => void;
+  topicAuthor?: string | null;
 }
+
+type ThreadedReply = ProposalReply & {
+  children: ThreadedReply[];
+};
+
+type ReplyTarget = {
+  postNumber: number;
+  username?: string | null;
+  label: string;
+};
 
 export function DiscussionSection({
   discourseBaseUrl,
@@ -77,6 +94,7 @@ export function DiscussionSection({
   onHideReplySummary,
   topicId,
   onReplyPosted,
+  topicAuthor,
 }: DiscussionSectionProps) {
   const { signedAccountId, walletSigner, signIn } = useNear();
   const track = useGovernanceAnalytics();
@@ -85,6 +103,25 @@ export function DiscussionSection({
   const [replyError, setReplyError] = useState<NearOperationError | null>(null);
   const [checkingLinkage, setCheckingLinkage] = useState(false);
   const [linkage, setLinkage] = useState<DiscourseLinkage | null>(null);
+
+  const topicReplyTarget = useMemo<ReplyTarget>(
+    () => ({
+      postNumber: 1,
+      username: topicAuthor ?? null,
+      label: "topic",
+    }),
+    [topicAuthor]
+  );
+  const [replyTarget, setReplyTarget] =
+    useState<ReplyTarget>(topicReplyTarget);
+  const replyFormRef = useRef<HTMLDivElement | null>(null);
+  const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setReplyTarget((current) =>
+      current.postNumber === 1 ? topicReplyTarget : current
+    );
+  }, [topicReplyTarget]);
 
   useEffect(() => {
     const checkLinkage = async () => {
@@ -114,11 +151,43 @@ export function DiscussionSection({
     void checkLinkage();
   }, [signedAccountId]);
 
-  if (!replies || replies.length === 0) {
-    return null;
-  }
+  const threadedReplies = useMemo(
+    () => buildThreadedReplies(replies),
+    [replies]
+  );
+
+  const scrollToReplyForm = useCallback(() => {
+    const element = replyFormRef.current;
+    if (!element || typeof element.scrollIntoView !== "function") {
+      return;
+    }
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    replyTextareaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!showReplies) {
+      return;
+    }
+    scrollToReplyForm();
+  }, [replyTarget.postNumber, scrollToReplyForm, showReplies]);
 
   const isLinked = Boolean(linkage?.discourseUsername);
+
+  const handleReplyTargetSelection = (reply: ProposalReply) => {
+    setReplyTarget({
+      postNumber: reply.post_number,
+      username: reply.username,
+      label: `reply #${reply.post_number}`,
+    });
+  };
+
+  const resetReplyTarget = () => {
+    setReplyTarget(topicReplyTarget);
+  };
 
   const handleReplySubmit = async () => {
     if (!replyContent.trim()) {
@@ -137,10 +206,15 @@ export function DiscussionSection({
       return;
     }
 
+    const targetPostNumber = replyTarget.postNumber || 1;
+
     setReplyLoading(true);
     setReplyError(null);
     track("discussion_reply_started", {
-      props: { topic_id: topicId },
+      props: {
+        topic_id: topicId,
+        reply_to_post_number: targetPostNumber,
+      },
     });
 
     try {
@@ -154,30 +228,30 @@ export function DiscussionSection({
 
       const payloadForLog = {
         topicId,
-        replyToPostNumber: 1,
+        replyToPostNumber: targetPostNumber,
         username: linkage?.discourseUsername ?? undefined,
         nearAccount: signedAccountId,
       };
       logger.debug("[discussion] createPost payload", payloadForLog);
-      const userApiKey =
-        linkage?.userApiKey ?? getDiscourseUserApiKey() ?? undefined;
-
       await client.discourse.createPost({
         authToken,
         username: linkage?.discourseUsername ?? undefined,
-        userApiKey,
         nearAccount: signedAccountId,
         raw: replyContent.trim(),
         topicId,
-        replyToPostNumber: 1,
+        replyToPostNumber: targetPostNumber,
       });
 
       toast.success("Reply posted");
       setReplyContent("");
       track("discussion_reply_succeeded", {
-        props: { topic_id: topicId },
+        props: {
+          topic_id: topicId,
+          reply_to_post_number: targetPostNumber,
+        },
       });
       onReplyPosted?.();
+      resetReplyTarget();
     } catch (err: unknown) {
       const nearError = createNearOperationError(err);
       logNearError("DiscussionSection.handleReplySubmit", nearError);
@@ -200,12 +274,137 @@ export function DiscussionSection({
         props: {
           topic_id: topicId,
           message: nearError.message.slice(0, 120),
+          reply_to_post_number: targetPostNumber,
         },
       });
     } finally {
       setReplyLoading(false);
     }
   };
+
+  const renderThreadedReplies = (
+    nodes: ThreadedReply[],
+    depth = 0
+  ): ReactNode =>
+    nodes.map((node) => (
+      <div
+        key={node.id}
+        className="space-y-4"
+        style={{ marginLeft: depth * 20 }}
+      >
+        <ReplyCard
+          reply={node}
+          discourseBaseUrl={discourseBaseUrl}
+          summary={replySummaries[node.id]}
+          loading={replySummaryLoading[node.id]}
+          error={replySummaryErrors[node.id]}
+          onSummarize={() => onFetchReplySummary(node.id)}
+          onHideSummary={() => onHideReplySummary(node.id)}
+          onReply={() => handleReplyTargetSelection(node)}
+        />
+        {replyTarget.postNumber === node.post_number && renderReplyForm()}
+        {node.children.length > 0 && (
+          <div className="space-y-4">
+            {renderThreadedReplies(node.children, depth + 1)}
+          </div>
+        )}
+      </div>
+    ));
+
+  const renderReplyForm = () => (
+    <>
+      <div className="space-y-3" ref={replyFormRef}>
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <p>
+            Replying to{" "}
+            <span className="font-semibold text-foreground">
+              {replyTarget.username ? `@${replyTarget.username}` : "the topic"}
+            </span>{" "}
+            (#{replyTarget.postNumber})
+          </p>
+          {replyTarget.postNumber !== 1 && (
+            <Button variant="link" size="sm" className="p-0" onClick={resetReplyTarget}>
+              Reply to topic instead
+            </Button>
+          )}
+        </div>
+        <Textarea
+          ref={replyTextareaRef}
+          value={replyContent}
+          onChange={(event) => {
+            setReplyContent(event.currentTarget.value);
+            if (replyError) {
+              setReplyError(null);
+            }
+          }}
+          placeholder="Write a reply to the discussion..."
+          rows={4}
+          className="min-h-[120px]"
+        />
+      </div>
+      <NearErrorAlert
+        error={replyError}
+        onRetry={() => {
+          setReplyError(null);
+          void handleReplySubmit();
+        }}
+        onReconnect={() => {
+          setReplyError(null);
+          void signIn();
+        }}
+        onDismiss={() => setReplyError(null)}
+        className="p-3"
+      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="text-sm text-muted-foreground flex-1 space-y-1">
+          <p>
+            Replies are posted directly to Gov discussion on
+            <span className="font-semibold"> {discourseBaseUrl}</span>.
+          </p>
+          <p>
+            {!signedAccountId
+              ? "Connect your NEAR wallet to reply."
+              : checkingLinkage
+              ? "Checking Discourse linkage…"
+              : isLinked
+              ? "You're linked and ready to reply."
+              : "Link your Discourse account on the "}
+            {signedAccountId &&
+              !checkingLinkage &&
+              !isLinked && (
+                <Link
+                  href="/profile"
+                  className="font-semibold text-primary underline underline-offset-2"
+                >
+                  profile
+                </Link>
+              )}
+            {signedAccountId && !checkingLinkage && !isLinked && " page."}
+          </p>
+        </div>
+        <Button
+          onClick={handleReplySubmit}
+          disabled={
+            replyLoading ||
+            !signedAccountId ||
+            !walletSigner ||
+            !replyContent.trim() ||
+            !isLinked
+          }
+          className="gap-1"
+        >
+          {replyLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Posting...
+            </>
+          ) : (
+            "Post reply"
+          )}
+        </Button>
+      </div>
+    </>
+  );
 
   return (
     <Card className="rounded-2xl border-border/60 shadow-sm">
@@ -304,96 +503,18 @@ export function DiscussionSection({
         )}
 
         <div className="space-y-4">
-          <div className="space-y-3">
-            <Textarea
-              value={replyContent}
-              onChange={(event) => {
-                setReplyContent(event.currentTarget.value);
-                if (replyError) {
-                  setReplyError(null);
-                }
-              }}
-              placeholder="Write a reply to the discussion..."
-              rows={4}
-              className="min-h-[120px]"
-            />
-            <NearErrorAlert
-              error={replyError}
-              onRetry={() => {
-                setReplyError(null);
-                void handleReplySubmit();
-              }}
-              onReconnect={() => {
-                setReplyError(null);
-                void signIn();
-              }}
-              onDismiss={() => setReplyError(null)}
-              className="p-3"
-            />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="text-sm text-muted-foreground flex-1 space-y-1">
-                <p>
-                  Replies are posted directly to Gov discussion on
-                  <span className="font-semibold"> {discourseBaseUrl}</span>.
-                </p>
-                <p>
-                  {!signedAccountId
-                    ? "Connect your NEAR wallet to reply."
-                    : checkingLinkage
-                    ? "Checking Discourse linkage…"
-                    : isLinked
-                    ? "You're linked and ready to reply."
-                    : "Link your Discourse account on the "}
-                  {signedAccountId &&
-                    !checkingLinkage &&
-                    !isLinked && (
-                      <Link
-                        href="/profile"
-                        className="font-semibold text-primary underline underline-offset-2"
-                      >
-                        profile
-                      </Link>
-                    )}
-                  {signedAccountId && !checkingLinkage && !isLinked && " page."}
-                </p>
-              </div>
-              <Button
-                onClick={handleReplySubmit}
-                disabled={
-                  replyLoading ||
-                  !signedAccountId ||
-                  !walletSigner ||
-                  !replyContent.trim() ||
-                  !isLinked
-                }
-                className="gap-1"
-              >
-                {replyLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Posting...
-                  </>
-                ) : (
-                  "Post reply"
-                )}
-              </Button>
-            </div>
-          </div>
-
           {showReplies && (
             <div className="space-y-4">
-              {replies.map((reply) => (
-                <ReplyCard
-                  key={reply.id}
-                  reply={reply}
-                  discourseBaseUrl={discourseBaseUrl}
-                  summary={replySummaries[reply.id]}
-                  loading={replySummaryLoading[reply.id]}
-                  error={replySummaryErrors[reply.id]}
-                  onSummarize={() => onFetchReplySummary(reply.id)}
-                  onHideSummary={() => onHideReplySummary(reply.id)}
-                />
-              ))}
+              {threadedReplies.length > 0 ? (
+                <div className="space-y-4">
+                  {renderThreadedReplies(threadedReplies)}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No replies yet. Start the discussion with a reply below.
+                </p>
+              )}
+              {replyTarget.postNumber === 1 && renderReplyForm()}
             </div>
           )}
         </div>
@@ -401,3 +522,36 @@ export function DiscussionSection({
     </Card>
   );
 }
+
+const buildThreadedReplies = (replies: ProposalReply[]): ThreadedReply[] => {
+  if (!replies || replies.length === 0) {
+    return [];
+  }
+
+  const nodes: ThreadedReply[] = replies.map((reply) => ({
+    ...reply,
+    children: [],
+  }));
+  const nodeMap = new Map<number, ThreadedReply>();
+  nodes.forEach((node) => nodeMap.set(node.post_number, node));
+
+  const roots: ThreadedReply[] = [];
+  nodes.forEach((node) => {
+    const parentKey =
+      node.reply_to_post_number && node.reply_to_post_number > 0
+        ? node.reply_to_post_number
+        : 1;
+    if (parentKey === 1) {
+      roots.push(node);
+      return;
+    }
+    const parent = nodeMap.get(parentKey);
+    if (parent && parent.post_number !== node.post_number) {
+      parent.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+};

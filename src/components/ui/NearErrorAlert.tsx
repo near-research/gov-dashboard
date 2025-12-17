@@ -20,7 +20,7 @@ export function NearErrorAlert({
   if (!error) return null;
 
   return (
-    <Alert variant="destructive" className={className}>
+    <Alert variant="destructive" className={className} data-testid="near-error-alert">
       <AlertDescription className="flex items-center justify-between gap-4">
         <span>{error.message}</span>
         <div className="flex gap-2 shrink-0">

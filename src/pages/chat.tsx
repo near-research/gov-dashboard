@@ -1,11 +1,10 @@
 import { useEffect } from "react";
-import { Chatbot } from "@/components/chat/Chatbot";
-import type { ChatQuickAction } from "@/components/chat/ChatInput";
+import dynamic from "next/dynamic";
 
-const chatQuickActions: ChatQuickAction[] = [
-  { label: "Recent proposals", message: "list recent proposals" },
-  { label: "Quick summary", message: "summarize the latest discussion" },
-];
+const Chatbot = dynamic(() => import("@/components/chat/Chatbot").then((mod) => mod.Chatbot), {
+  ssr: false,
+  loading: () => <div className="animate-pulse h-full bg-gray-100" />,
+});
 
 export default function ChatPage() {
   useEffect(() => {
@@ -20,12 +19,7 @@ export default function ChatPage() {
     <div className="h-screen bg-background flex overflow-hidden">
       <div className="flex-1 overflow-hidden">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-full">
-          <Chatbot
-            welcomeMessage="I can help you participate in the House of Stake."
-            placeholder="Ask about proposals, policies, processes, etc."
-            className="h-full"
-            quickActions={chatQuickActions}
-          />
+          <Chatbot className="h-full" />
         </div>
       </div>
     </div>

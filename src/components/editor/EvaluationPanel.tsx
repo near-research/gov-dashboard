@@ -61,6 +61,9 @@ export function EvaluationPanel({
             <div
               style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}
             >
+              <span>
+                Evaluation: {evaluation.overallPass ? "Passed" : "Screened"}
+              </span>
               <VerificationBadge
                 verification={evaluationVerification ?? null}
                 className="text-[10px]"

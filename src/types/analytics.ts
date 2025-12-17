@@ -88,11 +88,17 @@ export type GovernanceEvents = {
     visible: boolean;
   };
 
-  discussion_reply_started: TopicEventBase;
+  discussion_reply_started: TopicEventBase & {
+    reply_to_post_number?: number;
+  };
 
-  discussion_reply_succeeded: TopicEventBase;
+  discussion_reply_succeeded: TopicEventBase & {
+    reply_to_post_number?: number;
+  };
 
-  discussion_reply_failed: TopicEventBase & FailureBase;
+  discussion_reply_failed: TopicEventBase & FailureBase & {
+    reply_to_post_number?: number;
+  };
 
   // -------- Home --------
   home_latest_proposals_requested: {};

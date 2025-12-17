@@ -1,29 +1,7 @@
-import { AgentChatPanel } from "./AgentChatPanel";
-import type { ChatQuickAction } from "./ChatInput";
+import { Chat, type ChatProps } from "./Chat";
 
-interface ChatbotProps {
-  model?: string;
-  className?: string;
-  placeholder?: string;
-  welcomeMessage?: string;
-  quickActions?: ChatQuickAction[];
+export type ChatbotProps = ChatProps;
+
+export function Chatbot(props: ChatbotProps) {
+  return <Chat {...props} />;
 }
-
-export const Chatbot = ({
-  model = "openai/gpt-oss-120b",
-  className = "",
-  placeholder = "Ask me anything...",
-  welcomeMessage = "Welcome to NEAR AI Assistant. How can I help you today?",
-  quickActions = [],
-}: ChatbotProps) => {
-  return (
-    <AgentChatPanel
-      model={model}
-      className={className}
-      placeholder={placeholder}
-      welcomeMessage={welcomeMessage}
-      quickActions={quickActions}
-      trackingPath="/chat"
-    />
-  );
-};

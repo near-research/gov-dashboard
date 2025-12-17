@@ -12,7 +12,10 @@ describeSpec("NEAR AI assistant chat", () => {
     await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
     await expect(
-      page.getByText("I can help you participate in the House of Stake.")
+      page.getByText("NEAR Governance Assistant")
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Ask about proposals, voting, delegation/i)
     ).toBeVisible();
 
     const input = page.getByTestId("chat-input");

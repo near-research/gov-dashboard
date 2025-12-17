@@ -9,16 +9,30 @@ if (!process.env.BETTER_AUTH_SECRET) {
   throw new Error("BETTER_AUTH_SECRET environment variable is required");
 }
 
+const fallbackAppUrl = "http://localhost:3000";
+const canonicalAppUrl =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.APP_URL ||
+  process.env.BETTER_AUTH_URL ||
+  fallbackAppUrl;
+const trustedOrigins = Array.from(
+  new Set([fallbackAppUrl, canonicalAppUrl])
+);
+
+if (process.env.NODE_ENV !== "production") {
+  console.debug("[better-auth] trusted origins:", trustedOrigins.join(", "));
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: authSchema,
   }),
 
-  trustedOrigins: [process.env.BETTER_AUTH_URL || "http://localhost:3000"],
+  trustedOrigins,
 
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  baseURL: canonicalAppUrl,
 
   plugins: [
     siwn({

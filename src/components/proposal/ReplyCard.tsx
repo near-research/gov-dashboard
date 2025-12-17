@@ -15,6 +15,7 @@ interface ReplyCardProps {
   error?: string;
   onSummarize: () => void;
   onHideSummary: () => void;
+  onReply?: () => void;
 }
 
 export function ReplyCard({
@@ -25,6 +26,7 @@ export function ReplyCard({
   error,
   onSummarize,
   onHideSummary,
+  onReply,
 }: ReplyCardProps) {
   const sanitizedReplyHtml = DOMPurify.sanitize(
     reply.cooked
@@ -161,13 +163,13 @@ export function ReplyCard({
             >
               {reply.username.substring(0, 2).toUpperCase()}
             </div>
-            <div>
-              <span className="font-semibold text-foreground">
-                @{reply.username}
-              </span>
-              <span className="ml-2">#{reply.post_number}</span>
-            </div>
+          <div>
+            <span className="font-semibold text-foreground">
+              @{reply.username}
+            </span>
+            <span className="ml-2">#{reply.post_number}</span>
           </div>
+        </div>
           <div>
             {new Date(reply.created_at).toLocaleDateString("en-US", {
               year: "numeric",
@@ -178,6 +180,16 @@ export function ReplyCard({
             })}
           </div>
         </div>
+
+        {reply.reply_to_user && (
+          <p className="text-xs text-muted-foreground mb-3">
+            Replying to{" "}
+            <span className="font-semibold text-foreground">
+              @{reply.reply_to_user.username}
+            </span>
+            {reply.reply_to_post_number ? ` (#${reply.reply_to_post_number})` : ""}
+          </p>
+        )}
 
         <div
           className={replyContentClass}
@@ -203,7 +215,7 @@ export function ReplyCard({
             )}
           </>
         ) : (
-            <Alert className="bg-orange-50 border-orange-200 mt-3">
+          <Alert className="bg-orange-50 border-orange-200 mt-3">
             <AlertDescription>
               <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold text-orange-900 text-xs">
@@ -234,6 +246,16 @@ export function ReplyCard({
             </AlertDescription>
           </Alert>
         )}
+        <div className="mt-2 flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReply}
+            disabled={!onReply}
+          >
+            Reply
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

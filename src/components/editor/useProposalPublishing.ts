@@ -215,12 +215,9 @@ export const useProposalPublishing = ({
         recipient: siwnRecipient,
       });
 
-      const userApiKey =
-        discourseUserApiKey || getDiscourseUserApiKey() || undefined;
       const result = (await client.discourse.createPost({
         authToken,
         username: discourseUsername,
-        userApiKey,
         nearAccount: signedAccountId ?? undefined,
         title: title.trim(),
         raw: content.trim(),

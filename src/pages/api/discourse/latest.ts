@@ -18,7 +18,6 @@ const SUPPORTED_PARAMS = new Set([
   "page",
   "order",
   "category_id",
-  "userApiKey",
 ]);
 
 const stripHtml = (value: string) =>

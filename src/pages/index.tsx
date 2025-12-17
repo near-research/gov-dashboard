@@ -1,5 +1,10 @@
 import { useEffect } from "react";
-import { Chat } from "@/components/chat/Chat";
+import dynamic from "next/dynamic";
+
+const Chat = dynamic(() => import("@/components/chat/Chat").then((mod) => mod.Chat), {
+  ssr: false,
+  loading: () => <div className="animate-pulse h-full bg-gray-100" />,
+});
 
 export default function AgentPage() {
   useEffect(() => {
@@ -14,14 +19,7 @@ export default function AgentPage() {
     <div className="h-screen bg-background flex overflow-hidden">
       <div className="flex-1 overflow-hidden">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-full">
-          <Chat
-            welcomeMessage="I can help you participate in the House of Stake."
-            placeholder="Ask about proposals, policies, processes, etc."
-            className="h-full"
-            quickActions={[
-              { label: "Recent Proposals", message: "list recent proposals" },
-            ]}
-          />
+          <Chat className="h-full" />
         </div>
       </div>
     </div>

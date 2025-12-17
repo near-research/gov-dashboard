@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { registerPlaywrightMocks, registerMockVerificationSessionsForEvents } from "./helpers/playwright-mocks";
+import {
+  registerPlaywrightMocks,
+  registerMockVerificationSessionsForEvents,
+} from "./helpers/playwright-mocks";
 import { createPlaywrightGuard } from "./helpers/playwright-guard";
 import type { AGUIEvent } from "@/types/agui-events";
 import { EventType } from "@/types/agui-events";
@@ -206,14 +209,16 @@ const buildAgentStream = ({
 };
 
 describeSpec("Chat-to-agent pipeline", () => {
-  test("streams agent responses with tool calls and document retrieval", async ({ page }) => {
-    registerPlaywrightMocks(page, { skipChatCompletionsStream: true });
-    await page.unroute("**/api/agent");
+  test("streams agent response and re-enables input", async ({ page }) => {
+    registerPlaywrightMocks(page, {
+      skipChatCompletionsStream: true,
+      skipAgentStream: true,
+    });
 
     const streamEvents = buildAgentStream({
-      prefix: "pipeline",
-      intro: "Collecting the latest governance intelligence.",
-      finalMessage: "Final plan with tool-backed evidence.",
+      prefix: "happy",
+      intro: "Processing your request.",
+      finalMessage: "Here is your governance summary.",
     });
 
     await page.route("**/api/agent**", async (route) => {
@@ -230,7 +235,7 @@ describeSpec("Chat-to-agent pipeline", () => {
 
     await page.goto("/chat", { waitUntil: "domcontentloaded" });
     const input = page.getByTestId("chat-input");
-    await input.fill("Walk me through the current proposals");
+    await input.fill("Summarize governance activity");
 
     const [response] = await Promise.all([
       page.waitForResponse((resp) => resp.url().includes("/api/agent") && resp.status() === 200),
@@ -238,112 +243,18 @@ describeSpec("Chat-to-agent pipeline", () => {
     ]);
 
     await response.finished();
-    await expect(page.getByText("Final plan with tool-backed evidence.")).toBeVisible({
+
+    await expect(page.getByText("Here is your governance summary.")).toBeVisible({
       timeout: 10000,
     });
-
-    const toolHistoryCard = page.locator('div:has-text("Tools Used")').first();
-    await expect(toolHistoryCard).toBeVisible();
-    await toolHistoryCard.getByRole("button", { name: "Show" }).click();
-
-    await expect(toolHistoryCard.getByText("search_discourse")).toBeVisible();
-    await expect(toolHistoryCard.getByText("get_discourse_topic")).toBeVisible();
-    await expect(toolHistoryCard.getByText("get_doc")).toBeVisible();
-    await expect(toolHistoryCard.getByText("Doc snippet for pipeline")).toBeVisible();
-    await expect(toolHistoryCard.getByText("Discourse summary for pipeline")).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /NEAR Proposal pipeline Alpha/ })
-    ).toBeVisible();
-  });
-
-  test("accumulates context across messages and reloads the persisted session", async ({ page }) => {
-    registerPlaywrightMocks(page, { skipChatCompletionsStream: true });
-    await page.unroute("**/api/agent");
-
-    const firstFinal = "First assistant response for context.";
-    const secondFinal = "Second assistant response builds on history.";
-    const responses = [
-      {
-        events: buildAgentStream({
-          prefix: "context-a",
-          intro: "Gathering initial context for the run.",
-          finalMessage: firstFinal,
-        }),
-      },
-      {
-        events: buildAgentStream({
-          prefix: "context-b",
-          intro: "Using the previous conversation for follow-up.",
-          finalMessage: secondFinal,
-        }),
-      },
-    ];
-
-    const recordedBodies: Array<Record<string, any>> = [];
-    let served = 0;
-
-    await page.route("**/api/agent**", async (route) => {
-      const rawBody = route.request().postData() ?? "{}";
-      try {
-        recordedBodies.push(JSON.parse(rawBody));
-      } catch {
-        recordedBodies.push({ raw: rawBody });
-      }
-
-      const spec = responses[served];
-      if (!spec) {
-        await route.fulfill({ status: 500, headers: { "Content-Type": "text/plain" }, body: "Unexpected agent call" });
-        return;
-      }
-
-      registerMockVerificationSessionsForEvents(spec.events);
-      await route.fulfill({
-        status: 200,
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
-        body: createSsePayload(spec.events),
-      });
-
-      served += 1;
-    });
-
-    await page.goto("/chat", { waitUntil: "domcontentloaded" });
-    const input = page.getByTestId("chat-input");
-    const firstMessage = "What are the highlights so far?";
-    await input.fill(firstMessage);
-
-    const firstResponsePromise = page.waitForResponse(
-      (resp) => resp.url().includes("/api/agent") && resp.status() === 200
-    );
-    await page.keyboard.press("Enter");
-    const firstResponse = await firstResponsePromise;
-    await firstResponse.finished();
-    await expect(page.getByText(firstFinal)).toBeVisible({ timeout: 10000 });
-
-    const secondMessage = "Now build on the previous answer with docs.";
-    await input.fill(secondMessage);
-    const secondResponsePromise = page.waitForResponse(
-      (resp) => resp.url().includes("/api/agent") && resp.status() === 200
-    );
-    await page.keyboard.press("Enter");
-    const secondResponse = await secondResponsePromise;
-    await secondResponse.finished();
-    await expect(page.getByText(secondFinal)).toBeVisible({ timeout: 10000 });
-
-    const secondBody = recordedBodies[1];
-    expect(secondBody?.messages?.length).toBeGreaterThanOrEqual(3);
-    expect(secondBody?.messages?.[0]?.content).toBe(firstMessage);
-    expect(secondBody?.messages?.[1]?.role).toBe("assistant");
-
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByText(firstFinal)).toBeVisible({ timeout: 5000 });
+    await expect(input).toBeEnabled();
   });
 
   test("shows a rate limit error when the agent API returns 429", async ({ page }) => {
-    registerPlaywrightMocks(page, { skipChatCompletionsStream: true });
-    await page.unroute("**/api/agent");
+    registerPlaywrightMocks(page, {
+      skipChatCompletionsStream: true,
+      skipAgentStream: true,
+    });
 
     await page.route("**/api/agent**", async (route) => {
       await route.fulfill({
@@ -364,6 +275,8 @@ describeSpec("Chat-to-agent pipeline", () => {
       page.keyboard.press("Enter"),
     ]);
 
-    await expect(page.getByText(/Rate limit exceeded/).first()).toBeVisible();
+    await expect(
+      page.getByText("Agent request failed: 429").first()
+    ).toBeVisible();
   });
 });

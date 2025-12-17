@@ -117,7 +117,6 @@ export default function DiscourseTestPage() {
   const [searchQuery, setSearchQuery] = useState("near governance");
   const [searchLimit, setSearchLimit] = useState("5");
   const [searchPage, setSearchPage] = useState("1");
-  const [searchUserApiKey, setSearchUserApiKey] = useState("");
 
   const [topicState, setTopicState] = useState<ApiState>({ loading: false });
   const [topicId, setTopicId] = useState("1");
@@ -166,9 +165,6 @@ export default function DiscourseTestPage() {
       limit: searchLimit,
       page: searchPage,
     });
-    if (searchUserApiKey) {
-      params.set("userApiKey", searchUserApiKey);
-    }
     const url = `/api/discourse/search?${params.toString()}`;
     setSearchState({ loading: true, url });
     try {
@@ -421,7 +417,7 @@ export default function DiscourseTestPage() {
           {renderState(latestState)}
         </SectionWrapper>
 
-        <SectionWrapper title="Search" description="Use /api/discourse/search with query, paging, and optional userApiKey.">
+        <SectionWrapper title="Search" description="Use /api/discourse/search with query and paging.">
           <form className="grid gap-3 md:grid-cols-5" onSubmit={handleSearch}>
             <InputRow label="query">
               <input
@@ -442,14 +438,6 @@ export default function DiscourseTestPage() {
                 className="rounded border border-border bg-input px-3 py-2 text-sm text-foreground"
                 value={searchPage}
                 onChange={(event) => setSearchPage(event.target.value)}
-              />
-            </InputRow>
-            <InputRow label="userApiKey">
-              <input
-                className="rounded border border-border bg-input px-3 py-2 text-sm text-foreground"
-                value={searchUserApiKey}
-                onChange={(event) => setSearchUserApiKey(event.target.value)}
-                placeholder="optional token"
               />
             </InputRow>
             <div className="flex items-end">

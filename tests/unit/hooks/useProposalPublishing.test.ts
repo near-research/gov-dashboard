@@ -73,7 +73,7 @@ afterEach(() => {
 describe("useProposalPublishing", () => {
   describe("linkage check", () => {
     it("checks Discourse linkage on mount when signedAccountId present", async () => {
-      stubLinkage({ discourseUsername: "alice", userApiKey: "api-key" });
+      stubLinkage({ discourseUsername: "alice" });
       const { result } = renderPublishingHook();
 
       await waitFor(() => {
@@ -155,7 +155,7 @@ describe("useProposalPublishing", () => {
     });
 
     it("calls completeLink with auth token", async () => {
-      stubLinkage({ discourseUsername: "alice", userApiKey: "api-key" });
+      stubLinkage({ discourseUsername: "alice" });
       const { result } = renderPublishingHook();
 
       await act(async () => result.current.startDiscourseLink());
@@ -206,7 +206,7 @@ describe("useProposalPublishing", () => {
 
   describe("publishToDiscourse", () => {
     it("calls sign and createPost with signed auth token", async () => {
-      stubLinkage({ discourseUsername: "bob", userApiKey: "api-key" });
+      stubLinkage({ discourseUsername: "bob" });
       const { result } = renderPublishingHook();
 
       await waitFor(() => expect(result.current.discourseLinked).toBe(true));
@@ -219,7 +219,6 @@ describe("useProposalPublishing", () => {
       expect(createPostMock).toHaveBeenCalledWith({
         authToken: "auth-token",
         username: "bob",
-        userApiKey: "api-key",
         nearAccount: "alice.testnet",
         title: "Proposal Title",
         raw: "Proposal content",

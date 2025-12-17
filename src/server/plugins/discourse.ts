@@ -66,10 +66,198 @@ const truthyValues = new Set(["1", "true", "yes", "on"]);
 const truthyEnv = (value?: string) =>
   Boolean(value && truthyValues.has(value.trim().toLowerCase()));
 
+const isDiscourseRequestLoggingEnabled = truthyEnv(
+  process.env.DISCOURSE_LOG_REQUESTS
+);
+
 const isTestEnvironment =
   Boolean(process.env.VITEST) ||
   process.env.NODE_ENV === "test" ||
   truthyEnv(process.env.PLAYWRIGHT_TEST);
+
+const DISCOURSE_FETCH_PATCH_FLAG = Symbol.for("gov.discourse.fetchPatch");
+type GlobalWithDiscourseFetchPatch = typeof globalThis & {
+  [DISCOURSE_FETCH_PATCH_FLAG]?: boolean;
+};
+
+const parseRequestUrl = (rawUrl: string, fallbackBase: string): URL | null => {
+  try {
+    return new URL(rawUrl);
+  } catch {
+    try {
+      return new URL(rawUrl, fallbackBase);
+    } catch {
+      return null;
+    }
+  }
+};
+
+const patchDiscourseFetch = () => {
+  if (isTestEnvironment) {
+    return;
+  }
+
+  const requestCtor = globalThis.Request;
+  if (typeof requestCtor !== "function") {
+    logger.warn(
+      "[discourse-plugin] Request ctor is unavailable; skipping request instrumentation."
+    );
+    return;
+  }
+
+  const originalFetch = globalThis.fetch;
+  if (typeof originalFetch !== "function") {
+    logger.warn(
+      "[discourse-plugin] fetch is unavailable in this runtime; skipping request instrumentation."
+    );
+    return;
+  }
+
+  const globalCandidate = globalThis as GlobalWithDiscourseFetchPatch;
+  if (globalCandidate[DISCOURSE_FETCH_PATCH_FLAG]) {
+    return;
+  }
+
+  const normalizedBase = getDiscourseBaseUrl().replace(/\/$/, "");
+  const normalizedBaseLower = normalizedBase.toLowerCase();
+  const boundFetch = originalFetch.bind(globalThis as unknown as object);
+
+  globalCandidate[DISCOURSE_FETCH_PATCH_FLAG] = true;
+
+  const instrumentedFetch = async (
+    ...args: Parameters<typeof originalFetch>
+  ) => {
+    const [input, init] = args;
+    let request: Request;
+    try {
+      request = new requestCtor(input, init);
+    } catch {
+      return boundFetch(input, init);
+    }
+
+    const method = request.method.toUpperCase();
+    const urlLower = request.url.toLowerCase();
+    const parsedUrl = parseRequestUrl(request.url, normalizedBase);
+    const pathname = parsedUrl?.pathname.toLowerCase() ?? null;
+    const isDiscourseRequest = urlLower.startsWith(normalizedBaseLower);
+    const isCreatePostRequest =
+      method === "POST" && isDiscourseRequest && pathname === "/posts.json";
+    const shouldLog =
+      isDiscourseRequestLoggingEnabled &&
+      method === "POST" &&
+      isDiscourseRequest;
+
+    let cachedBodyText: string | undefined;
+    let bodyReadErrorMessage: string | undefined;
+    const captureBodyText = async () => {
+      if (cachedBodyText !== undefined || bodyReadErrorMessage !== undefined) {
+        return;
+      }
+      try {
+        cachedBodyText = await request.clone().text();
+      } catch (error) {
+        bodyReadErrorMessage =
+          error instanceof Error
+            ? `unable to read body: ${error.message}`
+            : "unable to read body";
+      }
+    };
+
+    if (shouldLog || isCreatePostRequest) {
+      await captureBodyText();
+    }
+
+    if (isCreatePostRequest) {
+      const apiKey = process.env.DISCOURSE_API_KEY;
+      if (!apiKey) {
+        throw new Error(
+          "DISCOURSE_API_KEY is not set. Please configure a system admin key in the environment."
+        );
+      }
+      request.headers.set("Api-Key", apiKey);
+      const rawBody =
+        typeof cachedBodyText === "string" && cachedBodyText.length
+          ? cachedBodyText
+          : undefined;
+      let parsedBody: unknown;
+      if (rawBody) {
+        try {
+          parsedBody = JSON.parse(rawBody);
+        } catch {
+          parsedBody = undefined;
+        }
+      }
+      const payloadUsername =
+        parsedBody &&
+        typeof parsedBody === "object" &&
+        parsedBody !== null &&
+        typeof (parsedBody as Record<string, unknown>).username === "string"
+          ? (parsedBody as Record<string, unknown>).username
+          : undefined;
+      const fallbackUsername =
+        process.env.DISCOURSE_API_USERNAME ||
+        process.env.DISCOURSE_API_USER ||
+        remoteDefaults.apiUsername;
+      const computedUsername =
+        request.headers.get("Api-Username") ??
+        payloadUsername ??
+        fallbackUsername;
+      if (typeof computedUsername === "string" && computedUsername.length > 0) {
+        request.headers.set("Api-Username", computedUsername);
+      }
+      const username = request.headers.get("Api-Username");
+      logger.debug("[discourse.createPost] Using system API key", {
+        keyPrefix: apiKey.slice(0, 4),
+        keyLength: apiKey.length,
+        username,
+      });
+      const parsedBodyForLog = parsedBody ?? rawBody;
+      const loggedHeaders = {
+        apiKeyPrefix: request.headers.get("Api-Key")?.slice(0, 4),
+        apiUsername: request.headers.get("Api-Username"),
+        contentType: request.headers.get("Content-Type"),
+      };
+      console.debug("[discourse.createPost] Final request", {
+        url: request.url,
+        method: request.method,
+        headers: loggedHeaders,
+        body: parsedBodyForLog,
+      });
+    }
+
+    if (shouldLog) {
+      const headers: Record<string, string> = {};
+      request.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      const bodyForLog = cachedBodyText ?? bodyReadErrorMessage ?? "";
+      const truncatedBody =
+        bodyForLog.length > 2000 ? `${bodyForLog.slice(0, 2000)}…` : bodyForLog;
+      logger.info("[discourse] outgoing request", {
+        method: request.method,
+        url: request.url,
+        headers,
+        body: truncatedBody,
+      });
+    }
+
+    const response = await boundFetch(request);
+
+    if (isCreatePostRequest && !response.ok) {
+      const responseText = await response.clone().text();
+      if (response.status === 403) {
+        throw new Error(`Discourse invalid_access: ${responseText}`);
+      }
+      throw new Error(
+        `Discourse createPost failed: ${response.status} ${response.statusText} – ${responseText}`
+      );
+    }
+
+    return response;
+  };
+
+  globalThis.fetch = instrumentedFetch;
+};
 
 const createFallbackDiscourseRouter = (): DiscourseRouter =>
   ({
@@ -149,7 +337,7 @@ if (isTestEnvironment) {
 } else {
   const remoteEntryUrl =
     process.env.DISCOURSE_PLUGIN_URL ||
-    "https://jlwaugh-70-discourse-plugin-discourse-plugin-near-e38bf3951-ze.zephyrcloud.app/remoteEntry.js";
+    "https://jlwaugh-72-discourse-plugin-discourse-plugin-near-c1edf58b4-ze.zephyrcloud.app/remoteEntry.js";
   const normalizedRemoteEntryUrl = normalizeRemoteEntryUrl(remoteEntryUrl);
 
   if (!process.env.DISCOURSE_PLUGIN_URL) {
@@ -157,6 +345,15 @@ if (isTestEnvironment) {
       "[discourse-plugin] Using baked-in remote entry; set DISCOURSE_PLUGIN_URL to override."
     );
   }
+
+  patchDiscourseFetch();
+  logger.info("[discourse-plugin] runtime configuration", {
+    baseUrl: remoteDefaults.baseUrl,
+    apiUsername: remoteDefaults.apiUsername,
+    clientId: remoteDefaults.clientId,
+    usingCustomPluginUrl: Boolean(process.env.DISCOURSE_PLUGIN_URL),
+    loggingOutgoingRequests: isDiscourseRequestLoggingEnabled,
+  });
 
   const runtime = createPluginRuntime({
     registry: { "discourse-plugin": { remoteUrl: normalizedRemoteEntryUrl } },

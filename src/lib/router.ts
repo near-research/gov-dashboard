@@ -419,6 +419,22 @@ export const router = publicProcedure.router({
     createPost: proxyProtected(async ({ input, context }) => {
       const payload = input as Record<string, unknown> | unknown;
       const sessionUserId = context?.session?.user?.id ?? null;
+      const payloadForLog =
+        typeof payload === "object" && payload !== null
+          ? {
+              ...(payload as Record<string, unknown>),
+              authToken: (payload as Record<string, unknown>)["authToken"]
+                ? "[redacted]"
+                : undefined,
+              userApiKey: (payload as Record<string, unknown>)["userApiKey"]
+                ? "[redacted]"
+                : undefined,
+            }
+          : payload;
+      logger.debug("[discourse] createPost payload", {
+        payload: payloadForLog,
+        sessionUserId,
+      });
       const candidate = (discourseRouter as Record<string, unknown>)["createPost"];
       if (!candidate) {
         throw new ORPCError("NOT_IMPLEMENTED", {

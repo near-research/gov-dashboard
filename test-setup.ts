@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import { JSDOM } from "jsdom";
 import React from "react";
+import { resetTestFetchHandler, testFetchProxy } from "./tests/utils/fetch";
 
 if (!process.env.NODE_ENV) {
   (process.env as any).NODE_ENV = "test";
@@ -86,6 +87,7 @@ const registerHooks = () => {
     if (typeof document !== "undefined" && document.body) {
       document.body.innerHTML = "";
     }
+    resetTestFetchHandler();
   });
   afterEachFn?.(() => {
     moduleMocks.clear();
@@ -126,9 +128,7 @@ const wrapViMock = () => {
 wrapViMock();
 
 // Mock fetch globally for API-heavy tests.
-if (!global.fetch) {
-  global.fetch = vi.fn();
-}
+global.fetch = testFetchProxy as typeof global.fetch;
 
 // Stub URL helpers used in download/export code.
 if (!global.URL.createObjectURL) {
@@ -165,4 +165,13 @@ if (!(global as any).MutationObserver) {
     }
   }
   (global as any).MutationObserver = MockMutationObserver as any;
+}
+
+if (!(global as any).ResizeObserver) {
+  class MockResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  (global as any).ResizeObserver = MockResizeObserver as any;
 }
