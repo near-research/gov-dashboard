@@ -10,6 +10,11 @@ export type ProposalState = {
   evaluation: Evaluation | null;
 };
 
+export type PendingToolCallPayload = {
+  toolCallId: string;
+  addResult: (result: unknown) => void;
+};
+
 export type PendingDelta = {
   id: string;
   delta: Operation[];
@@ -38,6 +43,7 @@ export type ProposalEditorState = {
   evaluationChatId?: string;
   pendingDeltas: PendingDelta[];
   hasConflictingDeltas: boolean;
+  pendingToolCall?: PendingToolCallPayload;
 };
 
 export type ProposalEditorAction =
@@ -53,6 +59,8 @@ export type ProposalEditorAction =
   | { type: "SET_SHOW_EVAL_DETAILS"; payload: boolean }
   | { type: "SET_EVALUATION_VERIFICATION"; payload?: VerificationMetadata }
   | { type: "SET_EVALUATION_CHAT_ID"; payload?: string }
+  | { type: "SET_PENDING_TOOL_CALL"; payload: PendingToolCallPayload }
+  | { type: "CLEAR_PENDING_TOOL_CALL" }
   | { type: "ADD_PENDING_DELTA"; payload: PendingDelta }
   | { type: "APPLY_PENDING_DELTA"; payload: string }
   | { type: "DISCARD_PENDING_DELTA"; payload: string }
@@ -78,6 +86,7 @@ const initialState: ProposalEditorState = {
   evaluationChatId: undefined,
   pendingDeltas: [],
   hasConflictingDeltas: false,
+  pendingToolCall: undefined,
 };
 
 function reducer(state: ProposalEditorState, action: ProposalEditorAction): ProposalEditorState {
@@ -116,6 +125,16 @@ function reducer(state: ProposalEditorState, action: ProposalEditorAction): Prop
         hasPendingChanges: false,
         showDiffHighlights: false,
         contentDiffHtml: "",
+      };
+    case "SET_PENDING_TOOL_CALL":
+      return {
+        ...state,
+        pendingToolCall: action.payload,
+      };
+    case "CLEAR_PENDING_TOOL_CALL":
+      return {
+        ...state,
+        pendingToolCall: undefined,
       };
     case "SET_SHOW_DIFF":
       return { ...state, showDiffHighlights: action.payload };
@@ -235,8 +254,16 @@ export const proposalEditorActions = {
     payload: { title, content },
   }),
   clearPending: (): Action => ({ type: "CLEAR_PENDING" }),
+  setPendingToolCall: (toolCall: PendingToolCallPayload): Action => ({
+    type: "SET_PENDING_TOOL_CALL",
+    payload: toolCall,
+  }),
+  clearPendingToolCall: (): Action => ({ type: "CLEAR_PENDING_TOOL_CALL" }),
   setShowDiff: (show: boolean): Action => ({ type: "SET_SHOW_DIFF", payload: show }),
-  setShowEvalDetails: (show: boolean): Action => ({ type: "SET_SHOW_EVAL_DETAILS", payload: show }),
+  setShowEvalDetails: (show: boolean): Action => ({
+    type: "SET_SHOW_EVAL_DETAILS",
+    payload: show,
+  }),
   setEvaluationVerification: (v?: VerificationMetadata): Action => ({
     type: "SET_EVALUATION_VERIFICATION",
     payload: v,

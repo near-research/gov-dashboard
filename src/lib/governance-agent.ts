@@ -33,13 +33,16 @@ import type { VerificationMetadata } from "@/lib/near-ai";
 
 const AGENT_ENDPOINT = "/api/agent";
 const VERIFICATION_SESSION_ENDPOINT = "/api/verification/session";
-const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost";
-
 const resolveEndpoint = (endpoint: string): string => {
   if (endpoint.startsWith("http")) {
     return endpoint;
   }
-  return new URL(endpoint, DEFAULT_BASE_URL).toString();
+  if (typeof window !== "undefined") {
+    return endpoint;
+  }
+  const base =
+    process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+  return new URL(endpoint, base).toString();
 };
 
 export interface GovernanceAgentOptions {

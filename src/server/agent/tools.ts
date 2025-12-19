@@ -18,7 +18,11 @@ import { handleGetDoc, handleSearchDocs } from "@/server/tools/docs";
 import { generateId } from "./ids";
 import { safeParseToolArgs as parseToolArgs } from "./tool-args";
 import { z } from "zod";
-import type { ToolCallArgs, ToolMessage } from "./types";
+import type {
+  AgentConversationMessage,
+  ToolCallArgs,
+  ToolMessage,
+} from "./types";
 import { telemetry } from "@/lib/telemetry";
 import { logger } from "@/lib/logger";
 
@@ -211,6 +215,19 @@ const emitToolResult = (
   };
 };
 
+const TOOL_CONTINUE_REGEX =
+  /\b(then|after that|next|also(?: screen| evaluate)?|and also)\b/i;
+
+type ExecuteToolCallResult = {
+  toolMessage: ToolMessage | null;
+  success: boolean;
+};
+
+type ExecuteToolCallsResult = {
+  toolMessages: ToolMessage[];
+  completionSignals: string[];
+};
+
 export async function executeToolCall({
   runId,
   toolCall,
@@ -221,7 +238,7 @@ export async function executeToolCall({
   toolCall: NonNullable<CompletionMessage["tool_calls"]>[number];
   runtimeBaseUrl: string;
   writeEvent: (event: AGUIEvent) => void;
-}): Promise<ToolMessage | null> {
+}): Promise<ExecuteToolCallResult> {
   const toolCallId = toolCall.id;
   const toolName = toolCall.function.name;
   const args = parseToolArgs(toolCall.function.arguments);
@@ -230,16 +247,22 @@ export async function executeToolCall({
 
   try {
     if (!args.ok) {
-      return emitToolResult(writeEvent, toolCallId, {
-        error: `Failed to parse tool arguments: ${args.error}`,
-      });
+      return {
+        toolMessage: emitToolResult(writeEvent, toolCallId, {
+          error: `Failed to parse tool arguments: ${args.error}`,
+        }),
+        success: false,
+      };
     }
 
     const handler = TOOL_HANDLERS[toolName as ToolName];
     if (!handler) {
-      return emitToolResult(writeEvent, toolCallId, {
-        error: `Unknown tool: ${toolName}`,
-      });
+      return {
+        toolMessage: emitToolResult(writeEvent, toolCallId, {
+          error: `Unknown tool: ${toolName}`,
+        }),
+        success: false,
+      };
     }
 
     let validatedArgs;
@@ -250,7 +273,10 @@ export async function executeToolCall({
         validationError instanceof Error
           ? validationError.message
           : "Tool arguments validation failed";
-      return emitToolResult(writeEvent, toolCallId, { error: message });
+      return {
+        toolMessage: emitToolResult(writeEvent, toolCallId, { error: message }),
+        success: false,
+      };
     }
 
     const result = await handler({
@@ -259,7 +285,10 @@ export async function executeToolCall({
       writeEvent,
     });
     success = true;
-    return emitToolResult(writeEvent, toolCallId, result);
+    return {
+      toolMessage: emitToolResult(writeEvent, toolCallId, result),
+      success: true,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Tool call failed";
     logger.error(`[Agent] Tool ${toolName} failed`, error);
@@ -269,7 +298,10 @@ export async function executeToolCall({
       code: "TOOL_CALL_ERROR",
       timestamp: Date.now(),
     });
-    return emitToolResult(writeEvent, toolCallId, { error: message });
+    return {
+      toolMessage: emitToolResult(writeEvent, toolCallId, { error: message }),
+      success: false,
+    };
   } finally {
     telemetry.toolExecuted(runId, toolName, Date.now() - startTime, success);
   }
@@ -280,16 +312,23 @@ export async function executeToolCallsWithEvents({
   toolCalls,
   runtimeBaseUrl,
   writeEvent,
+  currentMessages,
+  toolCallHistory,
 }: {
   runId: string;
   toolCalls: NonNullable<CompletionMessage["tool_calls"]>;
   runtimeBaseUrl: string;
   writeEvent: (event: AGUIEvent) => void;
-}) {
+  currentMessages: AgentConversationMessage[];
+  toolCallHistory: string[];
+}): Promise<ExecuteToolCallsResult> {
   const toolMessages: ToolMessage[] = [];
+  const completionSignals: string[] = [];
+  let completionSignalSent = false;
+
   for (const toolCall of toolCalls) {
     try {
-      const toolMessage = await executeToolCall({
+      const { toolMessage, success } = await executeToolCall({
         toolCall,
         runId,
         runtimeBaseUrl,
@@ -297,6 +336,25 @@ export async function executeToolCallsWithEvents({
       });
       if (toolMessage) {
         toolMessages.push(toolMessage);
+      }
+      toolCallHistory.push(toolCall.function.name);
+
+      if (success && !completionSignalSent) {
+        const lastUserMessage = currentMessages
+          .slice()
+          .reverse()
+          .find((msg) => msg.role === "user")
+          ?.content ?? "";
+        const userRequestedFollowUp = TOOL_CONTINUE_REGEX.test(
+          lastUserMessage
+        );
+
+        if (!userRequestedFollowUp) {
+          completionSignals.push(
+            `Tool "${toolCall.function.name}" completed successfully. Respond to the user with the result. Do not call additional tools unless explicitly requested.`
+          );
+          completionSignalSent = true;
+        }
       }
     } catch (error) {
       const message =
@@ -310,5 +368,6 @@ export async function executeToolCallsWithEvents({
       });
     }
   }
-  return toolMessages;
+
+  return { toolMessages, completionSignals };
 }

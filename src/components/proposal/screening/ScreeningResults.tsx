@@ -125,9 +125,7 @@ export const ScreeningResults = ({ evaluation }: ScreeningResultsProps) => {
           <div className="feature-icon">✓</div>
           <div>
             <h3 className="feature-title">AI Screened & Approved</h3>
-            <p className="feature-text">
-              Your proposal is ready to publish to Discourse
-            </p>
+            <p className="feature-text">Your proposal is ready to publish!</p>
           </div>
         </div>
       )}

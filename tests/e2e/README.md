@@ -17,7 +17,7 @@ This directory hosts the Playwright specs that exercise the core NEAR Governance
 
 - **Login** (`/login`): verifies the HOT wallet harness connects, exposes the sign-in CTA, and allows disconnection without touching Better Auth APIs.
 - **Proposals** (`/proposals`): ensures the proposals list renders cards driven by a mocked Discourse latest-post response.
-- **Playwright flows** (`/playwright/*` + `/` chat): exercises the screening form, discussion/reply summarization motifs, and the agent/chatbot interaction using SSE mocks for `/api/chat/completions`, `/api/agent`, and proof fetching.
+- **Playwright flows** (`/playwright/*` + the home page `/`): exercises the screening form, discussion/reply summarization motifs, and the agent/chatbot interaction using SSE mocks for `/api/chat/completions`, `/api/agent`, and proof fetching.
 
 ## Next steps for CI
 

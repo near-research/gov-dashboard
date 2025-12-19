@@ -16,12 +16,8 @@ export const PROPOSAL_TOOLS = [
     type: "function",
     function: {
       name: "write_proposal",
-      description: [
-        "Write or edit a NEAR governance proposal.",
-        "Use markdown formatting. Include sections: Objectives, Budget, Timeline, KPIs.",
-        "Write the FULL proposal, even when changing only a few words.",
-        "Make edits minimal and targeted to address specific screening criteria.",
-      ].join(" "),
+      description:
+        "Writes or rewrites NEAR governance proposal content and returns the updated draft. Do NOT automatically screen or evaluate after writing — only return the result unless the user explicitly asks for follow-up.",
       parameters: {
         type: "object",
         properties: {
@@ -43,7 +39,7 @@ export const PROPOSAL_TOOLS = [
     function: {
       name: "screen_proposal",
       description:
-        "Screen a proposal against NEAR governance criteria. Returns evaluation with pass/fail for quality criteria and attention scores.",
+        "Evaluates the proposal against NEAR governance criteria and returns a structured screening report. Do NOT automatically fix issues — only return the evaluation unless the user explicitly asks for edits.",
       parameters: {
         type: "object",
         properties: {
@@ -169,6 +165,26 @@ Attention Score: ${(currentState.evaluation.attentionScore * 100).toFixed(0)}%`
 - Base edits on screening results - fix specific failing criteria
 - Keep changes minimal and targeted
 - After calling write_proposal, just briefly explain what you did (1-2 sentences)
+
+**Task Completion Rules**
+1. COMPLETE THE REQUEST, THEN STOP: Use the tools needed to fulfill the user's request, then respond. Do not add extra steps the user didn't ask for. One or two tool calls is typical; more is fine if explicitly requested.
+2. DO NOT AUTO-CHAIN (but chaining when asked is fine):
+   - After write_proposal → Return the written content to the user. Do NOT auto-screen unless the user asked.
+   - After screen_proposal → Return the evaluation to the user. Do NOT auto-fix unless the user asked.
+   - "Screen and fix issues" → screen then write is correct (2 tools).
+   - "Improve this" → write only (1 tool).
+
+**WHEN TO STOP:**
+- The user's request has been fulfilled.
+- A tool returned success.
+- The user asked a simple question or requested a single edit.
+
+**WHEN TO CONTINUE:**
+- The user explicitly requested multiple steps.
+- A tool returned an error that needs handling.
+- The user's message contains multiple distinct tasks.
+
+AFTER COMPLETING A TOOL CALL: Respond with a brief summary (1-2 sentences) of what was done. Do not call additional tools unless explicitly asked.
 
 ${
   currentState.evaluation

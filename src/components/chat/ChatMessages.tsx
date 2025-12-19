@@ -372,17 +372,19 @@ export const ChatMessages = ({
         aria-live="polite"
         aria-atomic="false"
       >
-        {events.length === 0 && isInitialized ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <h3 className="text-lg font-semibold mb-2">Welcome</h3>
-            <p className="text-sm text-muted-foreground">{welcomeMessage}</p>
-          </div>
-        ) : (
-          <div className="space-y-6 max-w-4xl mx-auto">
-            {events.map((event, index) => renderEvent(event, index))}
-            {showTypingIndicator && <TypingIndicator />}
-          </div>
-        )}
+        <div className="space-y-6 max-w-4xl mx-auto">
+          {events.length === 0 && isInitialized ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <h3 className="text-lg font-semibold mb-2">Welcome</h3>
+              <p className="text-sm text-muted-foreground">{welcomeMessage}</p>
+            </div>
+          ) : (
+            <>
+              {events.map((event, index) => renderEvent(event, index))}
+              {showTypingIndicator && <TypingIndicator />}
+            </>
+          )}
+        </div>
       </div>
 
       {!isAtBottom && (

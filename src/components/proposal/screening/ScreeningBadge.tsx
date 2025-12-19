@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Evaluation } from "@/types/evaluation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -26,6 +26,7 @@ interface ScreeningBadgeProps {
     attentionScore: number;
     model?: string;
   };
+  defaultExpanded?: boolean;
 }
 
 const QUALITY_CRITERIA = [
@@ -80,14 +81,18 @@ const ATTENTION_CRITERIA = [
   },
 ];
 
-export function ScreeningBadge({ screening }: ScreeningBadgeProps) {
+export function ScreeningBadge({ screening, defaultExpanded = false }: ScreeningBadgeProps) {
   const [expandedQualityCriteria, setExpandedQualityCriteria] = useState<
     Set<string>
   >(new Set());
   const [expandedAttentionCriteria, setExpandedAttentionCriteria] = useState<
     Set<string>
   >(new Set());
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+
+  useEffect(() => {
+    setIsExpanded(defaultExpanded);
+  }, [defaultExpanded]);
 
   const formatScore = (score: number) => `${(score * 100).toFixed(0)}%`;
 

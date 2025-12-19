@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authClient, safeSignOut, useSession } from "@/lib/auth/auth-client";
 import { siwnRecipient } from "@/config/siwn";
 import { shouldRetryNonce } from "@/lib/auth/retry";
-import { NearError, type Near, type SignMessageParams } from "near-kit";
+import { Near, NearError, type SignMessageParams } from "near-kit";
 import type { WalletInterface } from "near-sign-verify";
 import { logger } from "@/lib/logger";
 
@@ -119,6 +119,56 @@ const isPlaywrightTest =
   typeof process.env !== "undefined" &&
   (process.env.PLAYWRIGHT_TEST ?? "").toLowerCase() === "true";
 
+const SIGNING_IFRAME_MAX_RETRIES = 3;
+const SIGNING_IFRAME_RETRY_DELAY_MS = 250;
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const isIframeNotLoadedError = (error: unknown) =>
+  error instanceof Error &&
+  typeof error.message === "string" &&
+  error.message.toLowerCase().includes("iframe not loaded");
+
+const patchNearSignMessage = (() => {
+  let patched = false;
+
+  return () => {
+    if (patched) {
+      return;
+    }
+    patched = true;
+
+    const originalSignMessage = Near.prototype.signMessage;
+
+    Near.prototype.signMessage = async function (
+      this: Near,
+      params: Parameters<Near["signMessage"]>[0],
+      options?: Parameters<Near["signMessage"]>[1]
+    ) {
+      for (let attempt = 1; attempt <= SIGNING_IFRAME_MAX_RETRIES; attempt += 1) {
+        try {
+          return await originalSignMessage.call(this, params, options);
+        } catch (error) {
+          if (
+            attempt === SIGNING_IFRAME_MAX_RETRIES ||
+            !isIframeNotLoadedError(error)
+          ) {
+            throw error;
+          }
+          await sleep(SIGNING_IFRAME_RETRY_DELAY_MS);
+        }
+      }
+
+      return originalSignMessage.call(this, params, options);
+    };
+  };
+})();
+
+patchNearSignMessage();
+
 function classifyNearError(err: unknown): {
   message: string;
   retryable: boolean;
@@ -173,6 +223,8 @@ export function useNear() {
         const resolvedMock = getPlaywrightWalletAccount();
         const accountId = resolvedMock ?? authClient.near.getAccountId() ?? "";
 
+        patchNearSignMessage();
+
         if (cancelled) {
           return;
         }
@@ -222,7 +274,9 @@ export function useNear() {
     }
 
     try {
-      return authClient.near.getNearClient();
+      const client = authClient.near.getNearClient();
+      patchNearSignMessage();
+      return client;
     } catch (error) {
       logger.error("NEAR client access failed:", error);
       return null;

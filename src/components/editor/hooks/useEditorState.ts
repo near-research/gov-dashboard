@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { useNear } from "@/hooks/useNear";
 import { useGovernanceAnalytics } from "@/lib/analytics";
 import type { VerificationMetadata } from "@/types/agui-events";
@@ -10,7 +10,6 @@ import {
   type PendingDelta,
   type ProposalState,
 } from "@/components/editor/ProposalEditorContext";
-import { useProposalChatController } from "@/components/editor/useProposalChatController";
 import { useProposalFlowState } from "@/components/editor/useProposalFlowState";
 import { useViewModeToggle } from "@/components/editor/useViewModeToggle";
 
@@ -27,18 +26,12 @@ export function useEditorState() {
   const { state, dispatch } = useProposalEditorContext();
   const { viewMode, setViewMode } = useViewModeToggle();
 
-  const originalStateRef = useRef<ProposalState | null>(null);
-
   const setLocalTitle = useCallback(
     (title: string) => dispatch(proposalEditorActions.setLocalTitle(title)),
     [dispatch]
   );
   const setLocalContent = useCallback(
     (content: string) => dispatch(proposalEditorActions.setLocalContent(content)),
-    [dispatch]
-  );
-  const setShowEvalDetails = useCallback(
-    (show: boolean) => dispatch(proposalEditorActions.setShowEvalDetails(show)),
     [dispatch]
   );
   const setEvaluationVerification = useCallback(
@@ -58,37 +51,24 @@ export function useEditorState() {
     [dispatch]
   );
 
-  const { chatProps, isRunning, addEvaluationToChat } = useProposalChatController({
-    proposalState: state.proposal,
+  const {
+    isPassing,
+    isRunning,
+    editorProps: flowEditorProps,
+    publishBarProps,
+    evaluationPanelProps,
+    rateLimitInfo,
+  } = useProposalFlowState({
+    state,
     dispatch,
-    pendingTitle: state.pendingTitle,
-    pendingContent: state.pendingContent,
-    localTitle: state.localTitle,
-    localContent: state.localContent,
     setLocalTitle,
     setLocalContent,
     setEvaluationVerification,
     setEvaluationChatId,
-    originalStateRef,
-    suggestions,
+    signedAccountId,
+    walletSigner,
+    track: trackEvent,
   });
-
-  const { isPassing, editorProps: flowEditorProps, evaluationPanelProps, publishBarProps } =
-    useProposalFlowState({
-      state,
-      dispatch,
-      setLocalTitle,
-      setLocalContent,
-      setShowEvalDetails,
-      setEvaluationVerification,
-      setEvaluationChatId,
-      signedAccountId,
-      walletSigner,
-      track: trackEvent,
-      isRunning,
-      originalStateRef,
-      onEvaluationComplete: addEvaluationToChat,
-    });
 
   const editorProps = {
     viewMode,
@@ -101,19 +81,10 @@ export function useEditorState() {
     ...flowEditorProps,
   };
 
-  const chatPropsWithEval = {
-    ...chatProps,
-    onEvaluate: evaluationPanelProps.evaluateDraft,
-    evalLoading: evaluationPanelProps.evalLoading,
-    evaluationError: evaluationPanelProps.evaluationError,
-    isPassing,
-  };
-
   const assistantProps = {
-    isPassing,
     publishBarProps: { ...publishBarProps, signIn },
-    chatProps: chatPropsWithEval,
+    evaluationPanelProps,
   };
 
-  return { editorProps, assistantProps };
+  return { editorProps, assistantProps, rateLimitInfo };
 }

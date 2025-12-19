@@ -5,11 +5,22 @@ import {
   makeAssistantToolUI,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
-import { Loader2, Search, FileText, CheckCircle, XCircle, MessageSquare, BookOpen } from "lucide-react";
+import {
+  Loader2,
+  Search,
+  FileText,
+  CheckCircle,
+  XCircle,
+  MessageSquare,
+  BookOpen,
+} from "lucide-react";
 import { ToolHistoryCard } from "@/components/chat/ToolHistoryCard";
 import ProposalCard from "@/components/proposal/ProposalCard";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/utils/tailwind";
 import type { ToolCallUIEvent, ToolCallStatus } from "@/types/agent-ui";
+import { WriteProposalToolUI } from "./WriteProposalToolUI";
 
 const MAX_HISTORY_ITEMS = 5;
 
@@ -33,7 +44,10 @@ function renderToolStatusError(
   if (status.type === "requires-action") {
     return (
       <ToolError
-        message={messages.requiresAction ?? "Waiting for additional input before continuing"}
+        message={
+          messages.requiresAction ??
+          "Waiting for additional input before continuing"
+        }
       />
     );
   }
@@ -54,32 +68,39 @@ function ToolLoading({
   message: string;
 }) {
   return (
-    <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-gray-200 dark:border-gray-700">
-      <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-      <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4 text-gray-500" />
-        <span className="text-sm text-gray-700 dark:text-gray-300">{message}</span>
-      </div>
-    </div>
+    <Alert
+      variant="default"
+      className="my-2 flex items-center gap-3 border border-border bg-muted/70 text-muted-foreground shadow-sm"
+    >
+      <Loader2 className="w-5 h-5 text-primary animate-spin" />
+      <Icon className="w-4 h-4 text-muted-foreground" />
+      <AlertDescription className="text-sm text-muted-foreground">
+        {message}
+      </AlertDescription>
+    </Alert>
   );
 }
 
 function ToolError({ message }: { message: string }) {
   return (
-    <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-800">
-      <XCircle className="w-5 h-5 text-red-500" />
-      <span className="text-sm text-red-600 dark:text-red-300">{message}</span>
-    </div>
+    <Alert
+      variant="destructive"
+      className="my-2 flex items-center gap-3 border border-destructive/60 bg-destructive/10 text-destructive shadow-sm"
+    >
+      <XCircle className="w-5 h-5 text-destructive" />
+      <AlertDescription className="text-sm text-destructive">{message}</AlertDescription>
+    </Alert>
   );
 }
 
 function summaryCard(result: GetSummaryResult, args: GetSummaryArgs) {
   const proposalId = Number(args.proposalId) || 0;
-  const topicSlug = result.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 50) || "proposal";
+  const topicSlug =
+    result.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 50) || "proposal";
 
   return (
     <ProposalCard
@@ -87,7 +108,7 @@ function summaryCard(result: GetSummaryResult, args: GetSummaryArgs) {
       title={result.title}
       excerpt={result.summary}
       created_at={new Date().toISOString()}
-      username="Delegate Agent"
+      username="Gov Assistant"
       topic_id={proposalId}
       topic_slug={topicSlug}
       reply_count={0}
@@ -104,7 +125,9 @@ const mapHistoryStatus = (status: ToolCallMessagePartProps["status"]) => {
   return "completed";
 };
 
-const mapCallbackStatus = (status: ToolCallMessagePartProps["status"]): ToolCallStatus => {
+const mapCallbackStatus = (
+  status: ToolCallMessagePartProps["status"]
+): ToolCallStatus => {
   if (status.type === "running") return "running";
   if (status.type === "requires-action") return "pending";
   return status.type === "complete" ? "completed" : "failed";
@@ -129,7 +152,12 @@ const toToolCallEvent = ({
     toolCallId: toolId,
     toolName,
     input: argsText ?? renderJson(args),
-    output: typeof result === "string" ? result : result ? renderJson(result) : undefined,
+    output:
+      typeof result === "string"
+        ? result
+        : result
+        ? renderJson(result)
+        : undefined,
     status: mapCallbackStatus(status),
     timestamp,
     turnNumber: 0,
@@ -211,12 +239,18 @@ export interface SearchDocsResult {
   }>;
 }
 
-export const GetSummaryToolUI = makeAssistantToolUI<GetSummaryArgs, GetSummaryResult>({
+export const GetSummaryToolUI = makeAssistantToolUI<
+  GetSummaryArgs,
+  GetSummaryResult
+>({
   toolName: "get_summary",
   render: ({ args, result, status }) => {
     if (status.type === "running") {
       return (
-        <ToolLoading icon={FileText} message={`Analyzing proposal ${args.proposalId}...`} />
+        <ToolLoading
+          icon={FileText}
+          message={`Analyzing proposal ${args.proposalId}...`}
+        />
       );
     }
 
@@ -233,19 +267,23 @@ export const GetSummaryToolUI = makeAssistantToolUI<GetSummaryArgs, GetSummaryRe
       return null;
     }
 
-    return (
-      <div className="my-2">
-        {summaryCard(result, args)}
-      </div>
-    );
+    return <div className="my-2">{summaryCard(result, args)}</div>;
   },
 });
 
-export const ScreenProposalToolUI = makeAssistantToolUI<ScreenProposalArgs, ScreenProposalResult>({
+export const ScreenProposalToolUI = makeAssistantToolUI<
+  ScreenProposalArgs,
+  ScreenProposalResult
+>({
   toolName: "screen_proposal",
   render: ({ args, result, status }) => {
     if (status.type === "running") {
-      return <ToolLoading icon={CheckCircle} message={`Screening proposal ${args.proposalId}...`} />;
+      return (
+        <ToolLoading
+          icon={CheckCircle}
+          message={`Screening proposal ${args.proposalId}...`}
+        />
+      );
     }
 
     const statusError = renderToolStatusError(status, {
@@ -262,60 +300,68 @@ export const ScreenProposalToolUI = makeAssistantToolUI<ScreenProposalArgs, Scre
     }
 
     return (
-      <div
+      <Card
         className={cn(
-          "my-2 p-4 rounded-lg border",
-          result.passed
-            ? "bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700"
-            : "bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"
+          "my-2 border border-border shadow-sm",
+          result.passed ? "bg-primary/10" : "bg-destructive/10"
         )}
       >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            {result.passed ? (
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            ) : (
-              <XCircle className="w-5 h-5 text-red-600" />
-            )}
-            <span className="font-medium">
-              Screening {result.passed ? "Passed" : "Failed"}
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {result.passed ? (
+                <CheckCircle className="w-5 h-5 text-primary" />
+              ) : (
+                <XCircle className="w-5 h-5 text-destructive" />
+              )}
+              <span className="font-medium text-foreground">
+                Screening {result.passed ? "Passed" : "Failed"}
+              </span>
+            </div>
+            <span className="text-sm font-semibold text-muted-foreground">
+              Score: {result.score}/100
             </span>
           </div>
-          <span className="text-sm font-semibold">
-            Score: {result.score}/100
-          </span>
-        </div>
 
-        {result.issues.length > 0 && (
-          <div className="mb-3">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Issues Found:
+          {result.issues.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-foreground">
+                Issues Found:
+              </div>
+              <ul className="space-y-1">
+                {result.issues.map((issue, index) => (
+                  <li
+                    key={`${args.proposalId}-issue-${index}`}
+                    className="flex items-start gap-2 text-sm text-muted-foreground"
+                  >
+                    <span className="mt-1">•</span>
+                    <span>{issue}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="space-y-1">
-              {result.issues.map((issue, index) => (
-                <li
-                  key={`${args.proposalId}-issue-${index}`}
-                  className="text-sm text-red-600 dark:text-red-400 flex items-start gap-2"
-                >
-                  <span className="mt-1">•</span>
-                  <span>{issue}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+          )}
 
-        <p className="text-sm text-gray-600 dark:text-gray-400">{result.recommendation}</p>
-      </div>
+          <p className="text-sm text-muted-foreground">{result.recommendation}</p>
+        </CardContent>
+      </Card>
     );
   },
 });
 
-export const SearchDiscourseToolUI = makeAssistantToolUI<SearchDiscourseArgs, SearchDiscourseResult>({
+export const SearchDiscourseToolUI = makeAssistantToolUI<
+  SearchDiscourseArgs,
+  SearchDiscourseResult
+>({
   toolName: "search_discourse",
   render: ({ args, result, status }) => {
     if (status.type === "running") {
-      return <ToolLoading icon={Search} message={`Searching forum for "${args.query}"...`} />;
+      return (
+        <ToolLoading
+          icon={Search}
+          message={`Searching forum for "${args.query}"...`}
+        />
+      );
     }
 
     const statusError = renderToolStatusError(status, {
@@ -329,9 +375,14 @@ export const SearchDiscourseToolUI = makeAssistantToolUI<SearchDiscourseArgs, Se
 
     if (!result?.topics?.length) {
       return (
-        <div className="my-2 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm text-gray-600 dark:text-gray-400">
-          No forum topics found for &ldquo;{args.query}&rdquo;
-        </div>
+        <Alert
+          variant="default"
+          className="my-2 border border-border bg-muted/70 text-muted-foreground shadow-sm"
+        >
+          <AlertDescription className="text-sm text-muted-foreground">
+            No forum topics found for &ldquo;{args.query}&rdquo;
+          </AlertDescription>
+        </Alert>
       );
     }
 
@@ -339,28 +390,34 @@ export const SearchDiscourseToolUI = makeAssistantToolUI<SearchDiscourseArgs, Se
 
     return (
       <div className="my-2 space-y-2">
-        <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
-          Found {topics.length} topic{topics.length !== 1 ? "s" : ""}:
-        </div>
+        <Card className="border border-border bg-card/80">
+          <CardContent className="px-4 py-2 text-sm font-medium text-muted-foreground">
+            Found {topics.length} topic{topics.length !== 1 ? "s" : ""}:
+          </CardContent>
+        </Card>
         {topics.slice(0, MAX_HISTORY_ITEMS).map((topic) => (
           <a
             key={topic.id}
             href={topic.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block p-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors"
+            className="block no-underline"
           >
-            <div className="flex items-start gap-2">
-              <MessageSquare className="w-4 h-4 text-gray-400 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
-                  {topic.title}
+            <Card className="border border-border bg-card text-card-foreground shadow-sm transition-colors hover:bg-muted/70">
+              <CardContent className="p-3 space-y-1">
+                <div className="flex items-start gap-2">
+                  <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-foreground truncate">
+                      {topic.title}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                      {topic.excerpt}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-                  {topic.excerpt}
-                </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </a>
         ))}
       </div>
@@ -368,11 +425,19 @@ export const SearchDiscourseToolUI = makeAssistantToolUI<SearchDiscourseArgs, Se
   },
 });
 
-export const GetDiscourseTopicToolUI = makeAssistantToolUI<GetDiscourseTopicArgs, GetDiscourseTopicResult>({
+export const GetDiscourseTopicToolUI = makeAssistantToolUI<
+  GetDiscourseTopicArgs,
+  GetDiscourseTopicResult
+>({
   toolName: "get_discourse_topic",
   render: ({ args, result, status }) => {
     if (status.type === "running") {
-      return <ToolLoading icon={MessageSquare} message={`Loading topic #${args.topicId}...`} />;
+      return (
+        <ToolLoading
+          icon={MessageSquare}
+          message={`Loading topic #${args.topicId}...`}
+        />
+      );
     }
 
     const statusError = renderToolStatusError(status, {
@@ -390,13 +455,19 @@ export const GetDiscourseTopicToolUI = makeAssistantToolUI<GetDiscourseTopicArgs
         href={result.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="my-2 block p-4 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors"
+        className="block no-underline"
       >
-        <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">{result.title}</div>
-        <div className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">
-          {result.content}
-        </div>
-        <div className="text-xs text-gray-500 mt-2">{result.replies} replies</div>
+        <Card className="my-2 border border-border bg-card text-card-foreground shadow-sm transition-colors hover:bg-muted/70">
+          <CardContent className="p-4 space-y-2">
+            <div className="font-medium text-foreground">{result.title}</div>
+            <div className="text-sm text-muted-foreground line-clamp-3">
+              {result.content}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {result.replies} replies
+            </div>
+          </CardContent>
+        </Card>
       </a>
     );
   },
@@ -406,7 +477,12 @@ export const GetDocToolUI = makeAssistantToolUI<GetDocArgs, GetDocResult>({
   toolName: "get_doc",
   render: ({ args, result, status }) => {
     if (status.type === "running") {
-      return <ToolLoading icon={BookOpen} message={`Loading document ${args.docId}...`} />;
+      return (
+        <ToolLoading
+          icon={BookOpen}
+          message={`Loading document ${args.docId}...`}
+        />
+      );
     }
 
     const statusError = renderToolStatusError(status, {
@@ -424,25 +500,39 @@ export const GetDocToolUI = makeAssistantToolUI<GetDocArgs, GetDocResult>({
         href={result.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="my-2 block p-4 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800 transition-colors"
+        className="block no-underline"
       >
-        <div className="flex items-center gap-2 mb-2">
-          <BookOpen className="w-4 h-4 text-blue-600" />
-          <span className="font-medium text-blue-900 dark:text-blue-100">{result.title}</span>
-        </div>
-        <div className="text-sm text-blue-700 dark:text-blue-300 line-clamp-3">
-          {(result?.content ?? "").slice(0, 200)}...
-        </div>
+        <Card className="my-2 border border-border bg-card text-card-foreground shadow-sm transition-colors hover:bg-muted/70">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-primary" />
+              <span className="font-medium text-foreground">
+                {result.title}
+              </span>
+            </div>
+            <div className="text-sm text-muted-foreground line-clamp-3">
+              {(result?.content ?? "").slice(0, 200)}...
+            </div>
+          </CardContent>
+        </Card>
       </a>
     );
   },
 });
 
-export const SearchDocsToolUI = makeAssistantToolUI<SearchDocsArgs, SearchDocsResult>({
+export const SearchDocsToolUI = makeAssistantToolUI<
+  SearchDocsArgs,
+  SearchDocsResult
+>({
   toolName: "search_docs",
   render: ({ args, result, status }) => {
     if (status.type === "running") {
-      return <ToolLoading icon={Search} message={`Searching documentation for "${args.query}"...`} />;
+      return (
+        <ToolLoading
+          icon={Search}
+          message={`Searching documentation for "${args.query}"...`}
+        />
+      );
     }
 
     const statusError = renderToolStatusError(status, {
@@ -457,9 +547,14 @@ export const SearchDocsToolUI = makeAssistantToolUI<SearchDocsArgs, SearchDocsRe
 
     if (!docs.length) {
       return (
-        <div className="my-2 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm text-gray-600 dark:text-gray-400">
-          No documentation found for &ldquo;{args.query}&rdquo;
-        </div>
+        <Alert
+          variant="default"
+          className="my-2 border border-border bg-muted/70 text-muted-foreground shadow-sm"
+        >
+          <AlertDescription className="text-sm text-muted-foreground">
+            No documentation found for &ldquo;{args.query}&rdquo;
+          </AlertDescription>
+        </Alert>
       );
     }
 
@@ -471,15 +566,23 @@ export const SearchDocsToolUI = makeAssistantToolUI<SearchDocsArgs, SearchDocsRe
             href={doc.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block p-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors"
+            className="block no-underline"
           >
-            <div className="flex items-start gap-2">
-              <BookOpen className="w-4 h-4 text-gray-400 mt-0.5" />
-              <div>
-                <div className="font-medium text-sm">{doc.title}</div>
-                <div className="text-xs text-gray-500 mt-1">{doc.excerpt}</div>
-              </div>
-            </div>
+            <Card className="border border-border bg-card text-card-foreground shadow-sm transition-colors hover:bg-muted/70">
+              <CardContent className="p-3">
+                <div className="flex items-start gap-2">
+                  <BookOpen className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <div className="font-medium text-sm text-foreground">
+                      {doc.title}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {doc.excerpt}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </a>
         ))}
       </div>
@@ -487,7 +590,10 @@ export const SearchDocsToolUI = makeAssistantToolUI<SearchDocsArgs, SearchDocsRe
   },
 });
 
-export const FallbackToolUI = makeAssistantToolUI<Record<string, unknown>, unknown>({
+export const FallbackToolUI = makeAssistantToolUI<
+  Record<string, unknown>,
+  unknown
+>({
   toolName: "*",
   render: ({ toolName, toolCallId, args, argsText, result, status }) => {
     const historyStatus = mapHistoryStatus(status);
@@ -517,6 +623,7 @@ export function GovernanceToolUIs() {
       <GetDiscourseTopicToolUI />
       <GetDocToolUI />
       <SearchDocsToolUI />
+      <WriteProposalToolUI />
       <FallbackToolUI />
     </>
   );

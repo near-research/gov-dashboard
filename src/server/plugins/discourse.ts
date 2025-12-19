@@ -26,7 +26,16 @@ const normalizeFileSchemeUrl = (rawUrl: string) => {
       return trimmed;
     }
     const withoutScheme = trimmed.slice("file://".length);
-    return `file:///${withoutScheme}`;
+    const slashIndex = withoutScheme.indexOf("/");
+    const host = slashIndex === -1 ? withoutScheme : withoutScheme.slice(0, slashIndex);
+    const remainder =
+      slashIndex === -1 ? "" : withoutScheme.slice(slashIndex);
+    const normalizedRemainder = remainder || "/";
+    const path =
+      host && host.toLowerCase() !== "localhost"
+        ? `/${host}${normalizedRemainder}`
+        : normalizedRemainder;
+    return `file://${path}`;
   }
 };
 

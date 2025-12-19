@@ -5,6 +5,7 @@
  */
 
 const DEFAULT_RETRY_AFTER_SECONDS = 15 * 60; // 15 minutes
+const DEFAULT_RESET_MINUTES = 15;
 
 function coerceSeconds(value?: number | null): number | null {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
@@ -80,4 +81,20 @@ export function buildRateLimitMessage(
     fallbackSeconds
   );
   return formatRateLimitMessage(seconds);
+}
+
+export function buildRemainingEvaluationsMessage(
+  remainingEvaluations: number | null,
+  rateLimitResetSeconds: number | null
+): string | null {
+  if (remainingEvaluations === null) {
+    return null;
+  }
+  const resetMinutes =
+    rateLimitResetSeconds !== null
+      ? Math.max(1, Math.ceil(rateLimitResetSeconds / 60))
+      : DEFAULT_RESET_MINUTES;
+  const evaluationPlural = remainingEvaluations === 1 ? "" : "s";
+  const minutePlural = resetMinutes === 1 ? "" : "s";
+  return `You can do ${remainingEvaluations} more evaluation${evaluationPlural} in the next ${resetMinutes} minute${minutePlural}.`;
 }

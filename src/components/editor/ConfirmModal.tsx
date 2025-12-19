@@ -153,11 +153,11 @@ export function ConfirmModal({
         <DialogFooter className="gap-2">
           <Button onClick={onReject} variant="outline" className="gap-2">
             <X className="h-4 w-4" />
-            Reject Changes
+            Reject
           </Button>
           <Button onClick={onConfirm} className="gap-2">
             <Check className="h-4 w-4" />
-            Accept Changes
+            Accept
           </Button>
         </DialogFooter>
       </DialogContent>

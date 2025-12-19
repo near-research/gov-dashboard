@@ -1,17 +1,43 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Check, Copy, X, Image as ImageIcon } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Copy, Image as ImageIcon } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Markdown } from "@/components/proposal/Markdown";
+import { diffPartialText } from "@/utils/ui/diff";
+
+type EditorPaneProps = {
+  title: string;
+  content: string;
+  pendingTitle?: string;
+  pendingContent?: string;
+  setTitle: (value: string) => void;
+  setContent: (value: string) => void;
+  disabled: boolean;
+  viewMode: "editor" | "preview";
+  onToggleView: (mode: "editor" | "preview") => void;
+  showDiffHighlights: boolean;
+  diffHtml?: string;
+  hasPendingChanges?: boolean;
+  onAcceptChanges?: () => void;
+  onRejectChanges?: () => void;
+};
 
 export function EditorPane({
   title,
   content,
+  pendingTitle,
+  pendingContent,
   setTitle,
   setContent,
   disabled,
@@ -22,23 +48,26 @@ export function EditorPane({
   hasPendingChanges,
   onAcceptChanges,
   onRejectChanges,
-}: {
-  title: string;
-  content: string;
-  setTitle: (s: string) => void;
-  setContent: (s: string) => void;
-  disabled: boolean;
-  viewMode: "editor" | "preview";
-  onToggleView: (mode: "editor" | "preview") => void;
-  showDiffHighlights: boolean;
-  diffHtml?: string;
-  hasPendingChanges?: boolean;
-  onAcceptChanges?: () => void;
-  onRejectChanges?: () => void;
-}) {
-  const [showImageDialog, setShowImageDialog] = React.useState(false);
-  const [imageUrl, setImageUrl] = React.useState("");
-  const [imageAlt, setImageAlt] = React.useState("");
+}: EditorPaneProps) {
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageAlt, setImageAlt] = useState("");
+  const handleViewChange = (value: string) => {
+    if (value === "editor" || value === "preview") {
+      onToggleView(value);
+    }
+  };
+
+  const effectivePendingTitle = pendingTitle ?? title;
+  const effectivePendingContent = pendingContent ?? content;
+  const titleDiffHtml =
+    hasPendingChanges && (title || effectivePendingTitle)
+      ? diffPartialText(title, effectivePendingTitle)
+      : null;
+  const contentDiffHtml =
+    hasPendingChanges && (content || effectivePendingContent)
+      ? diffPartialText(content, effectivePendingContent)
+      : null;
 
   const insertImage = () => {
     if (!imageUrl.trim()) return;
@@ -50,154 +79,184 @@ export function EditorPane({
     setImageAlt("");
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Diff Controls Banner */}
-      {hasPendingChanges && showDiffHighlights && (
-        <Alert className="bg-orange-50 border-orange-300">
-          <AlertCircle className="h-4 w-4 text-orange-600" />
-          <AlertDescription>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-orange-900 mb-1">
-                  AI Suggested Changes
-                </div>
-                <div className="text-xs text-orange-800">
-                  <span className="text-green-700">Green</span> = additions •{" "}
-                  <span className="text-red-700">Red</span> = removals
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={onRejectChanges}
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                >
-                  <X className="h-3 w-3" />
-                  Reject
-                </Button>
-                <Button onClick={onAcceptChanges} size="sm" className="gap-1">
-                  <Check className="h-3 w-3" />
-                  Accept
-                </Button>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
+  const onCopyTitle = () => navigator.clipboard.writeText(title || "");
+  const onCopyContent = () => navigator.clipboard.writeText(content || "");
 
-      {/* Title Input / Preview */}
-      <div className="space-y-2">
-        {viewMode === "editor" ? (
-          <>
-          <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="proposal-title" className="text-sm font-medium">
-                Title
-              </Label>
-             <Button
-               variant="ghost"
-               size="sm"
-                className="gap-1"
-                onClick={() => navigator.clipboard.writeText(title || "")}
+  const showPendingControls =
+    Boolean(hasPendingChanges) && onAcceptChanges && onRejectChanges;
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between gap-3 px-0 py-2">
+        <div className="flex flex-col gap-1">
+          <Tabs value={viewMode} onValueChange={handleViewChange}>
+            <TabsList className="bg-transparent p-0">
+              <TabsTrigger
+                value="editor"
+                className="px-3 py-1 cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
               >
-                <Copy className="h-4 w-4" aria-hidden />
-                Copy
-              </Button>
-            </div>
-            <Input
-              id="proposal-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              disabled={disabled}
-              placeholder="Title goes here…"
-              className="text-base font-semibold"
-            />
-          </>
-        ) : (
-          <div className="text-3xl font-bold text-foreground min-h-[3rem]">
-            {title || "Untitled proposal"}
+                Editor
+              </TabsTrigger>
+              <TabsTrigger
+                value="preview"
+                className="px-3 py-1 cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                Preview
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {showPendingControls && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={onRejectChanges}
+            >
+              Reject
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1 bg-emerald-600 text-white hover:bg-emerald-500 focus-visible:ring-emerald-500"
+              onClick={onAcceptChanges}
+            >
+              Accept
+            </Button>
           </div>
         )}
       </div>
 
-      {/* Editor View */}
-      {viewMode === "editor" && (
-        <div className="space-y-2">
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {viewMode === "editor" ? (
+          <div className="flex flex-1 overflow-auto">
+            <div className="space-y-6 p-4 w-full">
+              <div className="space-y-2">
+                {hasPendingChanges && titleDiffHtml ? (
+                  <div
+                    className="text-2xl font-bold diff-content"
+                    dangerouslySetInnerHTML={{ __html: titleDiffHtml }}
+                  />
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label
+                        htmlFor="proposal-title"
+                        className="text-sm font-medium"
+                      >
+                        Title
+                      </Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1"
+                        onClick={onCopyTitle}
+                      >
+                        <Copy className="h-4 w-4" aria-hidden />
+                        Copy
+                      </Button>
+                    </div>
+                    <Input
+                      id="proposal-title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      disabled={disabled}
+                      placeholder="Title goes here…"
+                      className="text-base font-semibold"
+                    />
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {hasPendingChanges && contentDiffHtml ? (
+                  <div
+                    className="prose diff-content max-w-none"
+                    dangerouslySetInnerHTML={{ __html: contentDiffHtml }}
+                  />
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label
+                        htmlFor="proposal-content"
+                        className="text-sm font-medium"
+                      >
+                        Content
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => setShowImageDialog(true)}
+                        >
+                          <ImageIcon className="h-4 w-4" aria-hidden />
+                          Add image
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1"
+                          onClick={onCopyContent}
+                        >
+                          <Copy className="h-4 w-4" aria-hidden />
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                    <Textarea
+                      id="proposal-content"
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                      disabled={disabled}
+                      placeholder="Write your proposal content in Markdown format. Include objectives, KPIs, timeline, and budget details."
+                      rows={15}
+                      className="font-mono text-sm resize-none h-72"
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col gap-2 overflow-auto p-4">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="proposal-content" className="text-sm font-medium">
-                Content
-              </Label>
-            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold truncate">
+                {title || "Untitled title"}
+              </h2>
               <Button
                 variant="ghost"
                 size="sm"
                 className="gap-1"
-                onClick={() => setShowImageDialog(true)}
-              >
-                <ImageIcon className="h-4 w-4" aria-hidden />
-                Add image
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1"
-                onClick={() => navigator.clipboard.writeText(content || "")}
+                onClick={onCopyContent}
               >
                 <Copy className="h-4 w-4" aria-hidden />
                 Copy
               </Button>
             </div>
+            {hasPendingChanges && contentDiffHtml ? (
+              <div
+                className="prose diff-content max-w-none"
+                dangerouslySetInnerHTML={{ __html: contentDiffHtml }}
+              />
+            ) : showDiffHighlights && diffHtml ? (
+              <div
+                className="prose prose-sm max-w-none border rounded-lg p-4"
+                dangerouslySetInnerHTML={{ __html: diffHtml }}
+              />
+            ) : content ? (
+              <div className="prose prose-sm max-w-none">
+                <Markdown content={content} />
+              </div>
+            ) : (
+              <div className="h-full w-full rounded-lg border border-dashed border-muted-foreground/30 p-6 text-sm text-muted-foreground italic">
+                Add a title and content to see the preview.
+              </div>
+            )}
           </div>
-          {showDiffHighlights && diffHtml ? (
-            <div
-              className="min-h-[400px] max-h-[640px] overflow-y-auto p-4 border-2 rounded-lg bg-muted font-mono text-sm leading-relaxed whitespace-pre-wrap"
-              dangerouslySetInnerHTML={{ __html: diffHtml }}
-            />
-          ) : (
-            <Textarea
-              id="proposal-content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              disabled={disabled}
-              placeholder="Write your proposal content in Markdown format. Be sure to include any objectives, key performance indicators, a timeline with milestones, and a detailed budget breakdown if necessary."
-              rows={24}
-              className="font-mono text-sm resize-none"
-            />
-          )}
-        </div>
-      )}
-
-      {/* Preview View */}
-      {viewMode === "preview" && (
-        <div className="space-y-2">
-          <div className="flex justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1"
-              onClick={() => navigator.clipboard.writeText(content || "")}
-            >
-              <Copy className="h-4 w-4" aria-hidden />
-              Copy content
-            </Button>
-          </div>
-          {showDiffHighlights && diffHtml ? (
-            <div
-              className="prose prose-sm max-w-none border rounded-lg p-4"
-              dangerouslySetInnerHTML={{ __html: diffHtml }}
-            />
-          ) : content ? (
-            <div className="prose prose-sm max-w-none">
-              <Markdown content={content} />
-            </div>
-          ) : (
-            <div className="h-full w-full rounded-lg border border-dashed border-muted-foreground/30 p-6 text-sm text-muted-foreground italic">
-              Add a title and content to see the preview.
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
         <DialogContent>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useCallback, type ReactNode } from "react";
+import { useMemo, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { useAgUiRuntime } from "@assistant-ui/react-ag-ui";
+import { useAgUiRuntime } from "@/lib/agui/useAgUiRuntime";
 import { createGovernanceAgent } from "@/lib/governance-agent";
 import { createSessionHistoryAdapter } from "@/lib/history-adapter";
 import { VerificationProvider, useVerification } from "@/contexts/VerificationContext";
@@ -22,8 +22,15 @@ function GovernanceRuntimeInner({
   children,
   agentId,
   onError,
+  onRunStart,
+  onRunEnd,
 }: RuntimeInnerProps) {
-  const { updateVerification, setStatus } = useVerification();
+  const { state, updateVerification, setStatus } = useVerification();
+  const statusRef = useRef(state.status);
+
+  useEffect(() => {
+    statusRef.current = state.status;
+  }, [state.status]);
 
   const historyAdapter = useMemo(() => createSessionHistoryAdapter(), []);
 
@@ -70,6 +77,29 @@ function GovernanceRuntimeInner({
       history: historyAdapter,
     },
   });
+
+  useEffect(() => {
+    if (!runtime?.thread) {
+      return undefined;
+    }
+
+    const unsubStart = runtime.thread.unstable_on("run-start", () => {
+      setStatus("verifying");
+      onRunStart?.();
+    });
+
+    const unsubEnd = runtime.thread.unstable_on("run-end", () => {
+      if (statusRef.current === "verifying") {
+        setStatus("pending");
+      }
+      onRunEnd?.();
+    });
+
+    return () => {
+      unsubStart();
+      unsubEnd();
+    };
+  }, [runtime, onRunStart, onRunEnd, setStatus]);
 
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }

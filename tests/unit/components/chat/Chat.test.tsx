@@ -180,17 +180,6 @@ describe("Chat", () => {
     expectedUnhandledRejectionMessages.push(message);
   };
 
-  it("shows the welcome placeholder when no history exists", async () => {
-    render(<Chat placeholder="Ask the agent…" />);
-
-    expect(
-      await screen.findByText("NEAR Governance Assistant")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Ask about proposals, voting, delegation/i)
-    ).toBeInTheDocument();
-  });
-
   it("displays retry controls when the stream aborts mid-response", async () => {
     const readError = new Error("Stream aborted");
     expectUnhandledRejection(readError.message);
@@ -325,10 +314,6 @@ describe("Chat", () => {
     setTestFetchHandler(fetchMock);
 
     render(<Chat model="Test-AI/1.0" placeholder="Ask the agent…" />);
-
-    expect(
-      await screen.findByText("NEAR Governance Assistant")
-    ).toBeInTheDocument();
 
     const storedRaw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
     expect(storedRaw).toBeTruthy();

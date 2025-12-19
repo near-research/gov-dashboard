@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type Dispatch, type RefObject } from "react";
+import { useCallback, useEffect, type Dispatch } from "react";
 import { useProposalPublishing } from "@/components/editor/useProposalPublishing";
 import { useDraftEvaluation } from "@/components/editor/useDraftEvaluation";
 import {
@@ -7,27 +7,21 @@ import {
   type ProposalEditorState,
   type ProposalState,
 } from "@/components/editor/ProposalEditorContext";
-import { type PublishStep } from "@/components/editor/PublishBar";
 import type { GovernanceTrackFn } from "@/lib/analytics";
 import type { VerificationMetadata } from "@/types/agui-events";
 import type { WalletInterface } from "near-sign-verify";
 import { client } from "@/lib/orpc";
-import type { Evaluation } from "@/types/evaluation";
 
 type UseProposalFlowStateArgs = {
   state: ProposalEditorState;
   dispatch: Dispatch<ProposalEditorAction>;
   setLocalTitle: (title: string) => void;
   setLocalContent: (content: string) => void;
-  setShowEvalDetails: (show: boolean) => void;
   setEvaluationVerification: (v?: VerificationMetadata) => void;
   setEvaluationChatId: (id?: string) => void;
   signedAccountId?: string | null;
   walletSigner: WalletInterface | null;
   track: GovernanceTrackFn;
-  isRunning: boolean;
-  originalStateRef: RefObject<ProposalState | null>;
-  onEvaluationComplete?: (evaluation: Evaluation, verification?: VerificationMetadata) => void;
 };
 
 export const useProposalFlowState = ({
@@ -35,15 +29,11 @@ export const useProposalFlowState = ({
   dispatch,
   setLocalTitle,
   setLocalContent,
-  setShowEvalDetails,
   setEvaluationVerification,
   setEvaluationChatId,
   signedAccountId,
   walletSigner,
   track,
-  isRunning,
-  originalStateRef,
-  onEvaluationComplete,
 }: UseProposalFlowStateArgs) => {
   const {
     proposal: proposalState,
@@ -53,10 +43,9 @@ export const useProposalFlowState = ({
     hasPendingChanges,
     pendingTitle,
     pendingContent,
+    pendingToolCall,
     showDiffHighlights,
-    showEvalDetails,
     evaluationVerification,
-    evaluationChatId,
   } = state;
 
   const evaluation = proposalState.evaluation;
@@ -100,8 +89,19 @@ export const useProposalFlowState = ({
     track,
     setEvaluationVerification,
     setEvaluationChatId,
-    onEvaluationComplete,
   });
+
+  const isRunning = evalLoading;
+  const handleEvaluateDraft = useCallback(() => {
+    console.log("[Screen] Button clicked");
+    void evaluateDraft();
+  }, [evaluateDraft]);
+  const evaluationPanelProps = {
+    evaluation,
+    evaluationError,
+    evaluationVerification,
+    signedAccountId,
+  };
 
   useEffect(() => {
     if (!isRunning) {
@@ -115,12 +115,6 @@ export const useProposalFlowState = ({
       dispatch(proposalEditorActions.setSnapshot(localTitle, localContent));
     }
   }, [dispatch, isRunning, localContent, localTitle]);
-
-  useEffect(() => {
-    if (proposalState.evaluation) {
-      setShowEvalDetails(!proposalState.evaluation.overallPass);
-    }
-  }, [proposalState.evaluation, setShowEvalDetails]);
 
   const handleAcceptChanges = useCallback(() => {
     dispatch(
@@ -136,29 +130,43 @@ export const useProposalFlowState = ({
     dispatch(proposalEditorActions.setEvaluationVerification(undefined));
     dispatch(proposalEditorActions.setEvaluationChatId(undefined));
     dispatch(proposalEditorActions.clearPending());
-  }, [dispatch, pendingContent, pendingTitle, proposalState]);
+    if (pendingToolCall?.addResult) {
+      try {
+        pendingToolCall.addResult({
+          accepted: true,
+          title: pendingTitle,
+          content: pendingContent,
+        });
+      } catch (error) {
+        console.warn("[Accept] addResult failed (non-critical):", error);
+      }
+    }
+    dispatch(proposalEditorActions.clearPendingToolCall());
+  }, [dispatch, pendingContent, pendingTitle, proposalState, pendingToolCall]);
 
   const handleRejectChanges = useCallback(() => {
-    if (originalStateRef.current) {
-      dispatch(proposalEditorActions.setProposal(originalStateRef.current));
-      dispatch(proposalEditorActions.setLocalTitle(originalStateRef.current.title));
-      dispatch(proposalEditorActions.setLocalContent(originalStateRef.current.content));
+    if (pendingToolCall?.addResult) {
+      try {
+        pendingToolCall.addResult({
+          accepted: false,
+          title: localTitle,
+          content: localContent,
+        });
+      } catch (error) {
+        console.warn("[Reject] addResult failed (non-critical):", error);
+      }
     }
     dispatch(proposalEditorActions.clearPending());
-  }, [dispatch, originalStateRef]);
-
-  const publishSteps: PublishStep[] = [
-    { label: "Screen (pass required)", done: isPassing },
-    { label: "Connect NEAR account", done: Boolean(signedAccountId) },
-    { label: "Link Discourse", done: discourseLinked },
-    { label: "Publish", done: false, blocked: publishDisabled },
-  ];
+    dispatch(proposalEditorActions.clearPendingToolCall());
+  }, [dispatch, localContent, localTitle, pendingToolCall]);
 
   const editorProps = {
     localTitle,
     localContent,
     setLocalTitle,
     setLocalContent,
+    pendingTitle,
+    pendingContent,
     showDiffHighlights,
     contentDiffHtml,
     hasPendingChanges,
@@ -166,21 +174,10 @@ export const useProposalFlowState = ({
     onRejectChanges: handleRejectChanges,
   };
 
-  const evaluationPanelProps = {
-    evaluationError,
-    evalLoading,
-    evaluateDraft,
-    evaluation: proposalState.evaluation,
-    showEvalDetails,
-    onToggleEvalDetails: () => setShowEvalDetails(!showEvalDetails),
-    remainingEvaluations,
-    rateLimitResetSeconds,
-    evaluationVerification,
-    evaluationChatId,
-  };
-
   const publishBarProps = {
-    publishSteps,
+    isPassing,
+    evaluateDraft: handleEvaluateDraft,
+    evalLoading,
     publishDisabled,
     publishLoading,
     publishError,
@@ -197,13 +194,19 @@ export const useProposalFlowState = ({
     clearLinkError,
     publishToDiscourse,
   };
+  const rateLimitInfo = {
+    remainingEvaluations,
+    rateLimitResetSeconds,
+  };
 
   return {
     isPassing,
+    isRunning,
     editorProps,
-    evaluationPanelProps,
     publishBarProps,
+    evaluationPanelProps,
     setEvaluationVerification,
     setEvaluationChatId,
+    rateLimitInfo,
   };
 };

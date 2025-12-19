@@ -243,6 +243,7 @@ export function DiscussionSection({
       });
 
       toast.success("Reply posted");
+      resetReplyTarget();
       setReplyContent("");
       track("discussion_reply_succeeded", {
         props: {

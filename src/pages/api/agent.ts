@@ -15,7 +15,11 @@ import { buildCompletionRequest } from "@/server/agent/verification-flow";
 import { runCompletion } from "@/server/agent/completion";
 import { startSseSession, createEventWriter } from "@/server/agent/sse";
 import { validateAgentRequest } from "@/server/agent/validation";
-import type { StreamResult, ToolMessage } from "@/server/agent/types";
+import type {
+  AgentConversationMessage,
+  StreamResult,
+  ToolMessage,
+} from "@/server/agent/types";
 import { telemetry } from "@/lib/telemetry";
 import { ApiError, ErrorCodes, respondWithError } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
@@ -32,6 +36,14 @@ const extractStatusCode = (value: unknown): number => {
   }
   return 500;
 };
+
+const getLastUserMessageContent = (
+  messages: AgentConversationMessage[]
+): string =>
+  [...messages]
+    .reverse()
+    .find((message) => message.role === "user")
+    ?.content ?? "";
 
 
 export default async function handler(
@@ -81,6 +93,9 @@ export default async function handler(
     const startTime = Date.now();
     telemetry.agentRunStarted(run, thread);
 
+    const toolCallHistory: string[] = [];
+    let capWarningEmitted = false;
+
     const client = getNearAIClient();
     const { requestBody, toolChoice } = buildAgentRequest({
       messages: body.messages,
@@ -89,13 +104,6 @@ export default async function handler(
     });
     const baseTools = requestBody.tools;
     const baseToolChoice = requestBody.tool_choice;
-    type AgentConversationMessage = {
-      role: string;
-      content: string;
-      tool_calls?: CompletionToolCall[];
-      tool_call_id?: string;
-    };
-
     let currentMessages: AgentConversationMessage[] = requestBody.messages;
 
     logger.debug("[Agent] Tool choice", { toolChoice });
@@ -201,12 +209,15 @@ export default async function handler(
         break;
       }
 
-      const toolMessages: ToolMessage[] = await executeToolCallsWithEvents({
-        runId: run,
-        toolCalls: result.toolCalls!,
-        runtimeBaseUrl,
-        writeEvent,
-      });
+      const { toolMessages, completionSignals } =
+        await executeToolCallsWithEvents({
+          runId: run,
+          toolCalls: result.toolCalls!,
+          runtimeBaseUrl,
+          writeEvent,
+          currentMessages,
+          toolCallHistory,
+        });
 
       writeEvent({
         type: EventType.STEP_FINISHED,
@@ -227,12 +238,41 @@ export default async function handler(
           content: tm.content,
         })),
       ];
+      if (completionSignals.length > 0) {
+        currentMessages = [
+          ...currentMessages,
+          ...completionSignals.map((content) => ({
+            role: "system",
+            content,
+          })),
+        ];
+      }
 
       iteration++;
+      if (
+        !capWarningEmitted &&
+        iteration >= MAX_TOOL_ITERATIONS - 1
+      ) {
+        capWarningEmitted = true;
+        logger.warn("[Agent] Approaching iteration cap", {
+          iteration,
+          lastUserMessage: getLastUserMessageContent(
+            currentMessages
+          ).slice(0, 100),
+          toolsCalledThisRun: toolCallHistory,
+        });
+      }
     }
 
     if (iteration >= MAX_TOOL_ITERATIONS) {
-      logger.warn("[Agent] Hit max tool iterations", { iteration });
+    logger.warn("[Agent] Hit max tool iterations", {
+      iteration,
+      lastUserMessage: getLastUserMessageContent(currentMessages).slice(
+        0,
+        100
+      ),
+      toolsCalledThisRun: toolCallHistory,
+    });
       writeEvent({
         type: EventType.CUSTOM,
         name: "warning",
@@ -241,6 +281,7 @@ export default async function handler(
       });
     }
 
+    console.log("[Agent] Sending RUN_FINISHED", { runId: run, threadId: thread });
     writeEvent({
       type: EventType.RUN_FINISHED,
       threadId: thread,
@@ -251,6 +292,7 @@ export default async function handler(
     telemetry.agentRunCompleted(run, iteration, Date.now() - startTime);
 
     closeStream();
+    console.log("[Agent] Response complete");
   } catch (error: unknown) {
     if (error instanceof NearAIError) {
       logger.error("[Agent] NEAR AI request failed", {

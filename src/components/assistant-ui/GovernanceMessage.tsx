@@ -1,45 +1,62 @@
 "use client";
 
-import { MessagePrimitive, useMessage, ActionBarPrimitive } from "@assistant-ui/react";
+import {
+  MessagePrimitive,
+  useMessage,
+  ActionBarPrimitive,
+} from "@assistant-ui/react";
 import { useVerificationSafe } from "@/contexts/VerificationContext";
 import { VerificationBadge } from "@/components/verification/VerificationBadge";
 import { ProposalCards } from "@/components/chat/ProposalCards";
 import { Markdown } from "@/components/proposal/Markdown";
+import type { ProposalDisplayData } from "@/components/proposal/types/proposals";
+import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from "lucide-react";
 
-function extractProposalList(text: string): unknown[] | null {
-  const proposalListMatch = text.match(/```json\n(\[[\s\S]*?"type"\s*:\s*"proposal"[\s\S]*?\])\n```/);
-  if (proposalListMatch) {
-    try {
-      const parsed = JSON.parse(proposalListMatch[1]);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    } catch (e) {
-      console.warn("Failed to parse proposal JSON:", e);
+function parseProposalListPayload(
+  payload?: string | null
+): ProposalDisplayData | null {
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(payload);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      (parsed as ProposalDisplayData).type === "proposal_list" &&
+      Array.isArray((parsed as ProposalDisplayData).topics)
+    ) {
+      return parsed as ProposalDisplayData;
     }
+  } catch (error) {
+    console.warn("Failed to parse proposal list JSON:", error);
   }
-
-  const singleProposalMatch = text.match(/```json\n(\{[\s\S]*?"type"\s*:\s*"proposal"[\s\S]*?\})\n```/);
-  if (singleProposalMatch) {
-    try {
-      const parsed = JSON.parse(singleProposalMatch[1]);
-      if (parsed && parsed.type === "proposal") {
-        return [parsed];
-      }
-    } catch (e) {
-      console.warn("Failed to parse single proposal JSON:", e);
-    }
-  }
-
   return null;
 }
 
+function extractProposalList(text: string): ProposalDisplayData | null {
+  const regex = /```json\s*\n([\s\S]*?)```/gi;
+  let match: RegExpExecArray | null = null;
+  while ((match = regex.exec(text))) {
+    const proposalList = parseProposalListPayload(match[1]);
+    if (proposalList) {
+      return proposalList;
+    }
+  }
+
+  const trimmed = text.trim();
+  return parseProposalListPayload(trimmed);
+}
+
 function stripProposalJson(text: string): string {
-  return text
-    .replace(/```json\n\[[\s\S]*?"type"\s*:\s*"proposal"[\s\S]*?\]\n```/g, "")
-    .replace(/```json\n\{[\s\S]*?"type"\s*:\s*"proposal"[\s\S]*?\}\n```/g, "")
-    .trim();
+  const regex = /```json\s*\n([\s\S]*?)```/gi;
+  let cleaned = text;
+  let match: RegExpExecArray | null = null;
+  while ((match = regex.exec(text))) {
+    if (parseProposalListPayload(match[1])) {
+      cleaned = cleaned.replace(match[0], "");
+    }
+  }
+  return cleaned.trim();
 }
 
 interface TextPartProps {
@@ -47,8 +64,8 @@ interface TextPartProps {
 }
 
 function TextPart({ text }: TextPartProps) {
-  const proposals = extractProposalList(text);
-  const displayText = proposals ? stripProposalJson(text) : text;
+  const proposalList = extractProposalList(text);
+  const displayText = proposalList ? stripProposalJson(text) : text;
 
   return (
     <div className="space-y-3">
@@ -57,9 +74,9 @@ function TextPart({ text }: TextPartProps) {
           <Markdown content={displayText} />
         </div>
       )}
-      {proposals && proposals.length > 0 && (
+      {proposalList && (
         <div className="not-prose">
-          <ProposalCards proposals={proposals} />
+          <ProposalCards proposalList={proposalList} />
         </div>
       )}
     </div>
@@ -74,20 +91,24 @@ function MessageActionBar() {
       hideWhenRunning
     >
       <ActionBarPrimitive.Copy asChild>
-        <button
-          className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground"
           title="Copy message"
         >
           <Copy className="w-4 h-4" />
-        </button>
+        </Button>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <button
-          className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground"
           title="Regenerate response"
         >
           <RefreshCw className="w-4 h-4" />
-        </button>
+        </Button>
       </ActionBarPrimitive.Reload>
     </ActionBarPrimitive.Root>
   );
@@ -97,19 +118,23 @@ function UserMessage() {
   return (
     <MessagePrimitive.Root className="flex gap-3 p-4 flex-row-reverse">
       <div className="flex-shrink-0">
-        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-medium">
+        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
           U
         </div>
       </div>
       <div className="flex-1 min-w-0 text-right">
         <div className="flex items-center gap-2 justify-end mb-1">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">You</span>
+          <span className="text-sm font-medium text-foreground">
+            You
+          </span>
         </div>
         <div className="inline-block max-w-[85%] text-left">
-          <div className="rounded-2xl rounded-tr-sm px-4 py-2.5 bg-blue-600 text-white">
+          <div className="rounded-2xl rounded-tr-sm px-4 py-2.5 bg-primary text-primary-foreground">
             <MessagePrimitive.Parts
               components={{
-                Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span>,
+                Text: ({ text }) => (
+                  <span className="whitespace-pre-wrap">{text}</span>
+                ),
               }}
             />
           </div>
@@ -128,32 +153,29 @@ function AssistantMessage() {
   return (
     <MessagePrimitive.Root className="group flex gap-3 p-4">
       <div className="relative flex-shrink-0">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 text-white flex items-center justify-center text-sm font-medium">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/90 via-secondary/80 to-accent/80 text-primary-foreground flex items-center justify-center text-sm font-medium shadow-md">
           A
         </div>
-        {isVerified && (
-          <div className="absolute -bottom-1 -right-1">
-            <VerificationBadge size="sm" />
-          </div>
-        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Delegate Agent
+          <span className="text-sm font-medium text-foreground">
+            Gov Assistant
           </span>
           {isVerified && (
-            <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+            <span className="inline-flex items-center gap-1 text-xs text-accent dark:text-accent-foreground">
               <VerificationBadge size="sm" />
               <span className="hidden sm:inline">TEE Verified</span>
             </span>
           )}
           {isStreaming && (
-            <span className="text-xs text-gray-400 animate-pulse">typing...</span>
+            <span className="text-xs text-muted-foreground animate-pulse">
+              typing...
+            </span>
           )}
         </div>
         <div className="max-w-[85%]">
-          <div className="rounded-2xl rounded-tl-sm px-4 py-2.5 bg-gray-100 dark:bg-gray-800">
+          <div className="rounded-2xl rounded-tl-sm px-4 py-2.5 bg-muted text-foreground">
             <MessagePrimitive.Parts
               components={{
                 Text: TextPart,
@@ -177,7 +199,7 @@ export function GovernanceMessage() {
   }
   return (
     <MessagePrimitive.Root className="p-4">
-      <div className="text-sm text-gray-500 italic text-center">
+      <div className="text-sm text-muted-foreground italic text-center">
         <MessagePrimitive.Parts />
       </div>
     </MessagePrimitive.Root>

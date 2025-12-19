@@ -1,112 +1,53 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { EvaluationSummary } from "@/components/editor/EvaluationSummary";
+import { ScreeningBadge } from "@/components/proposal/screening/ScreeningBadge";
 import { VerificationBadge } from "@/components/VerificationBadge";
 import type { Evaluation } from "@/types/evaluation";
 import type { VerificationMetadata } from "@/types/agui-events";
+import { useMemo } from "react";
 
 export type EvaluationPanelProps = {
   evaluationError: string;
-  evalLoading: boolean;
-  evaluateDraft: () => Promise<void> | void;
   evaluation: Evaluation | null;
-  showEvalDetails: boolean;
-  onToggleEvalDetails: () => void;
-  remainingEvaluations: number | null;
-  rateLimitResetSeconds: number | null;
   evaluationVerification?: VerificationMetadata;
-  evaluationChatId?: string;
+  signedAccountId?: string | null;
 };
 
 export function EvaluationPanel({
   evaluationError,
-  evalLoading,
-  evaluateDraft,
   evaluation,
-  showEvalDetails,
-  onToggleEvalDetails,
-  remainingEvaluations,
-  rateLimitResetSeconds,
   evaluationVerification,
+  signedAccountId,
 }: EvaluationPanelProps) {
+  console.log("[Screen] Rendering results:", evaluation);
+  const screeningData = useMemo(() => {
+    if (!evaluation) return null;
+    return {
+      evaluation,
+      title: "",
+      nearAccount: signedAccountId ?? "NEAR account",
+      timestamp: new Date().toISOString(),
+      revisionNumber: 1,
+      qualityScore: evaluation.qualityScore ?? 0,
+      attentionScore: evaluation.attentionScore ?? 0,
+      model: evaluation.model ?? undefined,
+    };
+  }, [evaluation, signedAccountId]);
   return (
     <div className="card" style={{ padding: "1.2rem" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-        <div style={{ fontWeight: 600 }}>Screen</div>
-        <p style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-          Check against criteria before publishing.
-        </p>
         {evaluationError && (
           <Alert className="border-red-500 bg-red-50 text-red-900">
             <AlertDescription>{evaluationError}</AlertDescription>
           </Alert>
         )}
-        <Button
-          onClick={evaluateDraft}
-          disabled={evalLoading}
-          className="w-full"
-        >
-          {evalLoading ? "Evaluating..." : "Run screening"}
-        </Button>
-        {evaluation && (
+        {screeningData && (
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              fontSize: "0.9rem",
-              marginTop: "0.35rem",
+              marginTop: "0.75rem",
             }}
           >
-            <div
-              style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}
-            >
-              <span>
-                Evaluation: {evaluation.overallPass ? "Passed" : "Screened"}
-              </span>
-              <VerificationBadge
-                verification={evaluationVerification ?? null}
-                className="text-[10px]"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7"
-              onClick={onToggleEvalDetails}
-            >
-              {showEvalDetails ? "Hide results" : "Show results"}
-            </Button>
+            <ScreeningBadge screening={screeningData} defaultExpanded={false} />
           </div>
-        )}
-        {evaluation && showEvalDetails && (
-          <div
-            style={{
-              maxHeight: "240px",
-              overflowY: "auto",
-              marginTop: "0.5rem",
-            }}
-          >
-            <EvaluationSummary evaluation={evaluation} />
-          </div>
-        )}
-        {remainingEvaluations !== null && remainingEvaluations > 0 && (
-          <Alert className="border-blue-500 bg-blue-50 text-blue-900">
-            <AlertDescription>
-              {`You can do ${remainingEvaluations} more evaluation${
-                remainingEvaluations !== 1 ? "s" : ""
-              } in the next ${
-                rateLimitResetSeconds !== null
-                  ? Math.max(1, Math.ceil(rateLimitResetSeconds / 60))
-                  : 15
-              } minute${
-                rateLimitResetSeconds !== null &&
-                Math.max(1, Math.ceil(rateLimitResetSeconds / 60)) !== 1
-                  ? "s"
-                  : ""
-              }.`}
-            </AlertDescription>
-          </Alert>
         )}
       </div>
     </div>

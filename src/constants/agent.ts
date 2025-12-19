@@ -10,7 +10,7 @@ export type AgentChatMessage = {
 };
 
 // Maximum iterations before forcing stop
-export const MAX_TOOL_ITERATIONS = 10;
+export const MAX_TOOL_ITERATIONS = 5;
 
 // Timeout for AI completion requests (ms)
 export const AI_COMPLETION_TIMEOUT_MS = 30_000;

@@ -11,6 +11,13 @@ export interface AgentRequestBody {
   state?: Partial<AgentState>;
 }
 
+export type AgentConversationMessage = {
+  role: string;
+  content: string;
+  tool_calls?: CompletionMessage["tool_calls"];
+  tool_call_id?: string;
+};
+
 export type ToolCallArgs = {
   title?: string;
   content?: string;

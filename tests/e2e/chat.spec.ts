@@ -37,15 +37,17 @@ const buildProposalList = (suffix: string) => ({
 });
 
 const buildDiscourseResult = (suffix: string) => ({
-  topicTitle: `Discourse topic ${suffix}`,
-  summary: `Discourse summary for ${suffix} from the governance forum.`,
+  id: 5000 + suffix.charCodeAt(0),
+  title: `Discourse topic ${suffix}`,
+  content: `Discourse summary for ${suffix} from the governance forum.`,
+  replies: 4,
   url: `https://gov.near.org/t/discourse-${suffix.toLowerCase()}/1234`,
 });
 
 const buildDocResult = (suffix: string) => ({
   docKey: "overview",
   title: `House of Stake overview (${suffix})`,
-  snippet: `Doc snippet for ${suffix}`,
+  content: `Doc snippet for ${suffix}`,
   url: `https://houseofstake.org/docs/overview`,
 });
 
@@ -233,7 +235,7 @@ describeSpec("Chat-to-agent pipeline", () => {
       });
     });
 
-    await page.goto("/chat", { waitUntil: "domcontentloaded" });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const input = page.getByTestId("chat-input");
     await input.fill("Summarize governance activity");
 
@@ -248,6 +250,125 @@ describeSpec("Chat-to-agent pipeline", () => {
       timeout: 10000,
     });
     await expect(input).toBeEnabled();
+  });
+
+  test("exercises verification UI and refreshes the nonce", async ({ page }) => {
+    registerPlaywrightMocks(page, {
+      skipChatCompletionsStream: true,
+      skipAgentStream: true,
+    });
+
+    const verificationId = "e2e-verification-refresh";
+    const expectedVerificationId = process.env.NEXT_PUBLIC_AGENT_ID ?? "governance-delegate";
+    const streamEvents = buildAgentStream({
+      prefix: "verify",
+      intro: "Gathering verification metadata.",
+      finalMessage: "Here is your verification-aware summary.",
+    });
+
+    const messageId =
+      streamEvents.find((event) => event.type === EventType.TEXT_MESSAGE_START)?.messageId ??
+      `assistant-verify-${Date.now()}`;
+
+    const verificationMetadata = {
+      source: "near-ai-cloud" as const,
+      status: "verified" as const,
+      messageId,
+      requestHash: "req-verify",
+      responseHash: "res-verify",
+      chatId: "chat-verify",
+    };
+
+    const verificationEvent: AGUIEvent & { proof?: Record<string, unknown> } = {
+      type: EventType.VERIFICATION,
+      verification: verificationMetadata,
+      timestamp: Date.now() + 1,
+      proof: {
+        verificationId,
+        nonce: "refresh-nonce",
+        requestHash: verificationMetadata.requestHash,
+        responseHash: verificationMetadata.responseHash,
+        stage: "final_synthesis",
+      },
+    };
+
+    const events = [...streamEvents, verificationEvent];
+
+    await page.route("**/api/agent**", async (route) => {
+      registerMockVerificationSessionsForEvents(events);
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+        body: createSsePayload(events),
+      });
+    });
+
+    const verificationRequest = page.waitForRequest(
+      (req) =>
+        req.url().endsWith("/api/verification/session") &&
+        req.method() === "POST"
+    );
+    const verificationResponse = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/api/verification/session") &&
+        res.request().method() === "POST"
+    );
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const input = page.getByTestId("chat-input");
+    await input.fill("What is the verification status?");
+
+    const [response] = await Promise.all([
+      page.waitForResponse((resp) => resp.url().includes("/api/agent") && resp.status() === 200),
+      page.keyboard.press("Enter"),
+    ]);
+    await response.finished();
+    await verificationRequest;
+    const verificationSession = await verificationResponse;
+    const verificationSessionData = await verificationSession.json();
+    expect(verificationSessionData.verificationId).toBe(expectedVerificationId);
+    expect(verificationSessionData.nonce).toBeTruthy();
+
+    await expect(
+      page.getByText("Here is your verification-aware summary.")
+    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Agent Verified")).toBeVisible({ timeout: 5000 });
+
+    const refreshNonceResponse = await page.request.post("/api/verification/session", {
+      data: {
+        verificationId: expectedVerificationId,
+        attestedNonce: "f".repeat(64),
+      },
+    });
+
+    const refreshData = await refreshNonceResponse.json();
+    expect(refreshData.nonce).toBeTruthy();
+
+    await page.evaluate(
+      ({ nonce }) => {
+        const key = "gov_verification_v1";
+        const stored = sessionStorage.getItem(key);
+        if (!stored) {
+          return;
+        }
+        const parsed = JSON.parse(stored);
+        parsed.metadata = parsed.metadata ?? {};
+        parsed.metadata.nonce = nonce;
+        parsed.lastUpdated = new Date().toISOString();
+        sessionStorage.setItem(key, JSON.stringify(parsed));
+      },
+      { nonce: refreshData.nonce }
+    );
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Agent Verified")).toBeVisible({ timeout: 5000 });
+    const storedVerification = await page.evaluate(() =>
+      sessionStorage.getItem("gov_verification_v1")
+    );
+    expect(storedVerification).toContain(refreshData.nonce);
   });
 
   test("shows a rate limit error when the agent API returns 429", async ({ page }) => {
@@ -266,7 +387,7 @@ describeSpec("Chat-to-agent pipeline", () => {
       });
     });
 
-    await page.goto("/chat", { waitUntil: "domcontentloaded" });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     const input = page.getByTestId("chat-input");
     await input.fill("Trigger rate limit");
 

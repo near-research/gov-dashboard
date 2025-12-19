@@ -1,13 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EditorPane } from "@/components/editor/EditorPane";
-import { AssistantSidebar } from "@/components/editor/AssistantSidebar";
-import { DeltaConflictBanner, DeltaConflictReviewDialog } from "@/components/editor/DeltaConflictBanner";
-import { ProposalEditorProvider, type PendingDelta } from "@/components/editor/ProposalEditorContext";
+import {
+  DeltaConflictBanner,
+  DeltaConflictReviewDialog,
+} from "@/components/editor/DeltaConflictBanner";
+import {
+  ProposalEditorProvider,
+  type PendingDelta,
+} from "@/components/editor/ProposalEditorContext";
+import { buildRemainingEvaluationsMessage } from "@/utils/rateLimitHelpers";
 import { useEditorState } from "@/components/editor/hooks/useEditorState";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type ViewMode } from "@/components/editor/useViewModeToggle";
+
+const AssistantSidebar = dynamic(
+  () => import("./AssistantSidebar").then((mod) => mod.AssistantSidebar),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-col gap-5">
+        <div
+          className="card flex-1 min-h-0 animate-pulse bg-muted/30"
+          aria-hidden="true"
+        >
+          <div className="flex-1 min-h-0" />
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default function ProposalEditor() {
   return (
@@ -18,11 +42,24 @@ export default function ProposalEditor() {
 }
 
 function ProposalEditorInner() {
-  const { editorProps, assistantProps } = useEditorState();
+  const { editorProps, assistantProps, rateLimitInfo } = useEditorState();
+  const rateLimitMessage = buildRemainingEvaluationsMessage(
+    rateLimitInfo.remainingEvaluations,
+    rateLimitInfo.rateLimitResetSeconds
+  );
 
   return (
     <div className="page-wrapper">
-      <div className="mx-auto max-w-screen-2xl px-4 py-8 sm:px-6 lg:px-8">
+      {rateLimitMessage && (
+        <div className="border-b border-muted-foreground/10 bg-background">
+          <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+            <Alert className="border-blue-500 bg-blue-50 text-blue-900">
+              <AlertDescription>{rateLimitMessage}</AlertDescription>
+            </Alert>
+          </div>
+        </div>
+      )}
+      <div className="mx-auto max-w-7xl px-4 pt-6 pb-10 sm:px-6 lg:px-8 lg:pt-8">
         <div className="grid items-start gap-8 lg:grid-cols-[2fr_1fr]">
           <EditorColumn {...editorProps} />
           <AssistantSidebar {...assistantProps} />
@@ -37,6 +74,8 @@ type EditorColumnProps = {
   setViewMode: (mode: ViewMode) => void;
   localTitle: string;
   localContent: string;
+  pendingTitle: string;
+  pendingContent: string;
   setLocalTitle: (title: string) => void;
   setLocalContent: (content: string) => void;
   isRunning: boolean;
@@ -56,6 +95,8 @@ function EditorColumn({
   setViewMode,
   localTitle,
   localContent,
+  pendingTitle,
+  pendingContent,
   setLocalTitle,
   setLocalContent,
   isRunning,
@@ -74,26 +115,8 @@ function EditorColumn({
   const closeReview = () => setIsReviewOpen(false);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="mb-1 flex items-center justify-between gap-4">
-        <h1 className="page-title m-0 text-xl">Proposal Editor</h1>
-        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-          <TabsList className="bg-transparent p-0">
-            <TabsTrigger
-              value="editor"
-              className="px-3 py-1 cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              Editor
-            </TabsTrigger>
-            <TabsTrigger
-              value="preview"
-              className="px-3 py-1 cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              Preview
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+    <div className="flex flex-col gap-1">
+      <h2 className="text-xl font-semibold m-0">Proposal Editor</h2>
       {hasConflictingDeltas && (
         <DeltaConflictBanner
           pendingDeltas={pendingDeltas}
@@ -121,22 +144,22 @@ function EditorColumn({
           closeReview();
         }}
       />
-      <div className="card">
-        <EditorPane
-          title={localTitle}
-          content={localContent}
-          setTitle={setLocalTitle}
-          setContent={setLocalContent}
-          disabled={isRunning}
-          viewMode={viewMode}
-          onToggleView={setViewMode}
-          showDiffHighlights={showDiffHighlights}
-          diffHtml={contentDiffHtml}
-          hasPendingChanges={hasPendingChanges}
-          onAcceptChanges={onAcceptChanges}
-          onRejectChanges={onRejectChanges}
-        />
-      </div>
+      <EditorPane
+        title={localTitle}
+        content={localContent}
+        pendingTitle={pendingTitle}
+        pendingContent={pendingContent}
+        setTitle={setLocalTitle}
+        setContent={setLocalContent}
+        disabled={isRunning}
+        viewMode={viewMode}
+        onToggleView={setViewMode}
+        showDiffHighlights={showDiffHighlights}
+        diffHtml={contentDiffHtml}
+        hasPendingChanges={hasPendingChanges}
+        onAcceptChanges={onAcceptChanges}
+        onRejectChanges={onRejectChanges}
+      />
     </div>
   );
 }

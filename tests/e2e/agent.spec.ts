@@ -9,14 +9,7 @@ describeSpec("NEAR AI assistant chat", () => {
     page,
   }) => {
     registerPlaywrightMocks(page);
-    await page.goto("/chat", { waitUntil: "domcontentloaded" });
-
-    await expect(
-      page.getByText("NEAR Governance Assistant")
-    ).toBeVisible();
-    await expect(
-      page.getByText(/Ask about proposals, voting, delegation/i)
-    ).toBeVisible();
+    await page.goto("/", { waitUntil: "domcontentloaded" });
 
     const input = page.getByTestId("chat-input");
     await input.fill("Show me a mock response");

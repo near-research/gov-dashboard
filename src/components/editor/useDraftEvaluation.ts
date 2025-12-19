@@ -14,7 +14,6 @@ type UseDraftEvaluationParams = {
   track: GovernanceTrackFn;
   setEvaluationVerification: (v?: VerificationMetadata) => void;
   setEvaluationChatId: (id?: string) => void;
-  onEvaluationComplete?: (evaluation: Evaluation, verification?: VerificationMetadata) => void;
 };
 
 type UseDraftEvaluationState = {
@@ -32,7 +31,6 @@ export function useDraftEvaluation({
   track,
   setEvaluationVerification,
   setEvaluationChatId,
-  onEvaluationComplete,
 }: UseDraftEvaluationParams): UseDraftEvaluationState {
   const [remainingEvaluations, setRemainingEvaluations] = useState<number | null>(null);
   const [rateLimitResetSeconds, setRateLimitResetSeconds] = useState<number | null>(null);
@@ -73,6 +71,7 @@ export function useDraftEvaluation({
         content: localContent,
       }),
     });
+    console.log("[Screen] API response:", response);
 
     const rateLimit = extractRateLimitInfo(response);
     setRemainingEvaluations(typeof rateLimit.remaining === "number" ? rateLimit.remaining : null);
@@ -110,6 +109,7 @@ export function useDraftEvaluation({
       verification?: VerificationMetadata | null;
       verificationId?: string | null;
     }) => {
+      console.log("[Screen] Updating state with:", data);
       dispatch(
         proposalEditorActions.updateProposal((prev: ProposalState) => ({
           ...prev,
@@ -118,11 +118,8 @@ export function useDraftEvaluation({
       );
       setEvaluationVerification(data.verification ?? undefined);
       setEvaluationChatId(data.verificationId ?? data.verification?.messageId ?? undefined);
-      if (data.evaluation) {
-        onEvaluationComplete?.(data.evaluation, data.verification ?? undefined);
-      }
     },
-    [dispatch, onEvaluationComplete, setEvaluationChatId, setEvaluationVerification]
+    [dispatch, setEvaluationChatId, setEvaluationVerification]
   );
 
   const trackSuccess = useCallback(

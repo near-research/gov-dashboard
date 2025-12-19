@@ -142,7 +142,9 @@ describeSpec("Draft workflow", () => {
     });
 
     await page.goto("/proposals/new", { waitUntil: "domcontentloaded" });
-    const screenButton = page.getByRole("button", { name: /Screen this proposal/ });
+    const screenButton = page.getByRole("button", {
+      name: /Screen this proposal/,
+    });
     await expect(screenButton).toBeVisible();
 
     await screenButton.click();
@@ -169,13 +171,15 @@ describeSpec("Draft workflow", () => {
 
     await expect(page.getByText(/^Passing$/)).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /Publish to Discourse/ })
+      page.getByRole("heading", { name: /Publish to Forum/ })
     ).toBeVisible({ timeout: 5000 });
     const publishButton = page.getByRole("button", {
-      name: /Publish to Discourse/,
+      name: /Publish to Forum/,
     });
     await expect(publishButton).toBeDisabled();
-    await expect(page.getByText("Finish the checklist to publish")).toBeVisible();
+    await expect(
+      page.getByText("Finish the checklist to publish")
+    ).toBeVisible();
 
     const events = await readAnalyticsEvents(page);
     expect(

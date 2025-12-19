@@ -88,3 +88,5 @@ export const Chat = ({
   void trackingPath;
   return <AgentChatPanel agentId={agentId} {...rest} />;
 };
+
+export default Chat;

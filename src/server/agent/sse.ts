@@ -52,6 +52,7 @@ export function startSseSession({
     if (!streamClosed) {
       streamClosed = true;
       clearInterval(keepAliveTimer);
+      console.log("[SSE] Ending response");
       if (stream && !stream.destroyed) {
         stream.end();
       } else if (!res.writableEnded) {
